@@ -4,8 +4,6 @@ import XCTest
 @testable import HermesMobile
 
 final class ComposerSlashTriggerTests: XCTestCase {
-    // MARK: - Detection
-
     func testDetectsTriggerAtStartOfDraft() {
         let trigger = ComposerSlashTrigger.detect(in: "/mod", selection: caret(4))
 
@@ -20,10 +18,7 @@ final class ComposerSlashTriggerTests: XCTestCase {
         XCTAssertEqual(trigger?.range, NSRange(location: 11, length: 4))
     }
 
-    // MARK: - Draft-start reporting (#390)
-
     func testLeadingWhitespaceStillCountsAsTheStartOfTheDraft() {
-        // The send path trims the whole draft, so this one can still run.
         let trigger = ComposerSlashTrigger.detect(in: "  /mod", selection: caret(6))
 
         XCTAssertEqual(trigger?.text, "/mod")
@@ -37,8 +32,6 @@ final class ComposerSlashTriggerTests: XCTestCase {
     }
 
     func testAMidSentenceSubArgumentCommandClosesAtItsFirstSpace() {
-        // A sub-argument list mid-sentence would serve a command the send path
-        // cannot run, so the trigger ends with its word.
         XCTAssertNil(
             ComposerSlashTrigger.detect(in: "check /workspace ~/proj", selection: caret(23))
         )
@@ -133,8 +126,6 @@ final class ComposerSlashTriggerTests: XCTestCase {
         XCTAssertNil(ComposerSlashTrigger.detect(in: "/mod", selection: caret(9)))
     }
 
-    // MARK: - Accepting a row
-
     func testAcceptingReplacesOnlyTheTriggerAndParksTheCaretAfterIt() {
         let draft = "please run /mod for me"
         let trigger = ComposerSlashTrigger.detect(in: draft, selection: caret(15))
@@ -174,8 +165,6 @@ final class ComposerSlashTriggerTests: XCTestCase {
         XCTAssertEqual(completed?.selection, caret(7))
     }
 
-    // MARK: - Minimal edits
-
     func testNoEditBetweenIdenticalText() {
         XCTAssertNil(ComposerTextEdit.between(current: "/model ", target: "/model "))
     }
@@ -194,11 +183,7 @@ final class ComposerSlashTriggerTests: XCTestCase {
         XCTAssertEqual(edit?.replacement, "👋")
     }
 
-    // MARK: - IME composition (#312)
-
     func testABindingThatHasNotSeenTheCompositionLeavesItAlone() {
-        // The user has started composing 자; the parent still holds the draft as
-        // it was before the composition began.
         XCTAssertFalse(
             ComposerMarkedText.isDeliberateReplacement(
                 "안녕 ",
@@ -221,8 +206,6 @@ final class ComposerSlashTriggerTests: XCTestCase {
     }
 
     func testClearingTheDraftAppliesEvenWhenTheCompositionIsTheWholeDraft() {
-        // Sending while the whole draft is one composition: the parent has seen
-        // the composition and is emptying the composer on purpose.
         XCTAssertTrue(
             ComposerMarkedText.isDeliberateReplacement(
                 "",
@@ -234,9 +217,6 @@ final class ComposerSlashTriggerTests: XCTestCase {
     }
 
     func testAStaleEmptyBindingNeverErasesAWholeDraftComposition() {
-        // The same two strings as the send above, but the parent is still on the
-        // empty composer it rendered before the user started composing, so this
-        // is an echo rather than a clear.
         XCTAssertFalse(
             ComposerMarkedText.isDeliberateReplacement(
                 "",
@@ -246,8 +226,6 @@ final class ComposerSlashTriggerTests: XCTestCase {
             )
         )
     }
-
-    // MARK: - Undo
 
     private func caret(_ location: Int) -> NSRange {
         NSRange(location: location, length: 0)

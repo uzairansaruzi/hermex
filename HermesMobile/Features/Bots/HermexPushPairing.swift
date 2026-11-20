@@ -1,58 +1,29 @@
 import Foundation
 
-/// What the `hermex-push` plugin is called on a Hermes host, and how the pairing route
-/// it mounts answers. The keys themselves are a `PushPairing`, stored once by
-/// `PushRegistrar` in the Keychain access group the Notification Service Extension
-/// reads; provisioning keeps no copy of its own.
 enum HermexPushPlugin {
-    /// The plugin's own vocabulary: the env var it reads, its installed directory name,
-    /// and the identifier hermes-agent resolves to the `plugin/` subfolder of the repo.
     static let relayURLEnvironmentKey = "HERMEX_PUSH_RELAY_URL"
     static let name = "hermex-push"
     static let installIdentifier = "https://github.com/uzairansaruzi/hermex-push.git/plugin"
-    /// The relay Hermex runs (hermex#556), used for a host that has never been set up.
-    /// It is not offered as a choice: a host that already names its own relay keeps it,
-    /// and self-hosting stays a server-side setting rather than a field on the phone.
     static let defaultRelayURL = URL(string: "https://hermex-relay.hermex-relay.workers.dev")!
-    /// The newest plugin this build knows (#851). A host that has anything older loaded is
-    /// offered an update in Settings → Notifications. Bump it in the app release that
-    /// follows a plugin release (TESTFLIGHT.md's release gates).
     static let newestVersion = HermexPushPluginVersion("0.7.0")!
-    /// The first plugin with `POST /api/plugins/hermex-push/restart` (#934). Settings offers
-    /// "Restart Hermes…" only while a plugin this new is loaded: an older one has no route to
-    /// call, so its card keeps asking for a restart on the host.
     static let restartVersion = HermexPushPluginVersion("0.4.0")!
 
-    /// Whether the dashboard running `loaded` can be restarted from the phone.
     static func canRestart(_ loaded: HermexPushPluginVersion?) -> Bool {
         loaded.map { $0 >= restartVersion } ?? false
     }
 
-    /// `plugin_version` from the pairing route: the code the dashboard process has loaded,
-    /// which lags the files on disk until that process restarts. Nil for a plugin older than
-    /// 0.2.0, which leaves it out, and for anything unparseable; both count as older than
-    /// every known version. Tolerant, unlike the keys beside it.
     static func loadedVersion(_ body: BotJSON) -> HermexPushPluginVersion? {
         body["plugin_version"].text.flatMap(HermexPushPluginVersion.init)
     }
 
-    /// Whether the plugins hub lists hermex-push, i.e. it is on the host's disk. Nil for a
-    /// reply without a plugins list, which says nothing either way.
     static func isOnDisk(hub body: BotJSON) -> Bool? {
         body["plugins"].list?.contains { $0["name"].text == name }
     }
 
-    /// The version on the host's disk: `plugin.yaml`'s, as `GET /api/dashboard/plugins/hub`
-    /// lists it per plugin. Nil when the plugin is not listed or its version doesn't parse.
     static func installedVersion(hub body: BotJSON) -> HermexPushPluginVersion? {
         body["plugins"].list?.first { $0["name"].text == name }?["version"].text.flatMap(HermexPushPluginVersion.init)
     }
 
-    /// Why the pairing route answered 404, from the body the dashboard sent (hermes-agent
-    /// ca678285, #1178). Its auth middleware answers "Plugin not found" for a plugin that is
-    /// off or not installed. The SPA catch-all answers "No such API endpoint" for a plugin
-    /// that is on but whose routes the dashboard never mounted, since it mounts them only at
-    /// startup; `hermes serve`'s headless catch-all means the same. Nil for any other body.
     static func missingRoute(_ body: BotJSON) -> HermexPushRouteMissing? {
         if body["detail"].text == "Plugin not found" { return .pluginOff }
         if body["detail"].text?.hasPrefix("No such API endpoint") == true
@@ -60,10 +31,6 @@ enum HermexPushPlugin {
         return nil
     }
 
-    /// Decodes `GET /api/plugins/hermex-push/pairing`. Fields the plugin may add later
-    /// are ignored, but a key the relay could not use fails instead of pairing a phone
-    /// that can never receive a push: the install key is 64 lowercase hex characters and
-    /// the preview key is base64 of exactly 32 bytes (AES-256-GCM).
     static func pairing(_ body: BotJSON) throws -> PushPairing {
         guard let install = body["install_key"].text,
               let preview = body["preview_key"].text, Data(base64Encoded: preview)?.count == 32,
@@ -74,9 +41,6 @@ enum HermexPushPlugin {
         return pairing
     }
 
-    /// Accepts the relay addresses the plugin itself accepts: https anywhere, plain http
-    /// only to loopback for a local capture. A host that answers with anything else is
-    /// refused rather than pairing a phone the relay could never reach.
     static func relayURL(_ text: String) -> URL? {
         guard var parts = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
               let host = parts.host, !host.isEmpty,
@@ -87,18 +51,13 @@ enum HermexPushPlugin {
         guard scheme == "https" || (scheme == "http" && isLoopback) else { return nil }
         parts.scheme = scheme
         parts.host = host.lowercased()
-        // The relay refuses redirects, so a trailing slash must not become `//installs`.
         while parts.path.hasSuffix("/") { parts.path.removeLast() }
         return parts.url
     }
 }
 
-/// Failures that belong to setting a Hermes host up for push rather than to the Hermes
-/// gateway. Each one is shown next to the step that produced it, so the user knows what
-/// to retry.
 enum HermexPushFailure: Error, Equatable, LocalizedError {
     case unusablePairing, pairingUnavailable, noConnection
-    /// A plugin update turned hermex-push off and could not turn it back on.
     case pluginLeftOff
     var errorDescription: String? {
         switch self {
@@ -114,20 +73,12 @@ enum HermexPushFailure: Error, Equatable, LocalizedError {
     }
 }
 
-/// What the hermex-push routes the dashboard has mounted, from
-/// `GET /api/plugins/hermex-push/capabilities` (plugin 0.5.0, #1235). Each route is a method
-/// and the path below the plugin's mount, as in `"GET /pairing"`. A feature that needs a
-/// plugin route shows only where `supports` says the route is mounted, since a POST can't be
-/// probed without running it. `closed` supports nothing: an older plugin, or one the
-/// dashboard hasn't loaded since it was installed. Read per screen, never cached, so one
-/// server's answer can't gate another's.
 struct HermexCompanionRoutes: Equatable, Sendable {
     static let closed = HermexCompanionRoutes(pluginVersion: nil, routes: [])
 
     let pluginVersion: HermexPushPluginVersion?
     let routes: Set<String>
 
-    /// Fields the plugin may add later are ignored, and an entry that isn't a string is skipped.
     init(_ body: BotJSON) {
         self.init(pluginVersion: HermexPushPlugin.loadedVersion(body),
                   routes: Set(body["routes"].list?.compactMap(\.text) ?? []))
@@ -141,12 +92,8 @@ struct HermexCompanionRoutes: Equatable, Sendable {
     func supports(_ route: String) -> Bool { routes.contains(route) }
 }
 
-/// The pairing route's 404s that say what the host lacks (`HermexPushPlugin.missingRoute`).
-/// `notMounted` never clears without a dashboard restart on the host.
 enum HermexPushRouteMissing: Error, Equatable { case pluginOff, notMounted }
 
-/// A hermex-push version, compared number by number so 0.10.0 is newer than 0.9.0, and
-/// 0.3 equals 0.3.0. Only dot-separated whole numbers parse.
 struct HermexPushPluginVersion: Comparable, Sendable, CustomStringConvertible {
     let description: String
     private let numbers: [Int]

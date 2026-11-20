@@ -1,12 +1,9 @@
 import SwiftUI
 
-/// The app's version, its troubleshooting tools, and its outside links: policy, support, and
-/// the ways to back it. `server` is the active server, which the support details describe.
 struct SettingsAboutPage: View {
     let server: ServerAccount?
 
     @State private var isShowingSupportDetails = false
-    /// Why Troubleshoot with Hermes couldn't queue its chat text; nothing was queued.
     @State private var troubleshootingFailure: NewChatWithContentError?
     @State private var diagnostics = DiagnosticsModel()
     @AppStorage(UsageReports.Keys.acceptedVersion) private var acceptedUsageVersion: Int?
@@ -20,7 +17,6 @@ struct SettingsAboutPage: View {
     }
 
     var body: some View {
-        // Rebuilt with the page, so it always describes the server that is active now.
         let report = SupportReport(server: server)
         AppList {
             Section {
@@ -144,9 +140,6 @@ struct SettingsAboutPage: View {
         }
     }
 
-    /// Queues the triage prompt and a report built now, so it carries the latest connection
-    /// attempt, as a new chat on the active Hermes server, in the Profile its New Session uses
-    /// (#1476). The chat opens for review once Sessions can show it; nothing is sent.
     private func troubleshoot() {
         guard let server, let url = URL(string: server.id) else { return }
         do {
@@ -158,7 +151,6 @@ struct SettingsAboutPage: View {
     }
 }
 
-/// The exact text Copy puts on the pasteboard, selectable, to read before sharing (#1396).
 private struct SupportDetailsSheet: View {
     let text: String
 
@@ -194,14 +186,12 @@ private struct SupportDetailsSheet: View {
                     }
                 }
             }
-            // A server switch while open rebuilds the text; Copied then no longer describes it.
             .onChange(of: text) { isCopied = false }
         }
     }
 }
 
 #if DEBUG
-/// Maintainer tools for Debug builds. Not localized.
 struct SettingsDeveloperPage: View {
     @AppStorage(UsageReports.Keys.debugForcesCard) private var forcesUsageReportsCard = false
 
@@ -212,7 +202,6 @@ struct SettingsDeveloperPage: View {
                     RatingPromptState.shared.reset()
                 }
 
-                // Turning it on forgets the usage reports answer, so the card asks again.
                 Toggle(isOn: Binding(get: { forcesUsageReportsCard }, set: { isOn in
                     if isOn { UsageReports.shared.forgetAnswerForTesting() }
                     forcesUsageReportsCard = isOn

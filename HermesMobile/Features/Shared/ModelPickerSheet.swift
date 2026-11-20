@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// The model picker shared by the chat composer, Settings > Default Model, and
-/// the Task editor.
-///
-/// The surfaces differ only in a `ModelPickerConfiguration` preset and in who
-/// owns the commit: the composer selects instantly, the Task editor writes to a
-/// local draft, and Settings writes to the server and drives `inFlightKey`,
-/// `isSelectionDisabled`, and `errorMessage` from that request.
 struct ModelPickerSheet: View {
     let configuration: ModelPickerConfiguration
     let modelGroups: [ModelCatalogGroup]
@@ -14,37 +7,20 @@ struct ModelPickerSheet: View {
     let selectedModelProviderID: String?
     var favoriteModelKeys: [ModelFavoriteKey] = []
     var recentModelKeys: [ModelFavoriteKey] = []
-    /// The checkmark rule, supplied by the owner. Settings' rule resolves the
-    /// server's `@provider:` prefix, its `activeProvider` fallback, and its
-    /// in-flight projection; the composer's plain selection match must not
-    /// inherit any of that.
     let isSelected: (ModelCatalogOption) -> Bool
-    /// Catalog load state, for surfaces that load inside the sheet.
     var loadStatus: ModelPickerLoadStatus = .loaded
-    /// The row showing a spinner in place of its checkmark, identified by the
-    /// `(modelID, providerID)` pair so two providers spelling a model the same
-    /// way cannot both spin.
     var inFlightKey: ModelFavoriteKey?
-    /// Spinner inside the custom entry's commit button.
     var isCommittingCustom = false
     var isSelectionDisabled = false
-    /// A failed commit, rendered at the top of the list. This is the save
-    /// error; a failed catalog *load* travels in `loadStatus`.
     var errorMessage: String?
-    /// The row that clears the selection, for surfaces where "no model" is a
-    /// value the server acts on. Nil leaves the list starting at the catalog.
     var clearAction: ModelPickerClearAction?
     let onSelect: (ModelCatalogOption) -> Void
-    /// Commit for the custom entry, when it differs from picking a catalog row.
-    /// Defaults to `onSelect`.
     var onCommitCustom: ((ModelCatalogOption) -> Void)?
     var onToggleFavorite: (ModelCatalogOption) -> Void = { _ in }
     var onDeleteSavedCustom: (ModelCatalogOption) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The system's minimum row height, read outside the List, which runs
-    /// with none (see `body`).
     @Environment(\.defaultMinListRowHeight) private var systemMinRowHeight
     @State private var searchText = ""
     @State private var customModelID = ""
@@ -56,8 +32,6 @@ struct ModelPickerSheet: View {
     private let savedCustomGroupID = "saved-custom-models"
 
     var body: some View {
-        // Derived once per body pass: the group rows and the search-empty
-        // placeholder both read it, and each derivation walks every model.
         let groups = filteredModelGroups
 
         NavigationStack {
@@ -91,10 +65,6 @@ struct ModelPickerSheet: View {
                     .listRowSeparator(.hidden)
             }
             .listStyle(.plain)
-            // Model rows, their dividers, and the overflow toggle are rows of
-            // their own and size to their content, like the stack they
-            // replaced. Rows that relied on the system minimum restore it
-            // through `rowContentMinHeight(verticalInsets:)`.
             .environment(\.defaultMinListRowHeight, 0)
             .scrollContentBackground(.hidden)
             .themedPageBackground()
@@ -111,8 +81,6 @@ struct ModelPickerSheet: View {
                 sectionExpansion.updateSearchText(searchText)
             }
             .onChange(of: modelGroups) {
-                // Settings loads its catalog while the sheet is already on
-                // screen, so the first pass above ran against an empty list.
                 expandPrimaryProviderSections()
             }
             .onChange(of: searchText) { _, newValue in
@@ -134,16 +102,10 @@ struct ModelPickerSheet: View {
         }
     }
 
-    /// The content height that keeps a row at the system minimum row height,
-    /// given the row's top plus bottom insets.
     private func rowContentMinHeight(verticalInsets: CGFloat) -> CGFloat {
         max(0, systemMinRowHeight - verticalInsets)
     }
 
-    /// Loading and load-failure states for surfaces that load inside the sheet,
-    /// and the search-empty state for everyone. All three only stand in for an
-    /// empty group list, so a stale catalog keeps rendering during a refresh.
-    /// `groups` is the body's already-filtered catalog.
     @ViewBuilder
     private func statusPlaceholder(groups: [ModelCatalogGroup]) -> some View {
         if modelGroups.isEmpty, loadStatus == .loading {
@@ -163,10 +125,6 @@ struct ModelPickerSheet: View {
         }
     }
 
-    /// The clear row wears the same pill and checkmark as a model row, because
-    /// "let the server choose" is one of the choices rather than an escape from
-    /// the list. Hidden while searching, where it would answer a query about
-    /// model names with a row that has none.
     private func clearSelectionRow(_ clearAction: ModelPickerClearAction) -> some View {
         Button {
             clearAction.action()
@@ -196,9 +154,6 @@ struct ModelPickerSheet: View {
         .accessibilityAddTraits(clearAction.isSelected ? .isSelected : [])
     }
 
-    /// Custom entry uses the same type scale and row geometry as the model
-    /// rows above it (body text, 48pt rows, 12pt radius) so it reads as part
-    /// of the same list rather than a separate form.
     private var customModelEntry: some View {
         DisclosureGroup {
             VStack(spacing: 6) {
@@ -277,7 +232,6 @@ struct ModelPickerSheet: View {
             }
             .padding(.top, 4)
         } label: {
-            // Row insets 12 + 8 and the 2 + 2 vertical padding below.
             Text("Custom Model")
                 .frame(minHeight: rowContentMinHeight(verticalInsets: 24), alignment: .leading)
         }
@@ -288,8 +242,6 @@ struct ModelPickerSheet: View {
         customOption == nil ? Color(.appTextTertiary) : Color(.appCanvas)
     }
 
-    /// Trailing star shared by model rows and the custom entry. Monochrome:
-    /// it follows the row's foreground instead of the system yellow.
     private func favoriteStar(
         isFavorite: Bool,
         isInverted: Bool,
@@ -315,10 +267,6 @@ struct ModelPickerSheet: View {
         return isFavorite ? Color(.appText) : Color(.appTextTertiary)
     }
 
-    /// One provider group. Inside a List, each view in the disclosure content
-    /// becomes its own row, so every model is a separate, reusable List row and
-    /// only the rows on screen get built. A single container row here would
-    /// build all of them at once, which is hundreds after "Show all models".
     private func modelGroupDisclosure(_ group: ModelCatalogGroup) -> some View {
         let displayedModels = overflowExpansion.displayedModels(in: group)
         let totalModelCount = group.allModels.count
@@ -326,8 +274,6 @@ struct ModelPickerSheet: View {
         let showsOverflowToggle = shouldShowOverflowToggle(for: group)
         let lastModel = displayedModels.last
 
-        // The insets keep the spacing of the single stack these rows replaced:
-        // 9pt above the divider, 1pt between rows, 5pt below the group.
         return DisclosureGroup(
             isExpanded: Binding(
                 get: { sectionExpansion.isExpanded(groupID: group.id) },
@@ -387,8 +333,6 @@ struct ModelPickerSheet: View {
         .tint(Color(.appTextSecondary))
     }
 
-    /// The hairline under a group header and above its overflow toggle. The
-    /// stack keeps it horizontal now that it is a row of its own.
     private var groupDivider: some View {
         VStack(spacing: 0) {
             Divider()
@@ -428,10 +372,6 @@ struct ModelPickerSheet: View {
         .buttonStyle(.plain)
     }
 
-    /// One catalog row. The favorites star and the favorites context menu
-    /// action are gated together on `showsModelFavoriteStars`: a surface that
-    /// passes no `onToggleFavorite` would otherwise render both against the
-    /// default no-op closure, which is a control that does nothing.
     @ViewBuilder
     private func modelOptionRow(_ option: ModelCatalogOption, allowsDelete: Bool) -> some View {
         let row = modelOptionRowContent(option)
@@ -466,8 +406,6 @@ struct ModelPickerSheet: View {
         let selected = isSelected(option)
         let inFlight = Self.isInFlight(option, inFlightKey: inFlightKey)
         let displayLabel = ModelDisplayNames.displayLabel(for: option.id, displayName: option.displayName)
-        // Two ids can share a readable name (`…-flash` and `…-flash:local`), so
-        // the id stays visible, and spoken, beside it.
         let showsID = displayLabel.caseInsensitiveCompare(option.id) != .orderedSame
 
         return HStack(spacing: 12) {
@@ -537,12 +475,6 @@ struct ModelPickerSheet: View {
         }
     }
 
-    /// Whether this row shows the spinner for an in-flight commit.
-    ///
-    /// Both the id and the provider recorded at tap time must agree: after the
-    /// live overlay replaces the active provider's prefixed cached row with a
-    /// bare id, two providers can offer the same spelling, and ticking by id
-    /// alone would spin both rows.
     static func isInFlight(_ option: ModelCatalogOption, inFlightKey: ModelFavoriteKey?) -> Bool {
         guard let inFlightKey else { return false }
         return option.favoriteKey == inFlightKey
@@ -564,12 +496,6 @@ struct ModelPickerSheet: View {
         customModelGroups + Self.filteredGroups(modelGroups, query: trimmedSearchQuery)
     }
 
-    /// `groups` narrowed to `query`.
-    ///
-    /// A group whose display name matches keeps all of its models, so a
-    /// provider stays findable by the name the picker actually shows it under:
-    /// the id is spelled `openai-codex` where the header reads "OpenAI Codex",
-    /// and matching only ids would answer "no models" to the visible name.
     static func filteredGroups(_ groups: [ModelCatalogGroup], query: String) -> [ModelCatalogGroup] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return groups }
@@ -660,11 +586,6 @@ struct ModelPickerSheet: View {
         )
     }
 
-    /// The option the custom entry would commit, or nil while it is incomplete.
-    ///
-    /// `.composer` needs both halves, because a model selected mid-session is
-    /// always addressed by provider. `.serverDefault` commits a bare model id
-    /// with no provider, which is what Settings has always sent.
     static func customOption(
         modelID: String,
         providerID: String,
@@ -697,11 +618,6 @@ struct ModelPickerSheet: View {
         return option
     }
 
-    /// Whether `option` is already represented by a rendered picker row under
-    /// the current query. Empty query renders the server's visible slice plus
-    /// any provider groups the user expanded; searching renders `allModels`.
-    /// Classifying every empty-query group against the full catalog would hide
-    /// the "Current Custom" row for an overflow selection that is still hidden.
     static func isRenderedByCurrentPicker(
         option: ModelCatalogOption,
         modelGroups: [ModelCatalogGroup],
@@ -743,9 +659,6 @@ struct ModelPickerSheet: View {
         return result
     }
 
-    /// Only the composer prefills the provider field. Prefilling it for the
-    /// server default would quietly turn every "bare model id" save into a
-    /// provider-scoped one.
     private func initializeCustomProviderIfNeeded() {
         guard configuration.requiresCustomProviderID else { return }
         guard customProviderID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -777,9 +690,6 @@ struct ModelPickerSheet: View {
         option.displayName.localizedCaseInsensitiveContains(query)
             || option.id.localizedCaseInsensitiveContains(query)
             || (option.providerID?.localizedCaseInsensitiveContains(query) ?? false)
-            // The row renders the prettified label, so the query the user
-            // sees on screen has to find the model too: searching "GLM 5.3"
-            // must match `zai/glm-5.3-flash:local`, not only its raw id.
             || ModelDisplayNames
                 .displayLabel(for: option.id, displayName: option.displayName)
                 .localizedCaseInsensitiveContains(query)
@@ -791,7 +701,6 @@ private struct ModelProviderChoice: Identifiable, Hashable {
     let name: String
 }
 
-/// Field chrome for the custom-model entry, matching the model rows' geometry.
 private struct CustomModelFieldStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
@@ -805,20 +714,12 @@ private struct CustomModelFieldStyle: ViewModifier {
     }
 }
 
-/// Row geometry shared by every picker row in Settings, so Default Model and
-/// Default Profile stay visually identical: the model rows and custom entry
-/// here, and the profile rows in `DefaultProfilePickerView`.
 enum PickerRowMetrics {
     static let minHeight: CGFloat = 48
     static let cornerRadius: CGFloat = 12
 }
 
 extension View {
-    /// The selected-row treatment shared by the model rows and the profile
-    /// rows: a filled `Color(.appText)` pill with the inverted foreground that
-    /// fill needs. The caller owns the row's frame, because the pill can wrap
-    /// content that sits outside the row's own button — the model rows'
-    /// favorite star does.
     func pickerSelectionPill(isSelected: Bool) -> some View {
         foregroundStyle(isSelected ? Color(.appCanvas) : Color(.appText))
             .padding(.horizontal, 12)

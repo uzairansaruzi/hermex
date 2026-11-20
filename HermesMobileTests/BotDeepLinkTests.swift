@@ -1,9 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// The one bot deep link (#554): what it encodes, and what the router does with it
-/// before any navigation happens — Bot Mode off, signed out, a link for the server
-/// that is not active, a removed server or connection, and an unknown Profile.
 @MainActor final class BotDeepLinkTests: XCTestCase {
     private let serverA = URL(string: "https://a.example")!
     private let serverB = URL(string: "https://b.example")!
@@ -38,9 +35,6 @@ import XCTest
                                   isBotModeEnabled: isBotModeEnabled, botConnectionID: { _ in connectionID })
     }
 
-    /// A Hermes server is Bot UI throughout, so its links open with Bot Mode off; a webui
-    /// server's stay dropped (#899).
-    /// A bot link can also open the bot's Screen, and an ordinary one doesn't.
     func testAScreenLinkSurvivesTheRoundTrip() throws {
         let id = UUID()
         let server = URL(string: "https://hermes.example")!
@@ -75,7 +69,6 @@ import XCTest
             XCTAssertEqual(HermesDeepLink.botDestination(from: url), sent)
         }
 
-        // The conversation is optional: a link without one still routes.
         let url = try XCTUnwrap(HermesDeepLink.botURL(for: destination()))
         XCTAssertEqual(HermesDeepLink.botDestination(from: url), destination())
     }
@@ -94,7 +87,6 @@ import XCTest
             XCTAssertNil(HermesDeepLink.botDestination(from: try XCTUnwrap(URL(string: raw))), raw)
         }
 
-        // A trailing slash still matches the registry's normalized server id.
         let trailing = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://bot?server=https://a.example/&connection=\(connectionID.uuidString)&profile=inbox-triage"))
         XCTAssertEqual(HermesDeepLink.botDestination(from: trailing), destination())
     }
@@ -110,13 +102,10 @@ import XCTest
     }
 
     func testRemovedServerOrReplacedConnectionOpensTheAppNormally() {
-        // The server was deleted after the link was minted.
         XCTAssertEqual(resolve(destination(), state: .loggedIn(server: serverB), servers: [serverB],
                                connectionID: connectionID), .ignore)
-        // The Bot connection was removed…
         XCTAssertEqual(resolve(destination(), state: .loggedIn(server: serverA), servers: [serverA],
                                connectionID: nil), .ignore)
-        // …or replaced, which mints a new UUID even under the same name.
         XCTAssertEqual(resolve(destination(), state: .loggedIn(server: serverA), servers: [serverA],
                                connectionID: UUID()), .ignore)
     }
@@ -129,8 +118,6 @@ import XCTest
     func testLinkForAnotherServerSwitchesToItFirst() {
         let outcome = resolve(destination(server: serverB), state: .loggedIn(server: serverA),
                               servers: [serverA, serverB], connectionID: connectionID)
-        // Server B's own credentials, cache and drafts come with the switch; nothing
-        // opens under the still-active server A.
         XCTAssertEqual(outcome, .switchServer(account(serverB), destination(server: serverB)))
     }
 
@@ -151,10 +138,8 @@ import XCTest
 
         XCTAssertEqual(BotDeepLinkRouter.profile(for: destination(), connection: connection, profiles: profiles)?.id,
                        "inbox-triage")
-        // Equal Profile names on a different connection are a different bot.
         XCTAssertNil(BotDeepLinkRouter.profile(for: destination(), connection: other, profiles: profiles))
         XCTAssertNil(BotDeepLinkRouter.profile(for: destination(), connection: nil, profiles: profiles))
-        // An unknown Profile leaves the user on the inbox rather than opening a guess.
         XCTAssertNil(BotDeepLinkRouter.profile(for: destination(profile: "retired"),
                                                connection: connection, profiles: profiles))
     }
@@ -164,8 +149,6 @@ import XCTest
         let connection = BotConnection(id: connectionID, name: "Fixture", address: serverA,
                                        username: "fixture", password: "fixture")
         let room = BotRoomKey(server: serverA, connectionID: connectionID, roomID: "room")
-        // Both bot and group chats must return to the inbox, even when the stale
-        // link also names a conversation that must not affect the next manual tap.
         for initial in [BotInboxSelection(profile: profile, conversation: "old-root"),
                         BotInboxSelection(room: room)] {
             var selection = initial
@@ -189,9 +172,6 @@ import XCTest
         XCTAssertEqual(selection.conversation, "expected-root")
     }
 
-    /// Every bot route ends at the inbox's selection (#1146): a row or tile, a link naming the
-    /// root, and a push tap naming none each open the bot's canonical chat in the regular chat,
-    /// a link's root seeded as the chat's. The same bot on another server keeps its own draft.
     func testEveryBotRouteOpensItsCanonicalChatInTheRegularChat() throws {
         let profile = BotProfile(.object(["name": .string("inbox-triage")]))!
         let connection = BotConnection(id: connectionID, name: "Fixture", address: serverA,
@@ -222,19 +202,13 @@ import XCTest
     }
 
     func testAHeldLinkSurvivesAConnectingOrRetryingInboxButNotAMissingConnection() {
-        // Only a live roster answers a link…
         XCTAssertTrue(BotDeepLinkRouter.inboxCanAnswer(link: .live, hasConnection: true, hasSettled: true))
-        // …a connecting or dropped socket keeps it, so a reconnect still routes it.
         XCTAssertFalse(BotDeepLinkRouter.inboxCanAnswer(link: .connecting, hasConnection: true, hasSettled: true))
         XCTAssertFalse(BotDeepLinkRouter.inboxCanAnswer(link: .disconnected, hasConnection: true, hasSettled: true))
-        // No Bot connection at all is a settled answer: nothing will ever resolve it.
         XCTAssertTrue(BotDeepLinkRouter.inboxCanAnswer(link: .idle, hasConnection: false, hasSettled: true))
-        // …but not before the inbox has opened once, when nothing is loaded yet.
         XCTAssertFalse(BotDeepLinkRouter.inboxCanAnswer(link: .idle, hasConnection: false, hasSettled: false))
     }
 
-    /// A link names the bot's chat by its root: one the host has since replaced opens the
-    /// current chat, as a reattach does (#1339).
     func testADeepLinkedConversationOpensTheBotsCurrentChat() async {
         for linked in ["root-then", "root-now"] {
             let wire = BotFixtureWire()
@@ -247,7 +221,6 @@ import XCTest
         }
     }
 
-    /// The engine a bot's deep link opens: the bot's chat, seeded with the link's root.
     private func conversation(named conversation: String, wire: BotFixtureWire) -> HermesConversation {
         HermesConversation(
             server: serverA,

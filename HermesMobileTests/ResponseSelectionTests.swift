@@ -185,8 +185,6 @@ final class ResponseSelectionVisibilityTests: XCTestCase {
         XCTAssertEqual(scroll.contentSize.height, originalHeight, accuracy: 1)
     }
 
-    /// A lazy transcript places rows it has not realized from their measured
-    /// height, so a selection document that measures short strands the scroll.
     func testLazyTranscriptScrollsToASelectableRowItHasNotRealized() async throws {
         let rows = (0..<60).map { index in
             String(repeating: "Lazy row \(index). Text that wraps onto several lines.\n\n", count: 8)
@@ -239,16 +237,12 @@ final class ResponseSelectionVisibilityTests: XCTestCase {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
     }
 
-    /// The first pass reports which rows are visible; the second redraws those
-    /// rows with glyph collection on.
     private func renderVisibleRows(_ window: UIWindow) async {
         await render(window)
         await render(window)
     }
 }
 
-/// Transcript media loads only once its leaf scrolls into view (#1370): the
-/// transcript is an eager stack, so every row mounts when the chat opens.
 @MainActor
 final class TranscriptMediaVisibilityTests: XCTestCase {
     func testOffscreenMediaWaitsUntilItScrollsIntoView() async throws {
@@ -260,8 +254,6 @@ final class TranscriptMediaVisibilityTests: XCTestCase {
         let (window, scroll) = try await show(transcript)
         defer { window.isHidden = true; window.rootViewController = nil }
 
-        // The visible reply's MEDIA sits in the selection host, so this also
-        // proves the hosted fallback admits a reply that is on screen.
         await fulfillment(of: nearLoads, timeout: 5)
         await render(window)
         for path in far {
@@ -286,7 +278,6 @@ final class TranscriptMediaVisibilityTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil }
         await fulfillment(of: [started], timeout: 5)
 
-        // Removing the row cancels its held load, and mounting it again retries.
         let cancelled = log.expectFinish("/u/near.m4a")
         transcript.showsTop = false
         await renderVisibleRows(window)
@@ -324,9 +315,6 @@ final class TranscriptMediaVisibilityTests: XCTestCase {
         await fulfillment(of: [audio], timeout: 5)
     }
 
-    /// A user message with an image and an audio attachment, then a settled
-    /// reply showing a MEDIA image and an extensionless remote MEDIA URL, which
-    /// the reply probes through its data loader to learn what it is.
     private static func mediaMessages(_ name: String) -> [ChatMessage] {
         [
             ChatMessage(role: "user", content: "", timestamp: 1, messageId: "\(name)-user", attachments: [
@@ -358,15 +346,12 @@ final class TranscriptMediaVisibilityTests: XCTestCase {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
     }
 
-    /// The first pass reports which leaves are visible; the second admits them.
     private func renderVisibleRows(_ window: UIWindow) async {
         await render(window)
         await render(window)
     }
 }
 
-/// Counts every media load by path. A held path parks its loads until
-/// `releaseHeldLoads()`, or until the load's task is cancelled.
 @MainActor
 private final class MediaLoadLog {
     private(set) var calls: [String: Int] = [:]
@@ -376,14 +361,12 @@ private final class MediaLoadLog {
     private var finished: [String: XCTestExpectation] = [:]
     private var held: [UUID: CheckedContinuation<Void, Never>] = [:]
 
-    /// Fulfilled by the next load of `path`.
     func expect(_ path: String) -> XCTestExpectation {
         let expectation = XCTestExpectation(description: "load \(path)")
         started[path] = expectation
         return expectation
     }
 
-    /// Fulfilled when the next load of `path` returns.
     func expectFinish(_ path: String) -> XCTestExpectation {
         let expectation = XCTestExpectation(description: "finish \(path)")
         finished[path] = expectation
@@ -429,8 +412,6 @@ private final class MediaTranscript {
     }
 }
 
-/// An eager transcript like `ChatTranscriptView`'s: `top`, a screenful of text
-/// several times over, then `bottom`.
 private struct MediaTranscriptView: View {
     let transcript: MediaTranscript
 
@@ -462,10 +443,6 @@ private struct MediaTranscriptView: View {
     }
 }
 
-/// Lays out and draws `window` once, after one main-queue turn so SwiftUI can
-/// commit pending state. There is no deadline: both calls are synchronous, and
-/// the assertions that follow decide whether the pass rendered what they read.
-/// Every pass draws because selection leaves collect glyphs only when text draws.
 @MainActor
 private func render(_ window: UIWindow) async {
     await withCheckedContinuation { continuation in
@@ -506,7 +483,6 @@ extension ResponseSelectionTests {
     }
 }
 
-/// Grows after its first layout, like MarkdownUI's block margins and async highlighting.
 private struct LateGrowingResponse: View {
     let onTextTop: (CGFloat) -> Void
     @State private var grown = false
@@ -547,7 +523,6 @@ extension ResponseSelectionTests {
     }
 }
 
-/// What a settled reply's hosted content was last built from.
 @MainActor
 private final class HostedReplyProbe {
     var builds = 0
@@ -574,8 +549,6 @@ private struct HostedReplyProbeView: View {
     }
 }
 
-/// The chat around a settled reply: state the reply ignores, and the
-/// workspace, appearance, text size and link handler it must follow.
 @Observable
 private final class HostedReplySurroundings {
     var unrelated = 0

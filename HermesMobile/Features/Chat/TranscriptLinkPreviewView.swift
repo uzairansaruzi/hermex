@@ -163,9 +163,6 @@ private final class TranscriptLinkPreviewMetadataProviderCancellation: @unchecke
 
     nonisolated func cancel() {
         Task { @MainActor [weak self] in
-            // LPMetadataProvider is non-Sendable. The provider is created and
-            // started on MainActor, so cancellation re-enters MainActor before
-            // touching the provider from Swift's synchronous cancellation hook.
             self?.provider.cancel()
         }
     }

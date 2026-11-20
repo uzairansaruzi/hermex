@@ -1,9 +1,6 @@
 import UIKit
 
-/// Read-only UITextInput adapter. UIKit owns gestures, handles, and the edit menu;
-/// the existing SwiftUI leaves continue to own rendering and link interactions.
 final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelegate {
-    /// Nil where there is no composer to quote into; the menu then omits Ask Hermex.
     var onAskHermex: ((String) -> Void)?
     let leaves = NSHashTable<ResponseSelectionLeafView>.weakObjects()
     var leafOrder: [UUID] = []
@@ -27,8 +24,6 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
     var isEditable: Bool { false }
     var textInputView: UIView { subviews.first ?? self }
     override var canBecomeFirstResponder: Bool { true }
-    // UITextInteraction promotes a UITextInput to an accessibility element.
-    // This adapter is a container; expose the hosted text and controls instead.
     override var isAccessibilityElement: Bool {
         get { false }
         set {}
@@ -58,8 +53,6 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
         becomeFirstResponder()
     }
 
-    /// Geometry is read at interaction time so horizontal code scrolling and
-    /// Dynamic Type never leave selection handles using stale screen positions.
     private var document: (text: NSString, glyphs: [ResponseSelectionGlyph]) {
         let indices = Dictionary(leafOrder.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: min)
         let ordered = leaves.allObjects.filter { $0.window != nil && $0.isDescendant(of: self) }.sorted {
@@ -80,7 +73,6 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
             let nextColumn = index + 1 < ordered.count ? ordered[index + 1].tableColumn : nil
             let separator: String
             if leaf.tableColumn != nil {
-                // Cell coordinates preserve rows even when cells wrap or scroll.
                 separator = nextColumn.map { $0 == 0 ? "\n" : "\t" } ?? "\n\n"
             } else {
                 separator = leaf.separator
@@ -187,8 +179,6 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
 
     func selectionRects(for range: UITextRange) -> [UITextSelectionRect] {
         guard let range = range as? ResponseTextRange, !range.isEmpty else { return [] }
-        // UIKit needs runs of selected text, not a separate highlight view for
-        // every glyph in a long response. Keep bidi runs and media gaps separate.
         var runs: [ResponseSelectionGlyph] = []
         for glyph in document.glyphs where NSIntersectionRange(glyph.range, range.range).length > 0 {
             if let last = runs.last,
@@ -213,8 +203,6 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
         }
     }
 
-    /// Paragraph separators have no drawn glyph. Anchor their caret to the
-    /// nearest text boundary instead of jumping to the end of the response.
     private func nearestGlyph(to offset: Int, in glyphs: [ResponseSelectionGlyph]) -> ResponseSelectionGlyph? {
         if let exact = glyphs.first(where: { NSLocationInRange(offset, $0.range) }) { return exact }
         return glyphs.min {

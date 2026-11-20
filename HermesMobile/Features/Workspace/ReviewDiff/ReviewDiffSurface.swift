@@ -1,11 +1,8 @@
 import SwiftUI
 
-/// One-shot scroll request; a new token scrolls again even to the same place.
 struct ReviewDiffScrollTarget: Equatable {
     enum Anchor: Equatable {
-        /// The file header lands at the top of the viewport.
         case fileHeader(String)
-        /// The row lands 30 % down the viewport.
         case row(String)
     }
 
@@ -22,12 +19,8 @@ struct ReviewDiffScrollTarget: Equatable {
     }
 }
 
-/// SwiftUI face of the review surface. The host owns every piece of state (rows,
-/// collapse, viewed, selection, refresh) and this bridge pushes only what changed.
 struct ReviewDiffSurface: UIViewRepresentable {
     let rows: [ReviewDiffRow]
-    /// Bumped by the host whenever `rows` is replaced, so the bridge never compares
-    /// thousands of rows to notice a change.
     let rowsVersion: Int
     let collapsedFileIDs: Set<String>
     let viewedFileIDs: Set<String>
@@ -37,7 +30,6 @@ struct ReviewDiffSurface: UIViewRepresentable {
     var presentation: ReviewDiffPresentation = .diff
     var wrapsLines = false
     @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
-    /// Syntax colour runs by row id, replaced whenever `tokensVersion` changes.
     var tokensByRowID: [String: [SourceHighlightRun]] = [:]
     var tokensVersion = 0
     var onVisibleRowRangeChange: ((ClosedRange<Int>?) -> Void)? = nil

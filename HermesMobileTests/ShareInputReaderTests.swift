@@ -2,18 +2,7 @@ import XCTest
 import UniformTypeIdentifiers
 @testable import HermesMobile
 
-/// Coverage for the share extension's attacker-facing input parser.
-///
-/// `ShareInputReader` only ingests fully external input (text/URLs/files shared
-/// from any other app), so its per-variant decoding, file-URL rejection, and
-/// size/count caps are the most regression-prone logic in the app. These tests
-/// drive the provider-array entry point with hand-built `NSItemProvider`s and
-/// assert on the parsed `ShareInput`, not on which internal branch ran — the
-/// system is free to coerce a registered payload between `Data`/`NSString`/`NSURL`
-/// for a given type identifier, and every accepted form must reach the same result.
 final class ShareInputReaderTests: XCTestCase {
-    // MARK: - URLs
-
     func testURLProviderVariantsLandInURLs() async {
         let providers = [
             NSItemProvider(item: URL(string: "https://example.com/a")! as NSURL, typeIdentifier: UTType.url.identifier),
@@ -54,8 +43,6 @@ final class ShareInputReaderTests: XCTestCase {
         XCTAssertTrue(input.attachments.isEmpty)
     }
 
-    // MARK: - Text
-
     func testTextProviderVariantsLandInTextSnippets() async {
         let providers = [
             NSItemProvider(item: "plain string" as NSString, typeIdentifier: UTType.plainText.identifier),
@@ -69,8 +56,6 @@ final class ShareInputReaderTests: XCTestCase {
         XCTAssertTrue(input.urls.isEmpty)
         XCTAssertTrue(input.attachments.isEmpty)
     }
-
-    // MARK: - Attachments
 
     func testOversizedImageDataProducesNoAttachment() async {
         let oversized = Data(count: HermesShareDraft.maximumSharedAttachmentBytes + 1)
@@ -92,9 +77,6 @@ final class ShareInputReaderTests: XCTestCase {
         XCTAssertEqual(input.skipped, Array(repeating: SharedSkippedItem(filename: nil, reason: .overLimit), count: 2))
     }
 
-    /// Each item a share leaves out is reported once, with why. Text, a link, and an item whose
-    /// file failed but whose data loaded are not among them; the oversized file is judged by its
-    /// size alone (#734), and an empty file is unreadable rather than attached.
     func testSkippedAttachmentsAreReportedWithTheirReasons() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -137,8 +119,6 @@ final class ShareInputReaderTests: XCTestCase {
         ])
     }
 
-    // Exercises the security-scoped file path (loadFileAttachment → attachment(from:provider:)),
-    // which reads bytes off disk — distinct from the in-memory data-attachment path above.
     func testFileURLAttachmentIsParsedFromTemporaryFile() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -160,8 +140,6 @@ final class ShareInputReaderTests: XCTestCase {
         XCTAssertEqual(input.attachments.first?.typeIdentifier, UTType.plainText.identifier)
     }
 
-    // Mapped reads keep shared bytes as clean, file-backed pages, so a
-    // multi-file share is not charged to the extension's memory ceiling.
     func testFileURLAttachmentIsMappedFromDisk() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -181,8 +159,6 @@ final class ShareInputReaderTests: XCTestCase {
         XCTAssertTrue(isFileBacked(attachment.data), "file bytes must be mapped, not copied into memory")
     }
 
-    // Image and PDF providers load through their file representation; the
-    // accepted bytes stay mapped after the provider's handler returns.
     func testImageFileRepresentationIsMappedFromDisk() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -211,8 +187,6 @@ final class ShareInputReaderTests: XCTestCase {
         XCTAssertTrue(isFileBacked(attachment.data), "provider bytes must be mapped, not copied into memory")
     }
 
-    // MARK: - Filename fallbacks
-
     func testAttachmentFilenameUsesSuggestedName() async {
         let withoutExtension = NSItemProvider(item: Data([0x01]) as NSData, typeIdentifier: UTType.png.identifier)
         withoutExtension.suggestedName = "vacation"
@@ -222,16 +196,10 @@ final class ShareInputReaderTests: XCTestCase {
 
         let input = await ShareInputReader.input(from: [withoutExtension, withExtension])
 
-        // No extension → type's extension appended; already-extensioned name → kept verbatim.
         XCTAssertEqual(input.attachments.map(\.filename), ["vacation.png", "vacation.png"])
     }
-
-    // MARK: - Empty
 }
 
-/// True when `data`'s bytes live in a file mapping rather than anonymous heap
-/// memory. Mapped attachment bytes are clean pages the system can drop under
-/// pressure, which is what keeps large shares under the extension's ceiling.
 func isFileBacked(_ data: Data) -> Bool {
     data.withUnsafeBytes { buffer in
         guard let base = buffer.baseAddress else { return false }

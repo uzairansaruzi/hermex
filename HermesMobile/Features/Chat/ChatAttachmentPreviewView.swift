@@ -273,22 +273,16 @@ struct ChatAttachmentPreviewView: View {
     }
 }
 
-/// What a staged paste's sheet shows: its text, or the start of a paste too long to edit.
 struct StagedPasteText: Equatable, Sendable {
-    /// Past this the sheet shows only the start, read-only. The largest size whose sheet
-    /// stayed responsive on a loaded iOS 27 simulator; at 512 KB, Done stopped responding.
     static let editableBytes = 256_000
     static let sendingNotice = String(localized: "This text is being sent, so it can't be edited right now.")
 
     let text: String
     let totalBytes: Int
-    /// False when `text` is only the start of the file.
     let isWhole: Bool
 
-    /// Nil for bytes that aren't UTF-8, which would come back damaged if edited and saved.
     init?(data: Data) {
         var end = min(data.count, Self.editableBytes)
-        // A cut inside a character backs up to its first byte.
         while end > 0, end < data.count, data[data.startIndex + end] & 0xC0 == 0x80 { end -= 1 }
         guard let text = String(bytes: data.prefix(end), encoding: .utf8) else { return nil }
         self.text = text
@@ -297,17 +291,12 @@ struct StagedPasteText: Equatable, Sendable {
     }
 }
 
-/// Opens one staged paste. `isSending` is read as it opens: the sheet covers Send, and a
-/// save checks again.
 struct StagedPasteItem: Identifiable {
     let attachment: PendingAttachment
     let isSending: Bool
     var id: UUID { attachment.id }
 }
 
-/// Shows a staged paste and, unless a send holds it or it is too long, edits it (#1456).
-/// Cancel and Save both close the sheet. The chat's `load` and `save` keep it free of the
-/// attachment stores.
 struct StagedPasteSheet: View {
     private enum Content {
         case loading, unreadable
@@ -316,7 +305,6 @@ struct StagedPasteSheet: View {
 
     let item: StagedPasteItem
     let load: () async -> StagedPasteText?
-    /// Returns why the edit did not save, or nil once it has.
     let save: (String) async -> String?
 
     @State private var content = Content.loading
@@ -450,8 +438,6 @@ struct StagedPasteSheet: View {
     }
 }
 
-/// Owns the sheet's text view, whose text stays there until Save. Only the flags below reach
-/// SwiftUI, and only when they flip, so typing in a long paste redraws nothing and copies nothing.
 @MainActor
 @Observable
 final class StagedPasteBuffer: NSObject, UITextViewDelegate {
@@ -462,8 +448,6 @@ final class StagedPasteBuffer: NSObject, UITextViewDelegate {
 
     var text: String? { textView?.text }
 
-    /// Starts editing where the user is reading: a selection stays, otherwise the caret goes
-    /// to the top of what's on screen, so the keyboard doesn't jump back to the first line.
     func beginEditing() {
         guard let textView else { return }
         isEditing = true
@@ -480,7 +464,6 @@ final class StagedPasteBuffer: NSObject, UITextViewDelegate {
         textView.becomeFirstResponder()
     }
 
-    /// Off while a save runs, so nothing typed after Save is lost when the sheet closes.
     func setEditable(_ isEditable: Bool) {
         textView?.isEditable = isEditable
     }
@@ -492,8 +475,6 @@ final class StagedPasteBuffer: NSObject, UITextViewDelegate {
     }
 }
 
-/// The paste in a wrapping, selectable text view. Text-changing keyboard helpers stay off so
-/// a log isn't altered as it's edited.
 private struct StagedPasteTextView: UIViewRepresentable {
     let text: String
     let name: String
@@ -528,14 +509,9 @@ private struct StagedPasteTextView: UIViewRepresentable {
         return textView
     }
 
-    /// The text view keeps the text from here on (`StagedPasteBuffer`).
     func updateUIView(_ textView: UITextView, context: Context) {}
 }
 
-/// An attachment that is already known to be an image opens in the full-bleed lightbox.
-/// Text, audio, Quick Look documents, and anything without a preview keep
-/// `ChatAttachmentPreviewView`, which only learns what it has once the server answers.
-/// `page` ties it to its gallery's pager.
 struct ChatAttachmentImageLightbox: View {
     let onAPIError: (Error) -> Void
 
@@ -622,8 +598,6 @@ final class ChatAttachmentPreviewViewModel {
             previewImage = if case let .image(file) = preview { UIImage(data: file.data) } else { nil }
         }
     }
-    /// An image preview decoded once, so a redraw hands the lightbox the same image and
-    /// keeps its zoom.
     private(set) var previewImage: UIImage?
     private(set) var isLoading = false
     private(set) var errorMessage: String?
@@ -648,8 +622,6 @@ final class ChatAttachmentPreviewViewModel {
         }
         preview = nil
 
-        // A pathless item, such as a Hermes session's chip (#1012), shows its local copy
-        // and never needs the session.
         let trimmedPath = item.path?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let path = trimmedPath, !path.isEmpty else {
             preview = localFallbackPreview
@@ -680,9 +652,6 @@ final class ChatAttachmentPreviewViewModel {
                     preview = .unavailable(String(localized: "Could not decode this image."))
                 }
             } else if item.inferredIsAudio {
-                // Raw bytes (no downsampling) so AVAudioPlayer gets the original
-                // encoded audio; checked before the Quick Look list, which would
-                // otherwise take m4a/mp3/wav/flac away from the inline player.
                 let data = try await apiClient.rawFileData(sessionID: sessionID, path: path)
                 guard generation == loadGeneration, !Task.isCancelled else { return }
                 preview = .audio(data)

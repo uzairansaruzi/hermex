@@ -5,7 +5,6 @@ enum KanbanCardAction: Equatable {
     case move(String)
     case block
     case unblock
-    /// Done, with what was done when the server needs it; nil asks for it when it does.
     case complete(result: String?)
     case archive
 }
@@ -35,8 +34,6 @@ struct KanbanPendingCardAction: Identifiable, Equatable {
 }
 
 extension View {
-    /// Asks what was done before a Hermes host completes `card` outside Review (#1677), and
-    /// stands in for "Leave Running?" on a Running Card: Complete confirms both.
     func kanbanCompletionPrompt(
         card: Binding<KanbanCard?>,
         onComplete: @escaping (KanbanCard, String) -> Void
@@ -110,8 +107,6 @@ enum KanbanDispatcherPresentation {
     }
 }
 
-/// Icons for the Kanban header's overflow slot, which keeps Select Cards and Card
-/// Filters behind a More menu and flips to a filled glyph while a filter is applied.
 enum KanbanHeaderPresentation {
     static func overflowSystemImage(hasActiveFilters: Bool) -> String {
         hasActiveFilters ? "ellipsis.circle.fill" : "ellipsis.circle"
@@ -123,19 +118,6 @@ enum KanbanHeaderPresentation {
             : "line.3.horizontal.decrease.circle"
     }
 
-    /// Widest the Board picker may ever ask to be, so the navigation bar always has
-    /// room for it beside the back button and the trailing group.
-    ///
-    /// Measured on iPhone 17 (402pt wide, default text size) from the short-name
-    /// layout: the back button occupies x≈16-60 and the principal item starts at
-    /// x≈72, so the leading side costs 16 (margin) + 44 (button) + 12 (gap) = 72pt.
-    /// The trailing glass pill occupies x≈218-386, i.e. 168pt for three 44pt controls
-    /// plus the pill's padding, and costs another 16 (margin) + 12 (gap) = 28pt. That
-    /// leaves ~134pt of usable gap at 402pt wide, and a reserve of ~268pt.
-    ///
-    /// Only the pill scales with Dynamic Type (`trailingGroupWidth`); the fixed 100pt
-    /// of margins and gaps does not. The 80pt floor keeps the picker tappable on the
-    /// narrowest device and covers the first layout pass, where `barWidth` is still 0.
     static func boardPickerMaxWidth(barWidth: CGFloat, trailingGroupWidth: CGFloat) -> CGFloat {
         let leadingReserve: CGFloat = 72
         let trailingReserve = min(trailingGroupWidth, 168 * 1.4) + 28
@@ -189,13 +171,7 @@ struct KanbanStatusFocusView: View {
     @State private var confirmsRunDispatcher = false
     @State private var showsDispatcher = false
     @State private var presentedCardID: String?
-    /// Width of the screen, measured on the content view and used to cap the Board
-    /// picker so the navigation bar never drops it. See `boardPickerMaxWidth`.
     @State private var barWidth: CGFloat = 0
-    /// The trailing glass pill's width at the current text size. Its base is the
-    /// measured 168pt (three 44pt controls plus the pill's own padding) on iPhone 17
-    /// at the default text size; nav-bar glyphs grow with Dynamic Type but stop well
-    /// before AX5, so `boardPickerMaxWidth` clamps this to 1.4x the base.
     @ScaledMetric(relativeTo: .body) private var trailingGroupWidth: CGFloat = 168
     @AccessibilityFocusState private var focusedCardID: String?
     @AccessibilityFocusState private var archiveUndoIsFocused: Bool
@@ -856,8 +832,6 @@ struct KanbanStatusFocusView: View {
         .accessibilityFocused($archiveUndoIsFocused)
     }
 
-    /// The server's note on the Card just created, such as a Hermes host's warning that no
-    /// dispatcher is running to pick it up (#1044).
     private func cardNoticeBanner(_ notice: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Label {
@@ -1366,7 +1340,6 @@ struct KanbanStatusFocusView: View {
     ) {
         Task {
             switch action {
-            // A Hermes host can land a Card elsewhere than asked (#1044), so the list follows it.
             case let .move(status):
                 await model.moveCard(card, to: status, confirmingRunningExit: confirmingRunningExit)
                 if model.mutationState(for: card.cardID)?.phase == .succeeded {
@@ -1448,17 +1421,6 @@ struct KanbanStatusFocusView: View {
         )
     }
 
-    /// The navigation bar drops the `.principal` slot outright when its content insists
-    /// on a width that will not fit beside the bar's other items — the original #340
-    /// bug, where a long Board name took the picker off screen entirely. A custom
-    /// principal item is not constrained by its siblings on iOS 26 either: given
-    /// `.frame(maxWidth: .infinity)` it spans the whole bar and draws under the back
-    /// button and the trailing controls. Handing the title to the system instead
-    /// (`.navigationTitle` + `.toolbarTitleMenu`) trades one bug for another: UIKit
-    /// makes room for the full title by collapsing New Card and Dispatcher into a
-    /// system overflow button, hiding the Dispatcher's state icon. So the picker keeps
-    /// its own slot and an explicit width cap that can never exceed the real gap, and
-    /// truncates inside it.
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
@@ -1522,9 +1484,6 @@ struct KanbanStatusFocusView: View {
             )
             .accessibilityFocused($dispatcherButtonIsFocused)
 
-            // Select Cards and Card Filters sit behind More so the trailing group stays
-            // narrow enough to leave the inline Board title room to read. Select mode
-            // swaps More for Cancel in the same slot.
             if model.isSelectingCards {
                 Button {
                     model.clearCardSelection()
@@ -2015,7 +1974,6 @@ private struct KanbanBulkActionsView: View {
     let onArchive: () -> Void
     let onFinished: () -> Void
     @State private var status: String
-    /// What was done, for Done on Cards a Hermes host completes only with a note (#1677).
     @State private var result = ""
     @State private var profile: String?
     @State private var priority = 0
@@ -2024,7 +1982,6 @@ private struct KanbanBulkActionsView: View {
         self.model = model
         self.onArchive = onArchive
         self.onFinished = onFinished
-        // To Do, as before, where it is offered; a Hermes host offers no To Do (#1044).
         let options = model.bulkStatusOptions
         _status = State(initialValue: options.contains("todo") ? "todo" : options.first ?? "triage")
     }
@@ -2495,10 +2452,6 @@ struct KanbanView: View {
         )
     }
 
-    /// Kanban on a Hermes server, read through its saved connection's shared sign-in and kept
-    /// live over its Kanban socket. A refused sign-in signs the server out through that
-    /// connection, not `onAPIError`.
-    /// `mine` is the Profile Only Mine shows: the one the Sessions side lists, as Kanban opens.
     init(server: URL, hermes connection: HermesConnection, mine: String?) {
         _model = State(
             initialValue: KanbanFeatureState(

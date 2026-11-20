@@ -1,9 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// A home owns a split only at regular width with room to stand in; pushed lists keep their
-/// caller's stack. A Plus/Max iPhone in landscape is regular width but compact height, and stays on
-/// its stack: a split there would rebuild the open chat in the middle of every rotation (#1528).
 enum HermesHomeLayout {
     static func usesSplit(isHome: Bool, horizontalSizeClass: UserInterfaceSizeClass?,
                           verticalSizeClass: UserInterfaceSizeClass?) -> Bool {
@@ -11,30 +8,17 @@ enum HermesHomeLayout {
     }
 }
 
-/// The regular-width shell (iPad, iPhone Duo's inner display). A sidebar root
-/// selection bumps `rootRevision`, which rebuilds only the detail root and pops any screen pushed
-/// above it (#116). The sidebar keeps its identity, scroll position, and row state across selections
-/// (#689); its visibility follows `settled(isRoomy:isCollapsedByUser:)` as selections land and the
-/// width changes.
 struct SessionSplitView<Sidebar: View, Detail: View>: View {
     let rootRevision: Int
-    /// The Hermes home's sidebar hides its top bar, and the system's toggle with it, so the detail
-    /// carries a way to hide an open sidebar. Where the detail draws a vertical bar (unfolded iPhone
-    /// Duo) it shows the sidebar too, in place of the system's toggle, which would float outside it.
     var offersHideSidebar = false
-    /// Each change shows a hidden sidebar: the Sessions home's search, which opens in its header.
     var sidebarRequests = 0
     @ViewBuilder let sidebar: Sidebar
     @ViewBuilder let detail: Detail
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var isRoomy = false
-    /// Tracked apart from `columnVisibility`, where the system also writes `.detailOnly` for a
-    /// hidden `.automatic` sidebar.
     @State private var isCollapsedByUser = false
     @State private var detailColumn = DetailColumnNavigation()
-    /// Read in the detail column, whose bar is the vertical one: the sidebar's own reading follows
-    /// whether it shows a bar, which it doesn't once the detail takes its items.
     @State private var detailHasVerticalBar = false
 
     var body: some View {
@@ -71,7 +55,6 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
             .id(rootRevision)
         }
         .navigationSplitViewStyle(.balanced)
-        // Fires for the first layout too, so a roomy launch or unfold opens with the sidebar out.
         .onGeometryChange(for: Bool.self) { $0.size.width >= NavigationSplitViewVisibility.roomyWidth } action: { isRoomy in
             self.isRoomy = isRoomy
             columnVisibility = .settled(isRoomy: isRoomy, isCollapsedByUser: isCollapsedByUser)
@@ -91,23 +74,16 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
     private var offersSidebarToggle: Bool { offersHideSidebar && detailHasVerticalBar }
 }
 
-/// The detail column's `UINavigationController`. The split view adopts the detail
-/// `NavigationStack` into it, and it outlives the stack's identity: re-identifying
-/// the stack rebuilds the root but leaves screens the old root pushed (Settings
-/// subpages, workspace files, forks) on top. A root selection pops them here.
 @MainActor
 private final class DetailColumnNavigation {
     weak var navigationController: UINavigationController?
 
-    /// Pops the old root's screens as the selection lands, before the new root
-    /// appears, so the new root starts on an empty stack and can push right away.
     func popToRoot() {
         guard let navigationController, navigationController.viewControllers.count > 1 else { return }
         navigationController.popToRootViewController(animated: false)
     }
 }
 
-/// Records the detail column's navigation controller once the detail root is attached.
 private struct DetailColumnNavigationReader: UIViewControllerRepresentable {
     let column: DetailColumnNavigation
 
@@ -137,13 +113,8 @@ private struct DetailColumnNavigationReader: UIViewControllerRepresentable {
 }
 
 extension NavigationSplitViewVisibility {
-    /// The split's width that fits the sidebar beside a phone-width detail, so the sidebar stays
-    /// out: iPhone Duo's inner display and landscape iPads, not a portrait iPad.
     static let roomyWidth: CGFloat = 850
 
-    /// The sidebar visibility after a root selection or a width change. A sidebar the user
-    /// collapsed stays collapsed. Otherwise a roomy split keeps it beside the detail, and any other
-    /// returns it to the system default, which hides it where it would cover the detail.
     static func settled(isRoomy: Bool, isCollapsedByUser: Bool) -> Self {
         if isCollapsedByUser { return .detailOnly }
         return isRoomy ? .doubleColumn : .automatic
@@ -153,9 +124,6 @@ extension NavigationSplitViewVisibility {
         self == .doubleColumn || self == .all
     }
 
-    /// Whether the user has collapsed the sidebar once visibility moves here from `old`. The system
-    /// only hides a sidebar that's out when the user asks it to; it also writes `.detailOnly` for
-    /// a sidebar `.automatic` hid, which isn't a collapse.
     func isCollapsedByUser(after old: Self, was wasCollapsed: Bool) -> Bool {
         if showsSidebar { return false }
         return wasCollapsed || (old.showsSidebar && self == .detailOnly)
@@ -175,17 +143,10 @@ struct SessionListRowActions {
     let createProject: (SessionSummary) -> Void
     let refreshProjects: () -> Void
     let export: (SessionSummary, SessionExportFormat) -> Void
-    /// A Hermes home's Add Server, which replaces Retry when the address is a gateway's own
-    /// listener (#1598): its address can't change, and retrying reaches the same listener.
     var addServer: (() -> Void)?
 }
 
-/// Which row actions a session offers. A Hermes server's row (#1046, #1048) offers pin,
-/// rename, archive, delete, Export as JSON, Copy Deeplink (#1675), Move to Project (#1052) and
-/// Duplicate (#1051); the host has no HTML export.
 enum SessionRowActionPolicy {
-    /// Pin, rename, move, archive and delete. A bot's Bot Chat, which a Hermes search lists
-    /// (#1053), belongs to its bot: pinning would also unhide it, and renaming orphans it.
     static func offersMutationActions(for session: SessionSummary) -> Bool {
         !session.isSessionReadOnly && session.hermes?.isBotChat != true
     }
@@ -194,30 +155,22 @@ enum SessionRowActionPolicy {
         offersMutationActions(for: session)
     }
 
-    /// Not on an archived match a Hermes search lists (#1053): the Archived screen restores it.
     static func offersArchive(for session: SessionSummary) -> Bool {
         offersMutationActions(for: session) && session.archived != true
     }
 
-    /// "No project" in the Move menu. A Hermes session always works in some folder, so it can
-    /// only move to another project's (#1052).
     static func offersRemoveFromProject(for session: SessionSummary) -> Bool {
         session.hermes == nil
     }
 
-    /// The projects the Move menu lists. On Hermes only the user's own projects with a folder
-    /// take a session; an automatic per-repository one is just where sessions in that repository
-    /// already are.
     static func moveTargets(_ projects: [ProjectSummary]) -> [ProjectSummary] {
         projects.filter { project in project.hermes.map { !$0.isAutomatic && $0.folder != nil } ?? true }
     }
 
-    /// Rename and Delete on a project row. A Hermes automatic project has no record to change.
     static func offersProjectEditing(_ project: ProjectSummary) -> Bool {
         project.hermes?.isAutomatic != true
     }
 
-    /// The Export menu's formats, in menu order.
     static func exportFormats(for session: SessionSummary) -> [SessionExportFormat] {
         session.hermes == nil ? [.html, .json] : [.json]
     }
@@ -230,9 +183,6 @@ enum SessionRowActionPolicy {
         !isViewingCachedData && hasServerSessionID(session)
     }
 
-    /// Copy Deeplink's link. A Hermes row's names `server` and its Profile, so it opens there,
-    /// switching servers first (#1675); a webui row's is the legacy `session?id=`. None for a
-    /// Bot Chat, whose row opens its bot.
     static func deepLinkURL(
         for session: SessionSummary,
         server: URL,
@@ -282,16 +232,7 @@ enum SessionListMotion {
     }
 }
 
-/// The session list's header (#283), on webui's list and both sides of a Hermes home (#709):
-/// HERMEX, and one glass pill of search and the server's avatar. A tap on the avatar opens
-/// Settings and a hold switches servers. With a `field`, search grows the pill into a text field
-/// that pushes the wordmark out and turns the avatar into Close; without one (the Bots side,
-/// whose search is a sheet) the pill stays put and `openSearch` alone runs. A Hermes home's
-/// list passes `connection` for the status line under the wordmark (#1374). Where the home's bar
-/// holds search and the avatar (`homeBarOwnsSearch`, iPhone Duo), the pill shows only while the
-/// field is open.
 struct SessionsHeader: View {
-    /// The pill's search field and the state it grows with.
     struct Field {
         let isExpanded: Bool
         let text: Binding<String>
@@ -299,7 +240,6 @@ struct SessionsHeader: View {
         let close: () -> Void
     }
 
-    /// The server's avatar and what it opens.
     struct Avatar {
         let initials: String
         let color: Color
@@ -319,10 +259,8 @@ struct SessionsHeader: View {
     let logoColor: Color
     let avatar: Avatar
     var field: Field?
-    /// What the search button opens, for VoiceOver: the sessions, or the Bots side's sheet.
     var searchLabel: LocalizedStringKey = "Search sessions"
     var isSearchDisabled = false
-    /// What the list's rows say about the connection, for the status line (#1374).
     var connection = HomeConnectionStatus.Facts()
     var reconnectNow: () -> Void = {}
     let openSearch: () -> Void
@@ -388,8 +326,6 @@ struct SessionsHeader: View {
                         .transition(.scale.combined(with: .opacity))
                 }
             } else {
-                // Holds the collapsed field's slot, and the spacing around it, so the pill is
-                // the same size with or without a field.
                 Color.clear.frame(width: 0, height: 0)
                     .accessibilityHidden(true)
             }
@@ -471,10 +407,6 @@ struct SessionsHeader: View {
                 ? "Closes search and clears the current query."
                 : "Opens Settings. Long press to switch servers."
         )
-        // Long-press the avatar to switch the active server, reusing #17's
-        // switch/add actions. Suppressed while search is expanded so the
-        // "close search" tap state is untouched (#283). The plain tap above is
-        // preserved — `contextMenu` adds long-press without stealing the tap.
         .contextMenu {
             if !isExpanded {
                 AvatarServerSwitcherMenu(
@@ -488,10 +420,7 @@ struct SessionsHeader: View {
     }
 }
 
-/// Which of the session list's optional navigation rows are shown, so a user can
-/// hide the parts of the app they never use (issue #189).
 struct SidebarSectionVisibility: Equatable {
-    /// Follows the Bot Mode (beta) gate rather than a per-row Settings toggle.
     var bots: Bool
     var tasks: Bool
     var kanban: Bool
@@ -501,7 +430,6 @@ struct SidebarSectionVisibility: Equatable {
     var activeProfile: Bool
     var projects: Bool
 
-    /// Show every row, primarily for previews and tests.
     static let showAll = SidebarSectionVisibility(
         bots: true,
         tasks: true,
@@ -513,16 +441,12 @@ struct SidebarSectionVisibility: Equatable {
         projects: true
     )
 
-    /// The plain links share one List row, so that row is dropped entirely
-    /// once all of them are hidden rather than leaving an empty padded gap.
     var showsAnyUtilityLink: Bool {
         bots || tasks || kanban || skills || memory || insights
     }
 }
 
 struct SessionSidebarUtilityRows: View {
-    // Vertical gap between every utility row, matching the navigation rows so the
-    // headers and subrows share one consistent rhythm now that each is its own row.
     private static let rowSpacing: CGFloat = 2
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -540,12 +464,6 @@ struct SessionSidebarUtilityRows: View {
     let switchActiveProfile: (ProfileSummary) -> Void
     let presentProjectCreation: () -> Void
 
-    // Each disclosure subrow is emitted as its own List row (like the session
-    // rows below it). List does not animate height/transition changes inside a
-    // single row, so packing the subrows into one row made expand/collapse snap
-    // instantly. As real rows, List animates them folding in/out; the fold is
-    // driven by a value-based .animation on the List in SessionListView, which
-    // works even though the disclosure booleans are @AppStorage-backed.
     var body: some View {
         if sectionVisibility.showsAnyUtilityLink {
             utilityLinks
@@ -553,8 +471,6 @@ struct SessionSidebarUtilityRows: View {
                 .sessionsScreenListRow()
         }
 
-        // In single-profile mode the server rejects switching, so the whole
-        // "Active Profile" disclosure would only no-op or error — hide it (#24).
         if showsActiveProfile {
             activeProfileHeader
                 .padding(.top, activeProfileTopPadding)
@@ -580,8 +496,6 @@ struct SessionSidebarUtilityRows: View {
         sectionVisibility.activeProfile && !viewModel.isSingleProfileMode
     }
 
-    // Whichever row lands first carries the section's top padding, since #189 can
-    // hide the rows above it; the rest keep the tight inter-row spacing.
     private var activeProfileTopPadding: CGFloat {
         sectionVisibility.showsAnyUtilityLink ? Self.rowSpacing : topPadding
     }
@@ -707,12 +621,6 @@ struct SessionSidebarUtilityRows: View {
             }
             .accessibilityLabel(projectsAreExpanded ? "Collapse projects" : "Expand projects")
 
-            // Standalone "create empty project" affordance, shown only while the
-            // Projects list is expanded. It is a sibling of the disclosure button
-            // (not nested inside its label) so VoiceOver exposes it as its own
-            // focusable control, mirroring the "All" button below. Nesting it in
-            // the button's label flattened it into the parent's a11y element and
-            // made it unreachable by assistive tech.
             if projectsAreExpanded {
                 addProjectButton
             }
@@ -726,9 +634,6 @@ struct SessionSidebarUtilityRows: View {
                     Text("All")
                         .padding(.horizontal, 10)
                         .frame(minHeight: 32)
-                        // Flat translucent fill rather than Liquid Glass: the glass
-                        // elevation shadow would spill past this tightly-sized List
-                        // row and get clipped by the next row's opaque background.
                         .background(.appMaterial(.thinMaterial), in: Capsule())
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
@@ -804,7 +709,6 @@ struct SessionSidebarUtilityRows: View {
         return profile.isActive == true
     }
 
-    /// A Hermes lane shows the host's count, as Desktop does, which takes in sessions not yet paged in.
     private func sessionCount(for project: ProjectSummary) -> Int {
         if let hermes = project.hermes { return hermes.sessionCount }
         guard let projectID = project.projectId else { return 0 }
@@ -814,38 +718,23 @@ struct SessionSidebarUtilityRows: View {
     }
 }
 
-/// What a Hermes home's list says while its rows may be older than the host's (#1374).
 enum HomeConnectionStatus: Equatable {
-    /// What a list knows about its rows. Only the line's modifier adds the device's network.
     struct Facts: Equatable {
-        /// Rows the host sent are on screen, and neither the offline cache's banner nor a
-        /// refusal already explains them.
         var keepsRows = false
-        /// The list lost its socket and is getting it back.
         var isReconnecting = false
     }
 
-    /// Online and reconnecting; a tap reconnects now, past the backoff.
     case reconnecting
-    /// The device has no network. Nothing reconnects until it returns, so the line only says
-    /// why the statuses are old.
     case offline
 
-    /// Reconnecting shows once it has lasted 800 ms, so a quick recovery never flashes, and
-    /// stays at least 400 ms.
     static let policy = DelayedStatusPolicy(showAfter: .milliseconds(800))
 
-    /// Offline whenever the device has no network, socket or not; online, only while the list
-    /// reconnects. Nil without rows to speak for.
     init?(_ facts: Facts, isOnline: Bool) {
         guard facts.keepsRows, !isOnline || facts.isReconnecting else { return nil }
         self = isOnline ? .reconnecting : .offline
     }
 }
 
-/// The quiet line under a Hermes home's wordmark, and under the pushed Sessions list's title,
-/// while the list reconnects or the device is offline (#1374). Nothing while `driver` shows
-/// nothing; its owner steps it with `drivesHomeConnectionStatus`.
 struct HomeConnectionStatusLine: View {
     let driver: DelayedStatusDriver<HomeConnectionStatus>
     let reconnectNow: () -> Void
@@ -870,10 +759,6 @@ struct HomeConnectionStatusLine: View {
 }
 
 extension View {
-    /// Steps `driver` toward what the list's rows and the device's network say: offline
-    /// at once, reconnecting after `HomeConnectionStatus.policy`'s delay. Opacity only, and no
-    /// animation under Reduce Motion. Only this modifier reads the network, so a path change
-    /// re-evaluates nothing else.
     func drivesHomeConnectionStatus(_ driver: DelayedStatusDriver<HomeConnectionStatus>,
                                     connection: HomeConnectionStatus.Facts) -> some View {
         modifier(HomeConnectionStatusDriving(driver: driver, connection: connection))
@@ -896,7 +781,6 @@ private struct HomeConnectionStatusDriving: ViewModifier {
 
 struct SessionListRowsSection: View {
     let viewModel: SessionListViewModel
-    /// The sidebar's current query, forwarded to rows for match excerpts.
     var searchText: String = ""
     let sessions: [SessionSummary]
     let emptyTitle: String
@@ -907,7 +791,6 @@ struct SessionListRowsSection: View {
     let selectedSessionID: String?
     let actions: SessionListRowActions
     var suppressEmptyState = false
-    /// A Hermes list shows a refusal the user has to act on over the rows too (#1374).
     var showsErrorOverRows = false
 
     var body: some View {
@@ -1014,10 +897,6 @@ struct SessionListRowsSection: View {
         .padding(.horizontal, 24)
     }
 
-    /// The error row's title and text for a list load that failed with `error`: the webui
-    /// server's unreachable copy for a failure the offline cache covers, else `fallbackMessage`.
-    /// A Hermes failure keeps its `BotConnectionAdvice` text, which names the proxy, tunnel or
-    /// socket at fault.
     static func errorContent(for error: Error?, fallbackMessage: String) -> (title: String, description: String) {
         if let error, !(error is BotFailure), CacheFallbackPolicy.shouldUseCache(for: error) {
             return (
@@ -1039,8 +918,6 @@ struct SessionInteractiveRow: View {
     let showsWorkspace: Bool
     let selectedSessionID: String?
     let actions: SessionListRowActions
-    /// The query of the screen showing this row, so a screen with its own search
-    /// field never shows another screen's excerpts.
     var searchText: String = ""
 
     var body: some View {
@@ -1073,8 +950,6 @@ struct SessionInteractiveRow: View {
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             sessionLeadingSwipeActions(for: session)
         }
-        // A full swipe commits Archive, which has Undo (#1394): never a lone Delete, and never
-        // a second archive while one is in flight.
         .swipeActions(
             edge: .trailing,
             allowsFullSwipe: SessionRowActionPolicy.offersArchive(for: session)
@@ -1118,7 +993,6 @@ struct SessionInteractiveRow: View {
     @ViewBuilder
     private func sessionTrailingSwipeActions(for session: SessionSummary) -> some View {
         if canShowSessionMutationActions(for: session) {
-            // Archive must stay first: a full swipe commits the edge-most button.
             if SessionRowActionPolicy.offersArchive(for: session) {
                 Button {
                     actions.archive(session)
@@ -1149,7 +1023,6 @@ struct SessionInteractiveRow: View {
 struct ScheduledSessionsDisclosure: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let viewModel: SessionListViewModel
-    /// The sidebar's current query, forwarded to rows for match excerpts.
     var searchText: String = ""
     let sessions: [SessionSummary]
     let totalCount: Int
@@ -1231,8 +1104,6 @@ struct ScheduledSessionsDisclosure: View {
     }
 }
 
-/// A Hermes list's rows waiting on the user, under a "Needs you" header with their count (#1393).
-/// The list shows it only when it has rows; a row moves here and back without animation.
 struct NeedsYouSessionsSection: View {
     let viewModel: SessionListViewModel
     let sessions: [SessionSummary]
@@ -1271,8 +1142,6 @@ struct NeedsYouSessionsSection: View {
     }
 }
 
-/// View all of the scheduled sessions. On Hermes it shows the list's rows and leaves the
-/// list's socket to the list: a phone's push reopens it, a split's sidebar keeps it.
 struct ScheduledSessionsView: View {
     let viewModel: SessionListViewModel
     let showsCronSessions: Bool
@@ -1280,7 +1149,6 @@ struct ScheduledSessionsView: View {
     let showsWorkspace: Bool
     let selectedSessionID: String?
     let actions: SessionListRowActions
-    /// The archive Undo toast, when an archive on this screen owns it (#865).
     let actionToast: ActionToastState?
 
     @State private var searchText = ""
@@ -1353,7 +1221,6 @@ struct SessionRowContextMenu: View {
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     let session: SessionSummary
-    /// The list's server, which a Hermes row's Copy Deeplink names.
     let server: URL
     let projects: [ProjectSummary]
     let isViewingCachedData: Bool
@@ -1428,8 +1295,6 @@ struct SessionRowContextMenu: View {
             }
         }
 
-        // Export works for any session the server can see, including read-only
-        // and foreign/CLI rows; it only needs a live server session ID.
         exportMenu
 
         if SessionRowActionPolicy.offersMutationActions(for: session) {
@@ -1565,11 +1430,6 @@ struct SessionProjectMoveMenu: View {
     }
 }
 
-/// Pure, testable backing model for the session-list avatar's long-press server
-/// switcher (#283). Maps `AuthManager.servers` + the active server id into the
-/// rows the context menu renders, deriving each row's display name the same way
-/// the Settings server list does, so the menu's contents — and which server is
-/// marked active — are unit-testable without standing up the view.
 struct AvatarServerSwitcherModel: Equatable {
     struct Entry: Identifiable, Equatable {
         let id: String
@@ -1580,8 +1440,6 @@ struct AvatarServerSwitcherModel: Equatable {
 
     let entries: [Entry]
 
-    /// The id of the entry marked active, or nil when the active id matches no
-    /// configured server (a defensive transient, e.g. mid-removal).
     var activeID: String? { entries.first(where: \.isActive)?.id }
 
     init(servers: [ServerAccount], activeServerID: String?) {
@@ -1598,11 +1456,6 @@ struct AvatarServerSwitcherModel: Equatable {
     }
 }
 
-/// Long-press menu on the session-list avatar: switch the active server (the
-/// active one marked + disabled, mirroring `SessionProjectMoveMenu`'s checkmark
-/// idiom), plus shortcuts into #17's add-server flow and the Settings server
-/// list (#283). Holds no switching logic — it calls back into the tested #17
-/// `AuthManager.switchActiveServer` action and the existing navigation.
 struct AvatarServerSwitcherMenu: View {
     let model: AvatarServerSwitcherModel
     let switchToServer: (ServerAccount) -> Void
@@ -1672,8 +1525,6 @@ extension View {
     }
 }
 
-/// Sheet item for a finished session export: the temp file offered to the
-/// share sheet. Identity is the file URL, which is unique per export.
 struct SessionExportShareItem: Identifiable {
     let fileURL: URL
 
@@ -1768,12 +1619,6 @@ private struct SidebarDisclosureChevron: View {
     @Environment(\.layoutDirection) private var layoutDirection
     let isExpanded: Bool
 
-    // Rotate inside a square box so the pivot is the visual center; the outer
-    // frame keeps a fixed slot so the chevron never shifts horizontally or
-    // vertically. A value-based animation rotates it in place (and is skipped
-    // under Reduce Motion) regardless of the ambient List transaction.
-    // `chevron.forward` mirrors to point leading-ward under RTL; the expand
-    // rotation reverses there so the open state still points down (issue #294).
     var body: some View {
         Image(systemName: "chevron.forward")
             .font(AppFont.caption(weight: .semibold))

@@ -1,20 +1,17 @@
 import SwiftUI
 
-/// The Skills list: a webui server's, or on a Hermes host (#1069) one Profile's.
 struct SkillsView: View {
     let onAPIError: (Error) -> Void
     private let profile: String?
 
     @State private var viewModel: SkillsViewModel
     @State private var searchText = ""
-    /// A failed toggle's notice (#1410).
     @State private var toast = ActionToastState()
 
     init(server: URL, onAPIError: @escaping (Error) -> Void) {
         self.init(client: APIClient(baseURL: server), onAPIError: onAPIError)
     }
 
-    /// The skills `client` reads. On a Hermes host that is `profile`'s, which the title names.
     init(client: any SkillsDataClient, profile: String? = nil, onAPIError: @escaping (Error) -> Void) {
         self.onAPIError = onAPIError
         self.profile = profile
@@ -289,14 +286,12 @@ private struct SkillRow: View {
     }
 }
 
-/// One skill's SKILL.md, and its linked files where the server lists them (`skillsFeatures`).
 struct SkillDetailView: View {
     let skill: SkillSummary
     let client: any SkillsDataClient
     let onAPIError: (Error) -> Void
 
     @State private var detail: SkillDetailResponse?
-    /// True from the start, so the page shows progress, not "No Content", until its load runs.
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selectedFile: String?
@@ -409,15 +404,12 @@ struct SkillDetailView: View {
             loaded = SkillDetailResponse(name: name, content: String(localized: "Could not load file: \(error.localizedDescription)"),
                                          linkedFiles: nil)
         }
-        // A slow read for a file the sheet has left must not land under another file's title.
         guard selectedFile == fileName else { return }
         openedFile = loaded
         isLoadingFile = false
     }
 }
 
-/// Titles the Skills list. On a Hermes host it also names the Profile the list is for: under
-/// the title on iOS 26, and in the title before that.
 private struct SkillsTitle: ViewModifier {
     let profile: String?
 
@@ -479,8 +471,6 @@ private struct SkillLinkedFilesSection: View {
     }
 }
 
-/// One linked file's text. A Hermes host (#1070) also says when the file is not text, which has
-/// no preview, and when the text is only the start of the file.
 struct SkillLinkedFileView: View {
     let fileName: String
     let content: String?

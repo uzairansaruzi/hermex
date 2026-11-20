@@ -381,10 +381,6 @@ private struct HermexAttachmentPickerLayout {
     }
 }
 
-/// Hosts the picker inside the app's existing window instead of presenting a
-/// new controller. Its bottom follows the keyboard, so the composer remains
-/// first responder and the picker always occupies the space above it, in the
-/// composer's column.
 enum HermexAttachmentPickerPresentation {
     static let overlayHostAccessibilityIdentifier = "HermexAttachmentPickerOverlay"
 }
@@ -414,9 +410,6 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
         context.coordinator.update(
             isPresented: isPresented,
             anchor: controller,
-            // This sibling host does not inherit SwiftUI's scene environment.
-            // Forward it so camera/media work starts and stops with its owner,
-            // and set the root font it would otherwise miss.
             overlay: AnyView(overlay().environment(\.scenePhase, scenePhase).appRootFont())
         )
     }
@@ -462,8 +455,6 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
             attach(to: root, anchor: anchor)
         }
 
-        /// Spans the owner's column, so beside a sidebar the card stays by the composer that opened
-        /// it, and follows the column as the sidebar moves or the device folds.
         private func attach(to root: UIViewController, anchor: UIViewController) {
             guard let container = root.view.superview ?? root.view.window else { return }
 
@@ -473,11 +464,8 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
             host.view.accessibilityViewIsModal = true
             host.view.accessibilityIdentifier = HermexAttachmentPickerPresentation.overlayHostAccessibilityIdentifier
 
-            // UIHostingController's root view does not support UIKit subviews.
-            // Install the overlay beside it in their common container instead.
             container.addSubview(host.view)
             root.view.keyboardLayoutGuide.followsUndockedKeyboard = true
-            // Sidebars and vertical bars cover the column, so its safe area marks what shows.
             let column = (anchor.parent ?? root).view.safeAreaLayoutGuide
             NSLayoutConstraint.activate([
                 host.view.topAnchor.constraint(equalTo: root.view.topAnchor),
@@ -501,8 +489,6 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
     }
 }
 
-/// The floating card's material and shadow, shared by the attachment picker
-/// and the send-choice card so the two read as one control.
 struct HermexAttachmentPanelSurface: ViewModifier {
     let reduceTransparency: Bool
 
@@ -536,7 +522,6 @@ struct HermexAttachmentPickerView: View {
 
     let imageCapacity: Int
     let onChooseFiles: () -> Void
-    /// Offers Voice note, which starts a recording the composer's bar then stops or cancels.
     var onRecordVoiceNote: (() -> Void)? = nil
     let onAdd: ([HermexPickedMedia]) -> Void
     let onDismiss: () -> Void
@@ -1012,8 +997,6 @@ private struct HermexPhotoAssetThumbnail: View {
     }
 }
 
-/// One choice in a floating card: a circled icon and a title. Shared by the
-/// attachment picker and the send-choice card.
 struct HermexAttachmentMenuRow: View {
     let title: Text
     let systemImage: String

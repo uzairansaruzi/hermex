@@ -1,14 +1,7 @@
 import XCTest
 @testable import HermesMobile
 
-/// Insights on a Hermes host (#1074): `HermesInsightsClient` against a scripted host and gateway
-/// socket. Replies come from `Fixtures/HermesAgent/analytics.json`, recorded by
-/// `scripts/capture-hermes-fixtures --local` from `scripts/local-hermes` at the
-/// `HERMES_AGENT_TESTED_SHA` pin, or are rows in its shape.
 @MainActor final class HermesInsightsClientTests: XCTestCase {
-    /// The recorded window, one hidden session long: totals, its day and its model from the
-    /// analytics routes, and messages from `insights.get`, whose count leaves hidden sessions out.
-    /// Every read names the window and the Profile.
     func testTheRecordedWindowMapsFromAllThreeReads() async throws {
         let recorded = try Self.recorded()
         let host = HermesInsightsHost(usage: recorded["usage"], models: recorded["models"], counts: recorded["insights"])
@@ -40,8 +33,6 @@ import XCTest
         XCTAssertEqual(call["params"], .object(["days": .number(30), "profile": .string("research")]))
     }
 
-    /// Cost is the host's estimate, as webui's is. The hit rate is cache reads over everything the
-    /// model was shown, as a whole percent.
     func testTotalsCostAndHitRateComeFromTheUsageTotals() throws {
         let response = try InsightsResponse(
             hermesUsage: Self.usage(totals: ["total_input": 300, "total_output": 100, "total_cache_read": 900,
@@ -58,8 +49,6 @@ import XCTest
         XCTAssertEqual(response.totalCacheHitPercent, 75)
     }
 
-    /// The host's `input_tokens` leaves cached reads out, so a window read entirely from cache is
-    /// a 100% hit rate, and an empty window, whose sums the host sends as null, has none.
     func testTheHitRateWithZeroInput() throws {
         let cached = try InsightsResponse(
             hermesUsage: Self.usage(totals: ["total_input": 0, "total_output": 20, "total_cache_read": 500]),
@@ -76,8 +65,6 @@ import XCTest
         XCTAssertEqual([empty.totalTokens, empty.totalCacheReadTokens], [0, 0])
     }
 
-    /// One model billed through two providers stays two rows, each naming its provider; shares
-    /// are of the rows' own sums. A row without a provider names none.
     func testOneModelUnderTwoProvidersIsTwoRows() throws {
         let response = try InsightsResponse(
             hermesUsage: Self.usage(totals: [:]),
@@ -99,8 +86,6 @@ import XCTest
         XCTAssertEqual(models.map(\.cacheHitPercent), [75, nil, nil])
     }
 
-    /// The host lists only days with sessions, by UTC date, so the chart is carried on to today
-    /// (UTC); a window whose last row is today gains nothing.
     func testTheDailyRowsEndOnToday() throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-06T02:00:00Z"))
         let row = { (day: String) -> BotJSON in
@@ -120,8 +105,6 @@ import XCTest
         XCTAssertEqual(active.dailyTokens?.map(\.date), ["2026-10-01", "2026-10-06"])
     }
 
-    /// A store the host can't read is the host's own 503, which names a host path that is never
-    /// shown; a proxy's 503 keeps the Hermes connection's proxy copy.
     func testAnUnreadableStoreIsItsOwnErrorAndAProxyIsNot() async throws {
         let store = HermesInsightsHost(usage: Self.usage(totals: [:]), models: Self.models([]), counts: .object([:])) { request in
             request.url?.path == "/api/analytics/usage" ? .json(503, .object(["detail": .object([
@@ -149,7 +132,6 @@ import XCTest
         }
     }
 
-    /// `insights.get`'s 5017 is the same unreadable store.
     func testTheGatewaysUnavailableStoreIsTheSameError() async throws {
         let host = HermesInsightsHost(usage: Self.usage(totals: [:]), models: Self.models([]),
                                       countsError: .object(["code": .number(5017), "message": .string("Session storage is unavailable")]))
@@ -162,9 +144,6 @@ import XCTest
         }
     }
 
-    /// Where hermex-push mounts the route (#1237), the providers are the Profile's `model.options`
-    /// and each probe names the provider, the Profile and `refresh`. The reply is webui's envelope,
-    /// here the live-captured Codex one, so it becomes webui's card.
     func testAnOpenGateOffersTheProfilesProvidersAndReadsTheirLimits() async throws {
         let host = HermesInsightsHost(usage: Self.usage(totals: [:]), models: Self.models([]), options: .object([
             "model": .string("gpt-5.5"), "provider": .string("openai-codex"),
@@ -204,9 +183,6 @@ import XCTest
         XCTAssertEqual(card.rows.map(\.label), ["Session", "Weekly"])
     }
 
-    /// An older or unloaded plugin answers 404, so no provider is offered: the Limits group never
-    /// probes or shows, and the host is asked for neither `model.options` nor a quota. The host has
-    /// no sessions list here either.
     func testAClosedGateOffersNoProvidersAndAsksForNoLimits() async throws {
         let host = HermesInsightsHost(usage: Self.usage(totals: [:]), models: Self.models([]), counts: .object([:])) { request in
             request.url?.path == "/api/plugins/hermex-push/capabilities" ? .json(404, .object(["detail": .string("Not Found")])) : nil
@@ -226,8 +202,6 @@ import XCTest
         XCTAssertTrue(host.sockets.isEmpty, "No gateway call, so no model.options")
     }
 
-    // MARK: - Fixtures
-
     private static func recorded() throws -> BotJSON {
         let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("Fixtures/HermesAgent/analytics.json")
@@ -239,7 +213,6 @@ import XCTest
         return recorded
     }
 
-    /// `/api/analytics/usage` in the recorded shape, with `totals` and `daily` as given.
     private static func usage(totals: [String: Double?], daily: [BotJSON] = []) -> BotJSON {
         .object([
             "daily": .array(daily), "by_model": .array([]), "by_task": .array([]), "period_days": .number(7),
@@ -252,7 +225,6 @@ import XCTest
         .object(["models": .array(rows), "totals": .object([:]), "period_days": .number(7)])
     }
 
-    /// One `/api/analytics/models` row in the recorded shape.
     private static func model(_ name: String, provider: String, input: Int, output: Int, cacheRead: Int,
                               cost: Double, sessions: Int) -> BotJSON {
         .object([
@@ -265,8 +237,6 @@ import XCTest
     }
 }
 
-/// A Hermes host that answers the two analytics reads over HTTP, and `insights.get` and
-/// `model.options` over its gateway socket. `script` may answer a request first.
 @MainActor private final class HermesInsightsHost {
     private(set) var sockets: [BotScriptedSocket] = []
     private let configuration: URLSessionConfiguration

@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// The Bot Mode preview gate (#496): default off, and a webui server's Bots row plus
-/// its Bots inbox stay unreachable until it is on.
 final class BotModeGateTests: XCTestCase {
     private var defaults: UserDefaults!
     private let suiteName = "BotModeGateTests"
@@ -19,7 +17,6 @@ final class BotModeGateTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Hermes is the default kind (#712): adding a Hermes server never needs the gate.
     @MainActor func testAddingAHermesServerNeverNeedsTheGate() throws {
         let keychain = InMemoryKeychainStore()
         let registry = ServerRegistry.inMemory(keychain: keychain)

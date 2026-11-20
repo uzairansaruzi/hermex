@@ -120,8 +120,6 @@ final class ComposerChipTokenizerTests: XCTestCase {
 }
 
 extension ComposerChipTokenizerTests {
-    // MARK: - Workspace file references
-
     private var fileCatalog: ComposerChipCatalog {
         ComposerChipCatalog(
             skills: [SkillSlashSuggestion(name: "ask-matt", category: nil, description: nil)],
@@ -152,16 +150,12 @@ extension ComposerChipTokenizerTests {
 }
 
 extension ComposerChipTokenizerTests {
-    // MARK: - Sent messages (the transcript bubble, issue #388)
-
     func testSentMessageEndingInAReferenceDrawsAChip() {
         let tokens = ComposerChipTokenizer.tokens(in: "please run /ask-matt", catalog: catalog, isComplete: true)
 
         XCTAssertEqual(tokens.map(\.source), ["/ask-matt"])
         XCTAssertEqual(tokens.first?.range, NSRange(location: 11, length: 9))
     }
-
-    // MARK: - Drawing the line (shared by the collapsed pill and the bubble)
 
     func testStaleChipsAreDroppedRatherThanDrawnInTheWrongPlace() {
         let tokens = ComposerChipTokenizer.tokens(in: "/ask-matt now", catalog: catalog)
@@ -173,8 +167,6 @@ extension ComposerChipTokenizerTests {
 }
 
 extension ComposerChipTokenizerTests {
-    // MARK: - Spoken form (the collapsed composer's VoiceOver label)
-
     func testSpokenTextKeepsTextOnBothSidesOfEveryChip() {
         let draft = "/ask-matt then /babysit-pr now"
         let tokens = ComposerChipTokenizer.tokens(in: draft, catalog: catalog)
@@ -188,7 +180,6 @@ extension ComposerChipTokenizerTests {
 }
 
 final class ComposerChipDocumentTests: XCTestCase {
-    /// `run [/ask-matt] now`: 4 characters, one chip, 4 characters.
     private func document() -> NSAttributedString {
         let result = NSMutableAttributedString(string: "run ")
         result.append(
@@ -209,11 +200,6 @@ final class ComposerChipDocumentTests: XCTestCase {
         return result
     }
 
-    /// The draft is what gets sent, saved, and copied, so an attachment this
-    /// composer did not make contributes nothing at all — not the U+FFFC glyph
-    /// standing in for it, and so nothing that a later reader could take for
-    /// markup. Anything else travels to the server as a character the user
-    /// never typed.
     func testAForeignAttachmentContributesNothingToTheDraft() {
         let document = NSMutableAttributedString(string: "read ")
         document.append(NSAttributedString(attachment: NSTextAttachment(image: UIImage())))
@@ -227,8 +213,6 @@ final class ComposerChipDocumentTests: XCTestCase {
         XCTAssertFalse(source.contains("%3C"))
     }
 
-    /// The caret mapping has to agree with the text: a glyph worth no draft
-    /// characters must not be counted as one either.
     func testAForeignAttachmentIsWorthNoDraftOffsets() {
         let document = NSMutableAttributedString(string: "ab")
         document.append(NSAttributedString(attachment: NSTextAttachment(image: UIImage())))
@@ -244,7 +228,6 @@ final class ComposerChipDocumentTests: XCTestCase {
     }
 
     func testSerializesOnlyTheSelectedRange() {
-        // The chip plus the space after it.
         XCTAssertEqual(
             document().composerSourceText(in: NSRange(location: 4, length: 2)),
             "/ask-matt "
@@ -257,7 +240,6 @@ final class ComposerChipDocumentTests: XCTestCase {
 
         XCTAssertEqual(document.composerSourceOffset(forDisplayOffset: 0), 0)
         XCTAssertEqual(document.composerSourceOffset(forDisplayOffset: 4), 4)
-        // Just after the chip.
         XCTAssertEqual(document.composerSourceOffset(forDisplayOffset: 5), 13)
         XCTAssertEqual(document.composerSourceOffset(forDisplayOffset: 9), 17)
     }
@@ -569,8 +551,6 @@ final class ComposerChipPresentationTests: XCTestCase {
         XCTAssertEqual(updatedEditor.contentOffset.y, manualOffset.y, accuracy: 0.001)
     }
 
-    /// The mic tap resigns the editor before dictation reads its baseline. That has to
-    /// commit a live composition, so dictation's first write cannot break it.
     func testHostedResigningForDictationCommitsAComposition() throws {
         let state = ComposerPresentationHarnessState()
         state.text = "draft "
@@ -597,8 +577,6 @@ final class ComposerChipPresentationTests: XCTestCase {
         XCTAssertEqual(state.text, "draft にほん")
     }
 
-    /// Dictated words reach the resigned editor at the caret and never read as a
-    /// user edit, or dictation would stop after its first word. A real edit does.
     func testHostedDictationWritesAreNotUserEditsButTypingIs() async throws {
         let state = ComposerPresentationHarnessState()
         state.text = "one two"
@@ -745,14 +723,10 @@ final class ComposerFocusTransitionTests: XCTestCase {
             super.viewDidAppear(animated)
             let appeared = onAppearance
             onAppearance = nil
-            // Let UIKit finish the current transition before the test starts
-            // the next one; viewDidAppear itself runs inside its completion.
             DispatchQueue.main.async { appeared?() }
         }
     }
 
-    /// A successful send's blur reaches the real editor. Which sends dismiss is
-    /// `ChatComposerSendGateTests`' job.
     func testHostedSuccessfulSendDismissesTheEditor() throws {
         let state = ComposerPresentationHarnessState()
         let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
@@ -780,7 +754,6 @@ final class ComposerFocusTransitionTests: XCTestCase {
         state.isFocused = false
         host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
         host.view.layoutIfNeeded()
-        // A real new editing session lands before the representable's queued blur.
         XCTAssertTrue(editor.resignFirstResponder())
         state.isFocused = true
         XCTAssertTrue(editor.becomeFirstResponder())
@@ -825,12 +798,8 @@ final class ComposerFocusTransitionTests: XCTestCase {
         }) { root in
             XCTAssertEqual(editor?.becomeFirstResponder(), false)
             state.isFocused = false
-            // A bound blur must cancel focus even though the editor has not
-            // become first responder yet. Exercise the representable update.
             host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
             root.view.layoutIfNeeded()
-            // UIKit's own -[UITextView _restoreFirstResponder] can land after
-            // the blur while the pop is still running (#831); it must not win.
             XCTAssertEqual(editor?.becomeFirstResponder(), false)
         } after: {
             XCTAssertEqual(editor?.isFirstResponder, false)
@@ -847,8 +816,6 @@ final class ComposerFocusTransitionTests: XCTestCase {
             XCTAssertEqual(editor?.becomeFirstResponder(), true)
             XCTAssertTrue(state.isFocused)
         }) { root in
-            // SwiftUI refreshes the composer while returning from Files. Its
-            // focus binding must survive UIKit resigning focus on the push.
             host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
             root.view.layoutIfNeeded()
         } after: {
@@ -878,13 +845,8 @@ final class ComposerFocusTransitionTests: XCTestCase {
         (view as? ComposerChipTextView) ?? view.subviews.lazy.compactMap { self.findEditor(in: $0) }.first
     }
 
-    /// Safety net only: every transition wait ends on an appearance or completion
-    /// callback, and the class warms the keyboard first. Without that, a push on a
-    /// fresh CI simulator waited for the keyboard daemon to start (5–30 s).
     private let transitionTimeout: TimeInterval = 30
 
-    /// A real UIKit pop exercises first-responder restoration and coordinator
-    /// completion ordering. Readiness comes from appearance, not a timed delay.
     private func withPopTransition(
         content: UIView,
         child: UIViewController? = nil,
@@ -942,9 +904,6 @@ final class ComposerFocusTransitionTests: XCTestCase {
 
 @MainActor
 final class ComposerUndoTests: XCTestCase {
-    /// Dictation holds one undo group open across its insertions. A chip
-    /// redraw inside it must leave that group to its owner: closing a group
-    /// that is gone throws, and the run loop's close aborts the app (#1303).
     func testRedrawingMidDictationLeavesItsUndoGroupOpen() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
@@ -974,10 +933,7 @@ final class ComposerUndoTests: XCTestCase {
     }
 }
 
-/// The editor's hardware-keyboard commands (#1380), driven through the key commands
-/// UIKit would dispatch.
 @MainActor final class ComposerKeyboardCommandTests: XCTestCase {
-    /// An IME's Return confirms the composition; no shortcut may act on half-composed text.
     func testKeyboardCommandsWaitForIMECompositionToFinish() throws {
         let editor = ComposerChipTextView()
         var performed: [String] = []
@@ -1001,7 +957,6 @@ final class ComposerUndoTests: XCTestCase {
         XCTAssertEqual(performed, ["test-send", "test-alternate", "test-escape"])
     }
 
-    /// A key UIKit listed before the editor locked, or before the gate closed, does nothing.
     func testAKeyListedEarlierDoesNothingOnceTheEditorLocksOrTheGateCloses() throws {
         let editor = ComposerChipTextView()
         var performed: [String] = []
@@ -1018,7 +973,6 @@ final class ComposerUndoTests: XCTestCase {
         XCTAssertEqual(performed, [])
     }
 
-    /// Send with Return (#1655): ↩ sends only once turned on; ⇧↩ and ⌥↩ then type the newline.
     func testReturnSendsOnlyWhenTurnedOnAndShiftOrOptionReturnTypesANewline() throws {
         let editor = ComposerChipTextView()
         var performed: [String] = []
@@ -1034,8 +988,6 @@ final class ComposerUndoTests: XCTestCase {
         XCTAssertEqual(editor.text, "\n\n")
     }
 
-    /// While Send is unavailable, ↩ still belongs to Send with Return: it does nothing
-    /// rather than type the newline it no longer means.
     func testReturnDoesNothingWhileSendIsUnavailable() throws {
         let editor = ComposerChipTextView()
         editor.returnSends = true
@@ -1047,7 +999,6 @@ final class ComposerUndoTests: XCTestCase {
         XCTAssertEqual(editor.text, "")
     }
 
-    /// With Send with Return on, an IME's ↩ still confirms the candidate rather than sending.
     func testReturnConfirmsAnIMECompositionInsteadOfSending() throws {
         let editor = ComposerChipTextView()
         var performed: [String] = []
@@ -1076,12 +1027,8 @@ final class ComposerUndoTests: XCTestCase {
     }
 }
 
-/// A Hermes paste past Desktop's limit becomes a file (#1381); Paste as Text keeps it
-/// inline. Each test reads a private pasteboard, never the clipboard shared with the Mac.
 @MainActor
 final class ComposerLargePasteTests: XCTestCase {
-    /// The limit counts UTF-16 units: 1,501 emoji are 3,002 units but 1,501 characters, so a
-    /// character count would have left them inline. What was typed stays as it was.
     func testAPastePastTheLimitStagesAFileAndLeavesTheEditorAlone() {
         XCTAssertFalse(ComposerLargePaste.converts(String(repeating: "😀", count: 1_500)))
         let (textView, pasteboard) = makeEditor()
@@ -1097,8 +1044,6 @@ final class ComposerLargePasteTests: XCTestCase {
         XCTAssertEqual(textView.sourceText, "Why does this crash?")
     }
 
-    /// ⌘⇧V, offered only where pastes convert, puts a long paste inline as one edit undo
-    /// takes back.
     func testPasteAsTextInsertsInlineAndUndoes() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let (textView, pasteboard) = makeEditor()

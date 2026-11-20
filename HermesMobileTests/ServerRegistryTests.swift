@@ -3,7 +3,6 @@ import XCTest
 
 @MainActor
 final class ServerRegistryTests: XCTestCase {
-    /// Fixed timestamp so seeded `createdAt`/`updatedAt` are deterministic.
     private let fixedDate = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func makeRegistry(
@@ -18,8 +17,6 @@ final class ServerRegistryTests: XCTestCase {
         try XCTUnwrap(URL(string: string))
     }
 
-    // MARK: - activate: add + mark active
-
     func testActivateAddsServerAndMarksItActive() throws {
         let registry = makeRegistry()
         let server = try url("https://example.test")
@@ -33,11 +30,8 @@ final class ServerRegistryTests: XCTestCase {
         XCTAssertEqual(registry.activeServer, account)
     }
 
-    // MARK: - Duplicate prevention
-
     func testActivateDeduplicatesURLsThatNormalizeToTheSameServer() throws {
         let registry = makeRegistry()
-        // Two raw inputs the onboarding normalizer collapses to one server.
         let first = try AuthManager.normalizedServerURL(from: "https://www.webui.example.test")
         let second = try AuthManager.normalizedServerURL(from: "www.webui.example.test/some/path")
 
@@ -48,16 +42,12 @@ final class ServerRegistryTests: XCTestCase {
         XCTAssertEqual(registry.activeServer?.id, "https://webui.example.test")
     }
 
-    // MARK: - Keychain persistence + hydration
-
     func testActiveServerPersistsToKeychainAndHydratesIntoAFreshRegistry() throws {
         let keychain = InMemoryKeychainStore()
         let writer = makeRegistry(keychain: keychain)
         writer.activate(url: try url("https://example.test"))
 
-        // The blob is in the Keychain, not UserDefaults...
         XCTAssertNotNil(keychain.savedValues[.servers])
-        // ...and a brand-new registry over the same Keychain hydrates from it.
         let reader = ServerRegistry(keychain: keychain)
         XCTAssertEqual(reader.servers.count, 1)
         XCTAssertEqual(reader.activeServer?.id, "https://example.test")
@@ -71,15 +61,11 @@ final class ServerRegistryTests: XCTestCase {
         registry.activate(url: server)
         let writesAfterFirstActivate = keychain.saveCounts[.servers]
 
-        // Re-activating the already-active server (e.g. every launch via
-        // restoreSavedServer) must not write the Keychain again.
         registry.activate(url: server)
 
         XCTAssertEqual(keychain.saveCounts[.servers], writesAfterFirstActivate)
         XCTAssertEqual(registry.activeServerID, "https://example.test")
     }
-
-    // MARK: - Identity seeding
 
     func testActivateSeedsIdentityFromGlobalDefaultsOnFirstInsert() throws {
         let defaults = UserDefaults.ephemeral()
@@ -104,16 +90,12 @@ final class ServerRegistryTests: XCTestCase {
         let server = try url("https://example.test")
         registry.activate(url: server)
 
-        // An identity change after the first insert must not overwrite the entry
-        // (per-server edits from #17 must survive relaunch / re-activation).
         defaults.set("Bob", forKey: SessionIdentitySettings.displayNameKey)
         let reactivated = registry.activate(url: server)
 
         XCTAssertEqual(reactivated.displayName, "Alice")
         XCTAssertEqual(registry.servers.count, 1)
     }
-
-    // MARK: - forgetActiveServer
 
     func testForgetActiveServerRemovesItAndClearsActive() throws {
         let registry = makeRegistry()
@@ -126,12 +108,10 @@ final class ServerRegistryTests: XCTestCase {
         XCTAssertNil(registry.activeServer)
     }
 
-    // MARK: - setActive / remove / update (#17)
-
     func testSetActiveSwitchesToAnExistingServer() throws {
         let registry = makeRegistry()
         registry.activate(url: try url("https://a.test"))
-        registry.activate(url: try url("https://b.test")) // b is now active
+        registry.activate(url: try url("https://b.test"))
         XCTAssertEqual(registry.activeServerID, "https://b.test")
 
         let result = registry.setActive(id: "https://a.test")
@@ -149,7 +129,7 @@ final class ServerRegistryTests: XCTestCase {
         alpha.initials = "AL"
         alpha.headerLogoColorHex = "#FF3B30"
         registry.update(alpha)
-        registry.activate(url: try url("https://b.test")) // b active
+        registry.activate(url: try url("https://b.test"))
 
         registry.setActive(id: "https://a.test")
 
@@ -161,7 +141,7 @@ final class ServerRegistryTests: XCTestCase {
     func testRemoveActiveServerAutoSelectsTheNextRemaining() throws {
         let registry = makeRegistry()
         registry.activate(url: try url("https://a.test"))
-        registry.activate(url: try url("https://b.test")) // b active, list [a, b]
+        registry.activate(url: try url("https://b.test"))
 
         let newActive = registry.remove(id: "https://b.test")
 
@@ -184,9 +164,9 @@ final class ServerRegistryTests: XCTestCase {
     func testRemoveNonActiveServerLeavesActiveSelectionUntouched() throws {
         let registry = makeRegistry()
         registry.activate(url: try url("https://a.test"))
-        registry.activate(url: try url("https://b.test")) // b active
+        registry.activate(url: try url("https://b.test"))
 
-        let active = registry.remove(id: "https://a.test") // remove the non-active one
+        let active = registry.remove(id: "https://a.test")
 
         XCTAssertEqual(active?.id, "https://b.test")
         XCTAssertEqual(registry.activeServerID, "https://b.test")
@@ -197,14 +177,13 @@ final class ServerRegistryTests: XCTestCase {
         let defaults = UserDefaults.ephemeral()
         let registry = makeRegistry(identityDefaults: defaults)
         registry.activate(url: try url("https://a.test"))
-        registry.activate(url: try url("https://b.test")) // b active
+        registry.activate(url: try url("https://b.test"))
         let before = defaults.string(forKey: SessionIdentitySettings.displayNameKey)
 
         var inactiveA = try XCTUnwrap(registry.servers.first { $0.id == "https://a.test" })
         inactiveA.displayName = "ShouldNotMirror"
         registry.update(inactiveA)
 
-        // a is not active, so editing it must not touch the global mirror.
         XCTAssertEqual(defaults.string(forKey: SessionIdentitySettings.displayNameKey), before)
 
         var activeB = try XCTUnwrap(registry.servers.first { $0.id == "https://b.test" })
@@ -220,10 +199,9 @@ final class ServerRegistryTests: XCTestCase {
         registry.activate(url: try url("https://a.test"))
         var alpha = try XCTUnwrap(registry.servers.first)
         alpha.displayName = "Alpha"
-        registry.update(alpha) // a active → mirrors "Alpha"
-        registry.activate(url: try url("https://b.test")) // b active (insert, no mirror)
+        registry.update(alpha)
+        registry.activate(url: try url("https://b.test"))
 
-        // Switching back to a via activate must mirror a's identity.
         registry.activate(url: try url("https://a.test"))
 
         XCTAssertEqual(defaults.string(forKey: SessionIdentitySettings.displayNameKey), "Alpha")
@@ -231,18 +209,14 @@ final class ServerRegistryTests: XCTestCase {
     }
 
     func testActivatingANewServerDoesNotMirrorIntoEmptyDefaults() throws {
-        let defaults = UserDefaults.ephemeral() // empty
+        let defaults = UserDefaults.ephemeral()
         let registry = makeRegistry(identityDefaults: defaults)
 
-        // A new entry is *seeded from* the defaults (host-derived when empty); it
-        // must not write back, so first-run avatar fallback stays unchanged (#17).
         registry.activate(url: try url("https://webui.example.com"))
 
         XCTAssertNil(defaults.string(forKey: SessionIdentitySettings.displayNameKey))
         XCTAssertNil(defaults.string(forKey: SessionIdentitySettings.initialsKey))
     }
-
-    // MARK: - Tolerant decoding
 
     func testCorruptStoredBlobHydratesToEmptyRegistry() throws {
         let keychain = InMemoryKeychainStore()
@@ -274,8 +248,6 @@ final class ServerRegistryTests: XCTestCase {
         XCTAssertEqual(registry.servers.map(\.kind), [.webui, .webui, .webui, .hermes])
     }
 
-    /// The one-time Move to Hermes question's stage (#1267) loads as written; a missing,
-    /// unknown or mistyped one reads as unasked without dropping the entry.
     func testAMoveQuestionStageLoadsAndAnUnknownOneReadsAsUnasked() throws {
         let keychain = InMemoryKeychainStore()
         try keychain.save(#"{"servers":[{"id":"https://a.test","moveToHermesPrompt":"dismissed"},{"id":"https://b.test","moveToHermesPrompt":"asked"},{"id":"https://c.test","moveToHermesPrompt":"snoozed"},{"id":"https://d.test","moveToHermesPrompt":3},{"id":"https://e.test"}]}"#,
@@ -292,7 +264,6 @@ final class ServerRegistryTests: XCTestCase {
         registry.activate(url: try url("https://webui.test"))
 
         registry.activate(url: try url("http://127.0.0.1:9199"), kind: .hermes, serverVersion: "0.21.5")
-        // Re-activating never changes what a server is.
         registry.activate(url: try url("http://127.0.0.1:9199"))
 
         let relaunched = ServerRegistry(keychain: keychain)
@@ -302,9 +273,6 @@ final class ServerRegistryTests: XCTestCase {
     }
 
     func testServerAccountDecodesWithOnlyAnIdPresent() throws {
-        // A minimal blob must still decode, defaulting the rest (CLAUDE.md rule 3).
-        // Legacy blobs may still carry `customHeadersRef`; ignore it on decode
-        // and never write it back (headers are scoped by URL in Keychain).
         let json = Data(#"{"id":"https://example.test","customHeadersRef":"https://example.test"}"#.utf8)
         let account = try JSONDecoder().decode(ServerAccount.self, from: json)
 
@@ -317,8 +285,6 @@ final class ServerRegistryTests: XCTestCase {
         XCTAssertNil(encoded?["customHeadersRef"])
     }
 
-    // MARK: - Migration + lifecycle through AuthManager
-
     func testLegacyServerURLMigratesIntoRegistryOnLaunch() throws {
         let keychain = InMemoryKeychainStore()
         try keychain.save("https://legacy.test", forKey: .serverURL)
@@ -328,7 +294,6 @@ final class ServerRegistryTests: XCTestCase {
         let stamp = fixedDate
         let registry = ServerRegistry(keychain: keychain, identityDefaults: defaults, now: { stamp })
 
-        // Constructing AuthManager runs restoreSavedServer() → the one-time migration.
         _ = AuthManager(
             keychain: keychain,
             clientFactory: { _ in MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false, loggedIn: false)) },
@@ -366,13 +331,10 @@ final class ServerRegistryTests: XCTestCase {
         )
         await manager.configure(serverURLString: "example.test", password: "")
 
-        // A stale session cookie must not forget the server (re-login keeps it).
         manager.handleAPIError(APIError.unauthorized)
 
         XCTAssertEqual(registry.activeServer?.urlString, "https://example.test")
     }
-
-    // MARK: - URL normalization characterization (dedup depends on this)
 
     func testNormalizationDefaultsSchemelessHostToHTTPS() throws {
         XCTAssertEqual(
@@ -390,8 +352,6 @@ final class ServerRegistryTests: XCTestCase {
 }
 
 extension UserDefaults {
-    /// Test-only: an isolated, empty defaults suite for the global identity seed
-    /// values. Each call returns a fresh, cleared suite.
     static func ephemeral(_ suiteName: String = "test.hermes.\(UUID().uuidString)") -> UserDefaults {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
@@ -400,8 +360,6 @@ extension UserDefaults {
 }
 
 extension ServerRegistry {
-    /// Test-only: a registry backed by a throwaway in-memory Keychain + identity
-    /// defaults, so it never touches the real Keychain or `.standard`.
     static func inMemory(
         keychain: InMemoryKeychainStore = InMemoryKeychainStore(),
         identityDefaults: UserDefaults = .ephemeral()

@@ -20,20 +20,13 @@ final class CachedMessage {
     var attachmentsData: Data?
     var turnTps: Double?
     var turnDuration: Double?
-    /// Optional server display hint (e.g. `"steer"`). Added after the initial
-    /// schema; SwiftData migrates it as a nullable column on existing stores.
     var displayKind: String?
-    /// The message's `displayMetadata`, encoded. Added with `rowID` (#1054), both nullable.
     var displayMetadataData: Data?
-    /// A Hermes session's row id (`ChatMessage.rowID`); nil on a webui message.
     var rowID: Int?
-    /// A Hermes row whose turn's tool or reasoning cards sit above it. The cache holds no
-    /// cards, so this is what lets a cached transcript draw the turn's fold row. Nullable.
     var anchorsWork: Bool?
     var cachedAt: Date
     var expiresAt: Date
 
-    /// `cacheKey` is a Hermes row's (`CacheStore.hermesMessageKey`); a webui message's is derived.
     init(
         serverURLString: String,
         sessionID: String,
@@ -66,17 +59,10 @@ final class CachedMessage {
         return "\(serverURLString)|session|\(sessionID)|message|\(messagePart)"
     }
 
-    /// Writes every field of `message` into this row and stamps it with `cachedAt`.
-    /// Used for new rows; existing rows go through `refresh` so unchanged ones stay clean.
     func apply(_ message: ChatMessage, sortIndex: Int, cachedAt: Date = Date()) {
         write(message, blobs: Blobs(message), sortIndex: sortIndex, cachedAt: cachedAt)
     }
 
-    /// Upserts `message` into an existing row during a window write. A row that
-    /// already holds exactly this message is not rewritten; only its
-    /// `cachedAt`/`expiresAt` move forward, and at most once per
-    /// `CachePolicy.rowRefreshInterval`, so recaching a 50-300 row window dirties
-    /// only the rows that changed while LRU eviction and the TTL stay roughly right.
     func refresh(from message: ChatMessage, sortIndex: Int, cachedAt: Date) {
         let blobs = Blobs(message)
         guard matches(message, blobs: blobs, sortIndex: sortIndex) else {
@@ -135,8 +121,6 @@ final class CachedMessage {
     }
 }
 
-/// The encoded JSON columns of one message. Keys are sorted so equal values
-/// encode to equal bytes, which lets `CachedMessage.refresh` compare them.
 private struct Blobs {
     private static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()

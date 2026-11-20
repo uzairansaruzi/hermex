@@ -15,8 +15,6 @@ enum TranscriptMediaKind: Equatable {
 struct TranscriptMediaReference: Equatable, Identifiable {
     let rawReference: String
 
-    /// The alt text of the `![alt](path)` this came from. `MEDIA:` tokens and bare
-    /// `file://` URLs have none, so they fall back to the file name.
     let altText: String?
 
     init(rawReference: String, altText: String? = nil) {
@@ -28,8 +26,6 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         rawReference
     }
 
-    /// What VoiceOver should call this image: the author's alt text when there is one,
-    /// otherwise the file name.
     var accessibilityName: String {
         guard let altText = altText?.trimmingCharacters(in: .whitespacesAndNewlines),
               !altText.isEmpty
@@ -101,9 +97,6 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         return false
     }
 
-    /// Reuses the existing native-preview allow-list for Hermes document cards.
-    /// Images/audio/video keep their existing viewers; unknown files stay
-    /// download-only. A remote URL is classified by its path, never its query.
     var isHermesDocumentCandidate: Bool {
         guard mediaKind == .unsupported else { return false }
         let path: String
@@ -114,8 +107,6 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         return BinaryFilePreview(path: path) == .quickLook
     }
 
-    /// An `.html` or `.htm` file, which a Hermes reply renders in place (#1623). A remote URL
-    /// is classified by its path, never its query.
     var isHTMLReportCandidate: Bool {
         mediaKind == .unsupported && ["html", "htm"].contains(pathExtension)
     }
@@ -147,14 +138,6 @@ enum TranscriptMediaSegment: Equatable {
     case media(TranscriptMediaReference)
 }
 
-/// Memoizes `TranscriptMediaParser.segments` for settled transcript rows.
-///
-/// Every assistant bubble parses its text on each body evaluation, and a
-/// transcript-wide flag flip (Send, a reply finishing) re-evaluates every row.
-/// The parse is pure over its content and workspace root, so a settled row pays
-/// it once. The result is a function of the key alone, so entries cannot carry
-/// anything from one server to another. `NSCache` evicts under memory pressure
-/// and is thread-safe.
 enum TranscriptMediaSegmentCache {
     private static let storage: NSCache<Key, Box> = {
         let cache = NSCache<Key, Box>()
@@ -193,9 +176,6 @@ enum TranscriptMediaSegmentCache {
         init(_ segments: [TranscriptMediaSegment]) { self.segments = segments }
     }
 
-    /// The transcript row's segments. Streaming text changes on nearly every
-    /// token, so it is parsed without touching the cache; storing it would
-    /// only evict the settled rows the cache exists for.
     static func segments(in markdown: String, workspaceRoot: String?, resolvesBarePaths: Bool = false,
                          isStreaming: Bool) -> [TranscriptMediaSegment] {
         guard !isStreaming else {
@@ -213,28 +193,19 @@ enum TranscriptMediaSegmentCache {
         return segments
     }
 
-    /// Test seam: drop memoized segments so a test can observe a cold pass.
     static func removeAll() {
         storage.removeAllObjects()
     }
 
-    /// Test seam: whether this content and root currently have a memoized entry.
     static func hasCachedSegments(in markdown: String, workspaceRoot: String?) -> Bool {
         storage.object(forKey: Key(markdown: markdown, workspaceRoot: workspaceRoot, resolvesBarePaths: false)) != nil
     }
 }
 
 enum TranscriptMediaParser {
-    /// Splits an assistant message into text and media. `workspaceRoot` only resolves the
-    /// relative forms of `![alt](path)`, bare ones too with `resolvesBarePaths` (#1679); an
-    /// absolute path or a `file:` URL needs no root, and the server's `/api/media` allow-list
-    /// decides what is actually served.
     static func segments(in markdown: String, workspaceRoot: String? = nil,
                          resolvesBarePaths: Bool = false) -> [TranscriptMediaSegment] {
         guard !markdown.isEmpty else { return [] }
-        // Most replies name no media at all, and most lines of those that do
-        // name none either; a byte scan settles that before the
-        // per-character parse.
         guard mayContainMedia(markdown) else {
             return [.text(markdown)]
         }
@@ -351,17 +322,12 @@ enum TranscriptMediaParser {
         segments.appendText(line[textStart..<line.endIndex])
     }
 
-    /// One inline Markdown image or file link, already split apart.
     private struct MarkdownImage {
         let alt: String
         let destination: String
         let end: String.Index
     }
 
-    /// Reads an image starting at `![`, or an opted-in link at `[`. Delimiters nest and can be
-    /// backslash-escaped, so `![Build (1)](/tmp/build(1)/shot.png)` reads as one image
-    /// rather than being cut at the first `)`. A reference-style image, which has no
-    /// destination at all, stays ordinary Markdown.
     private static func markdownImage(in line: String, from start: String.Index) -> MarkdownImage? {
         guard let altOpen = line.index(start, offsetBy: line[start] == "!" ? 1 : 0, limitedBy: line.endIndex),
               altOpen < line.endIndex,
@@ -388,9 +354,6 @@ enum TranscriptMediaParser {
         )
     }
 
-    /// The index of the delimiter closing the run opened at `openIndex`, counting nesting
-    /// and skipping backslash-escaped characters the way CommonMark does. Nil when the
-    /// run never closes on this line.
     private static func balancedEnd(
         in line: String,
         after openIndex: String.Index,
@@ -420,8 +383,6 @@ enum TranscriptMediaParser {
         return nil
     }
 
-    /// The destination out of a link body, dropping any `"title"`. An angle-bracketed
-    /// destination keeps its spaces; a bare one ends at the first space.
     private static func destination(inLinkBody body: String) -> String? {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -435,10 +396,6 @@ enum TranscriptMediaParser {
         return unescaped(String(trimmed[..<space]))
     }
 
-    /// Drops the backslashes CommonMark uses to escape punctuation, so a path written as
-    /// `/tmp/a\)b.png` reaches the server as `/tmp/a)b.png`. A backslash before anything
-    /// else is a literal one, and POSIX allows it in a filename, so `/tmp/a\b.png` keeps
-    /// its backslash and still names the file the agent meant.
     private static func unescaped(_ destination: String) -> String {
         guard destination.contains("\\") else { return destination }
 
@@ -461,13 +418,8 @@ enum TranscriptMediaParser {
         return result
     }
 
-    /// The ASCII punctuation CommonMark lets a backslash escape.
     private static let escapablePunctuation = Set(##"!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"##)
 
-    /// A Markdown image becomes transcript media when its destination names a raster
-    /// image on the server's filesystem, which `/api/media` then decides whether to
-    /// serve. Remote URLs and bare relative paths keep whatever the Markdown renderer
-    /// already does with them.
     private static func markdownImageReference(
         for image: MarkdownImage,
         workspaceRoot: String?,
@@ -486,10 +438,6 @@ enum TranscriptMediaParser {
         return reference.isRasterImageCandidate ? reference : nil
     }
 
-    /// Collects parsed segments. Adjacent text accumulates in one pending run
-    /// that grows in place and is flushed only when media interrupts it, so a
-    /// long reply parses in linear time instead of recopying the text so far
-    /// on every line.
     private struct SegmentBuilder {
         private var segments: [TranscriptMediaSegment] = []
         private var pendingText = ""
@@ -515,9 +463,6 @@ enum TranscriptMediaParser {
         }
     }
 
-    /// False when `markdown` holds none of the markers a media segment starts
-    /// with (`![`, `MEDIA:` or `file://`), so the whole reply is one text
-    /// segment. One pass over the UTF-8 bytes.
     private static func mayContainMedia(_ markdown: String) -> Bool {
         var markdown = markdown
         return markdown.withUTF8 { bytes in
@@ -666,10 +611,6 @@ enum TranscriptMediaParser {
         return ranges
     }
 
-    /// The reference in a single-backtick code span holding nothing but a `MEDIA:` tag.
-    /// Models format files they mean to send this way, and the gateway and webui deliver it.
-    /// The gateway can also check that the file exists; this client can't, so only a value
-    /// shaped like a path or URL counts. `MEDIA:` and `MEDIA:<path>` stay code.
     private static func codeWrappedMediaReference(in span: Substring) -> String? {
         let content = span.dropFirst().dropLast()
         guard content.hasPrefix("MEDIA:") else { return nil }

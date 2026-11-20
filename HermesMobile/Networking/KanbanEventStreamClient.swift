@@ -2,9 +2,7 @@ import Foundation
 import LDSwiftEventSource
 
 enum KanbanStreamFrame: Equatable, Sendable {
-    /// webui's handshake: the stream is live at `cursor` for `board`.
     case hello(cursor: Int, board: String)
-    /// A Hermes socket's upgrade succeeded. The host sends no hello, so this stands in for it.
     case opened
     case events(events: [KanbanEvent], cursor: Int, frameID: Int?)
     case ignored
@@ -40,9 +38,6 @@ enum KanbanStreamFrameDecoder {
         }
     }
 
-    /// One frame from a Hermes host's Kanban socket (#1045): `{events, cursor}`, read as webui's
-    /// `events` frame without a frame id. A JSON object with neither key is some other message
-    /// a newer host might add, and is ignored rather than ending the socket.
     static func decodeSocketFrame(_ data: Data) -> KanbanStreamFrame {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -69,9 +64,6 @@ enum KanbanStreamFrameDecoder {
     }
 }
 
-/// One Board's live events. `KanbanFeatureState` starts it at the Board's cursor while the
-/// Board is on screen and the app is active, and stops it otherwise. A client reports each
-/// frame and at most one failure per `start`, and nothing after `stop()`.
 @MainActor
 protocol KanbanEventStreamingClient: AnyObject {
     func start(
@@ -83,7 +75,6 @@ protocol KanbanEventStreamingClient: AnyObject {
     func stop()
 }
 
-/// webui's SSE stream, `/api/kanban/events/stream` on `server`, with the custom headers.
 @MainActor
 final class KanbanEventStreamClient: KanbanEventStreamingClient {
     private let server: URL
@@ -164,7 +155,6 @@ final class KanbanEventStreamClient: KanbanEventStreamingClient {
         }
 
         func onError(error: Error) {
-            // Never include the transport error or event payload in logs.
             Task { @MainActor in onFailure() }
         }
     }

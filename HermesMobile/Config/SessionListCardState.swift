@@ -1,27 +1,19 @@
 import Foundation
 
-/// The prompt cards that share the slot at the top of the session list.
 enum SessionListCard: CaseIterable {
-    /// Asks once whether to send usage reports (#1662), and again when the report gains fields.
     case usageReports
     case tip, star
 
-    /// The card to show. At most one per launch: once a card has shown, the others wait for a
-    /// later launch. When several are eligible, the first in `allCases` wins.
     static func choose(eligible: Set<SessionListCard>, shownThisLaunch: SessionListCard?) -> SessionListCard? {
         if let shownThisLaunch { return eligible.contains(shownThisLaunch) ? shownThisLaunch : nil }
         return allCases.first(where: eligible.contains)
     }
 
-    /// The card a session list shows now, on the device's standard defaults. The caller passes
-    /// the stored counter, dismissed releases and usage report answers from its `@AppStorage`,
-    /// so reading them subscribes its view and an answer hides a card at once.
     @MainActor
     static func current(completedResponses: Int, tipDismissedRelease: String?, starDismissedRelease: String?,
                         usageReportConsent: UsageReportConsent, forcesUsageReportsCard: Bool = false,
                         hasSharedImport: Bool) -> SessionListCard? {
         #if DEBUG
-        // Settings › Developer: skip every guard while the question is unanswered.
         if forcesUsageReportsCard, usageReportConsent.question() != nil { return .usageReports }
         #endif
         let ratingPolicy = RatingPromptState.shared.policy
@@ -41,8 +33,6 @@ enum SessionListCard: CaseIterable {
         return choose(eligible: eligible, shownThisLaunch: RatingPromptState.shared.cardShownThisLaunch)
     }
 
-    /// `current` on the stored values, for a check outside a view's body, such as a rating
-    /// request recording the card the list shows.
     @MainActor
     static func current(hasSharedImport: Bool) -> SessionListCard? {
         let defaults = UserDefaults.standard
@@ -54,8 +44,6 @@ enum SessionListCard: CaseIterable {
                        hasSharedImport: hasSharedImport)
     }
 
-    /// The usage reports card waits for 5 completed responses and an unanswered question, under
-    /// the same share and rating guards as the other cards. It has no X: only an answer hides it.
     static func usageReportsEligible(question: UsageReportConsent.Question?, completedResponses: Int,
                                      hasSharedImport: Bool, ratingPolicy: RatingPromptPolicy, now: Date = Date()) -> Bool {
         question != nil && completedResponses >= Self.usageReports.minimumResponses && !hasSharedImport && ratingPolicy.allowsSessionListCard(at: now)
@@ -69,7 +57,6 @@ enum SessionListCard: CaseIterable {
         }
     }
 
-    /// The tip and star cards' stored answers; the usage reports card keeps its own in `UsageReports`.
     fileprivate var promptKeys: (dismissedRelease: String, linkOpened: String)? {
         switch self {
         case .usageReports: return nil
@@ -79,16 +66,11 @@ enum SessionListCard: CaseIterable {
     }
 }
 
-/// The tip or star card's device-wide preferences: opening its link records intent (not a
-/// payment or a star, which the app cannot see) and hides the card for good. "Not now" hides it
-/// until the next feature release.
 struct SessionListCardState {
     let card: SessionListCard
     let defaults: UserDefaults
-    /// The installed marketing version; tests inject one.
     var appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
 
-    /// Major.minor, so a patch update never brings a dismissed card back.
     var release: String {
         appVersion.split(separator: ".").prefix(2).joined(separator: ".")
     }
@@ -107,22 +89,18 @@ struct SessionListCardState {
         defaults.set(release, forKey: keys.dismissedRelease)
     }
 
-    /// Settings › About's rows call this directly; the card's own button goes through
-    /// `openLinkFromCard`, which also tallies it.
     func recordLinkOpened() {
         guard let keys = card.promptKeys else { return }
         defaults.set(true, forKey: keys.linkOpened)
         dismiss()
     }
 
-    /// The card's own button: hides it for good and tallies `link_opened`, not `dismissed`.
     @MainActor
     func openLinkFromCard(usage: UsageReports? = nil, now: Date = Date()) {
         recordLinkOpened()
         (usage ?? .shared).record(card, \.linkOpened, now: now)
     }
 
-    /// The card's X.
     @MainActor
     func dismissFromCard(usage: UsageReports? = nil) {
         dismiss()
@@ -130,8 +108,6 @@ struct SessionListCardState {
     }
 }
 
-/// One welcome per launch, then a short gesture every 3.5 seconds while visible. Whichever
-/// session list card is showing owns the task; there are no frame updates during neutral pauses.
 @MainActor
 final class SessionListCardGreeting {
     static let shared = SessionListCardGreeting()
@@ -139,8 +115,6 @@ final class SessionListCardGreeting {
 
     enum Phase { case neutral, blink, hop, glanceDown, curious, happy }
 
-    /// The view owns cancellation. Each awaited pause must finish successfully and
-    /// still belong to an active task before another expression can be displayed.
     func play(
         reduceMotion: Bool,
         wait: (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
@@ -184,12 +158,10 @@ final class SessionListCardGreeting {
                     try await wait(gesture.hold)
                     try Task.checkCancellation()
                     display(.neutral)
-                    // Measure the cadence from one gesture's start to the next.
                     pause = .milliseconds(3500) - gesture.hold
                 }
             }
         } catch {
-            // Dismissal, navigation, backgrounding or Reduce Motion stops the sequence.
         }
     }
 }

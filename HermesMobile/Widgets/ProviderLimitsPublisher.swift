@@ -1,19 +1,9 @@
 import Foundation
 import WidgetKit
 
-/// Writes the Limits widget's snapshot (#1409) from what a Hermes server's Usage screen loaded, and
-/// clears it when its server or connection stops being the one in use. Usage is the only refresh:
-/// nothing here polls or reads the host.
-///
-/// A load takes a `Ticket` before it awaits the host and hands it back with the cards. Only the
-/// newest ticket writes, so a closed Usage screen's late load can't replace the Profile opened
-/// after it. Every invalidation (a server switch, sign-out, the server's removal, its connection
-/// replaced) also ends the newest ticket before clearing the file, so a load that started earlier
-/// can never write its old result back. Main-actor, so publications and invalidations are serialized.
 @MainActor final class ProviderLimitsPublisher {
     static let shared = ProviderLimitsPublisher(file: ProviderLimitsSnapshotFile.shared)
 
-    /// The Usage screen whose cards a load publishes.
     struct Scope: Equatable {
         let server: URL
         let connectionID: UUID
@@ -28,7 +18,6 @@ import WidgetKit
     private let file: ProviderLimitsSnapshotFile?
     private let reloadWidget: () -> Void
     private var generation = 0
-    /// The newest ticket's scope, while a load may still write it.
     private var ticketScope: Scope?
 
     init(file: ProviderLimitsSnapshotFile?,
@@ -39,16 +28,12 @@ import WidgetKit
         self.reloadWidget = reloadWidget
     }
 
-    /// Taken by a Usage load before it reads the host; it supersedes every earlier ticket.
     func ticket(for scope: Scope) -> Ticket {
         generation += 1
         ticketScope = scope
         return Ticket(scope: scope, generation: generation)
     }
 
-    /// Writes `cards` (the ones in `stale` kept from before a failed refresh) for `ticket`'s
-    /// scope, unless something invalidated it since. Only percentage windows go in, and each
-    /// provider keeps its own measurement time. An unchanged snapshot is not written again.
     func publish(_ cards: [ProviderLimitCard], stale: Set<String>, with ticket: Ticket, now: Date = Date()) {
         guard ticket.generation == generation, let file else { return }
         let providers = cards.prefix(ProviderLimitsSnapshot.maxProviders).compactMap { card in
@@ -69,16 +54,12 @@ import WidgetKit
         reloadWidget()
     }
 
-    /// Ends every load in flight, then empties the widget.
     func invalidate() {
         generation += 1
         ticketScope = nil
         if file?.remove() == true { reloadWidget() }
     }
 
-    /// `invalidate()` when the snapshot, or a load still in flight, is `server`'s and, given a
-    /// `connectionID`, reads through another connection. Removing or signing in to an unrelated
-    /// server leaves the widget as it is.
     func invalidate(server: URL, unlessConnection connectionID: UUID? = nil) {
         let key = BotHistoryCache.Scope.key(server)
         let written = file?.read().map { [($0.serverKey, $0.connectionID)] } ?? []
@@ -89,9 +70,6 @@ import WidgetKit
 }
 
 extension HermesUsageDestination {
-    /// Whether a widget's Usage link opens now: only on the signed-in active Hermes server it
-    /// names, through the same saved connection. Anything else opens the app as it is, and never
-    /// switches servers; the Sessions list then checks the host still has the Profile.
     @MainActor func opens(state: AuthManager.State, servers: [ServerAccount],
                           savedConnectionID: @MainActor (URL) -> UUID? = BotDeepLinkRouter.savedConnectionID) -> Bool {
         guard case .loggedIn(let server) = state,

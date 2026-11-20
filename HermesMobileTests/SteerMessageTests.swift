@@ -2,8 +2,6 @@ import SwiftData
 import XCTest
 @testable import HermesMobile
 
-/// Issue #536: steering hints render inline in the transcript as compact
-/// "Steer" bubbles instead of leaking the server's out-of-band wrapper.
 final class SteerMessageTests: XCTestCase {
     private static let steerOpenLine = "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]"
     private static let steerCloseLine = "[/OUT-OF-BAND USER MESSAGE]"
@@ -12,9 +10,6 @@ final class SteerMessageTests: XCTestCase {
         "\(steerOpenLine)\n\(text)\n\(steerCloseLine)"
     }
 
-    // MARK: - Decoding
-
-    /// The REST client decodes with `convertFromSnakeCase`.
     func testDisplayKindDecodesFromSnakeCaseWireFormat() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -26,7 +21,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertTrue(message.isSteerMessage)
     }
 
-    /// The SSE `done` payload's primary path uses a plain decoder.
     func testDisplayKindDecodesWithPlainDecoder() throws {
         let message = try JSONDecoder().decode(
             ChatMessage.self,
@@ -46,8 +40,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertEqual(message.steerText, "hello")
     }
 
-    // MARK: - Marker stripping
-
     func testStrippedSteerText() {
         XCTAssertEqual(
             ChatMessage.strippedSteerText(from: Self.wrapped("use shorter sentences")),
@@ -58,12 +50,10 @@ final class SteerMessageTests: XCTestCase {
             "line one\nline two"
         )
         XCTAssertEqual(ChatMessage.strippedSteerText(from: Self.wrapped("")), "")
-        // A bare mention of the marker is not a wrapped block.
         XCTAssertNil(ChatMessage.strippedSteerText(from: "hello"))
         XCTAssertNil(ChatMessage.strippedSteerText(from: "\(Self.steerOpenLine)\nno closing line"))
         XCTAssertNil(ChatMessage.strippedSteerText(from: "prefix\n\(Self.wrapped("x"))"))
         XCTAssertNil(ChatMessage.strippedSteerText(from: "\(Self.wrapped("x"))\nsuffix"))
-        // Only the exact server marker counts; a lookalike opening line does not.
         XCTAssertNil(ChatMessage.strippedSteerText(
             from: "[OUT-OF-BAND USER MESSAGE\nuse shorter sentences\n\(Self.steerCloseLine)"
         ))
@@ -79,8 +69,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertTrue(message.isSteerMessage)
         XCTAssertEqual(message.steerText, "use shorter sentences")
     }
-
-    // MARK: - Turn classification
 
     func testSteerRowsAreNotUserTurnBoundaries() {
         let user = ChatMessage(role: "user", content: "Keep going", timestamp: nil, messageId: "u1")
@@ -104,8 +92,6 @@ final class SteerMessageTests: XCTestCase {
             "turn:user:0"
         )
     }
-
-    // MARK: - Cache round-trip
 
     @MainActor
     func testCacheRoundTripsDisplayKind() throws {
@@ -144,11 +130,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertEqual(restored.first?.steerText, "use shorter sentences")
     }
 
-    // MARK: - Hermes projection
-
-    /// Steers in a Hermes session's history get the same mention-note stripping as ordinary
-    /// user rows: the hidden agent-profile annotation must not leak profile IDs into the
-    /// transcript or its cache.
     func testHermesProjectionStripsMentionAnnotationFromSteers() throws {
         let profile = try XCTUnwrap(BotProfile(.object(["name": .string("analyst")])))
         let mentions = BotMentions(roster: [profile], excluding: "other")
@@ -170,7 +151,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertEqual(projected.messages[0].steerText, steerText)
     }
 
-    /// A prompt and a delegation delivery open a turn; a steer rides inside one.
     func testOnlyPromptsAndDelegationDeliveriesOpenATurn() {
         let prompt = ChatMessage(role: "user", content: "Clear the inbox", timestamp: nil, messageId: "1")
         let steer = ChatMessage(role: "user", content: "archive first", timestamp: nil, messageId: "2",
@@ -180,9 +160,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertEqual([prompt, steer, delivery, reply].map(TranscriptTurnClassifier.isTurnBoundary), [true, false, true, false])
     }
 
-    // MARK: - Regenerate
-
-    /// Regenerating a steered reply resends the prompt, not the steer.
     func testRegenerateSkipsSteerRows() {
         let messages = [
             ChatMessage(role: "user", content: "Tell me a long story", timestamp: nil, messageId: "u1"),
@@ -195,11 +172,6 @@ final class SteerMessageTests: XCTestCase {
         )
     }
 
-    // MARK: - Active-stream snapshot restoration
-
-    /// A steer echo appended after the streaming assistant must not move the
-    /// assistant search range: the persisted assistant row is reconciled with
-    /// the snapshot instead of being duplicated.
     func testSteerEchoDoesNotBreakActiveStreamSnapshotMerge() {
         let snapshotAssistant = ChatMessage(
             role: "assistant",
@@ -226,9 +198,6 @@ final class SteerMessageTests: XCTestCase {
             localAttachmentPreviews: [:],
             pinnedLocalNotices: []
         )
-        // The persisted assistant row carries a different id than the
-        // snapshot's, as when the stream persisted under a new row while the
-        // steer echo was still trailing.
         let loadedMessages = [
             ChatMessage(role: "user", content: "hi", timestamp: 1_770_000_080, messageId: "u-1"),
             ChatMessage(role: "assistant", content: "partial response and more", timestamp: 1_770_000_095, messageId: "a-persisted"),
@@ -242,8 +211,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertFalse(merge.usedSnapshotMessagesOffset)
     }
 
-    /// A trailing steer echo must not hide an in-flight assistant response
-    /// from the stream coordinator's latest-load check.
     func testTrailingSteerEchoDoesNotHideInFlightAssistant() {
         let withSteerEcho = [
             ChatMessage(role: "user", content: "hi", timestamp: 1_770_000_080, messageId: "u-1"),
@@ -259,11 +226,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertFalse(ChatViewModel.hasAssistantResponseAfterLatestUser(in: steerOnly))
     }
 
-    // MARK: - Local echo lifecycle
-
-    /// A steer echo only matches a persisted steer row: without kind-aware
-    /// dedup, an ordinary repeated prompt with identical text could swallow
-    /// the persisted steer row (or vice versa).
     func testSteerEchoOnlyMatchesPersistedSteerRows() {
         let persistedSteer = ChatMessage(
             role: "user",
@@ -301,9 +263,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertTrue(mergedOrdinary.contains { $0.messageId == "local-2" })
     }
 
-    /// A steer that carried attachments ends with the web UI's attached-files
-    /// note, whose bracketed line must not read as Hermex's `[Attached files:`
-    /// marker: the echo still merges into the persisted row (#856).
     func testSteerEchoWithAttachmentNoteMatchesPersistedSteerRow() {
         let sent = PendingAttachment.steerMessageText(
             draft: "also read this",
@@ -329,8 +288,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertEqual(merged.map(\.messageId), ["msg-steer-1"])
     }
 
-    /// An accepted steer appends a local echo immediately; when the persisted
-    /// steer row arrives in `.done`, the echo is replaced with no duplicate.
     @MainActor
     func testAcceptedSteerEchoIsReplacedByPersistedRowOnDone() async throws {
         let streamClient = ScriptedSSEStreamingClient()
@@ -385,10 +342,7 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertFalse(viewModel.messages.contains { $0.messageId?.hasPrefix("local-steer-") ?? false })
     }
 
-    // MARK: - Helpers
-
     private func decodeSessionDetail(_ json: String) throws -> SessionDetail {
-        // Mirrors the SSE `done` path, which decodes the session snake_case.
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try decoder.decode(SessionDetail.self, from: Data(json.utf8))

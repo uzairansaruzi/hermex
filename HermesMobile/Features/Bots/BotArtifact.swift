@@ -1,6 +1,5 @@
 import Foundation
 
-/// Captured with the transcript, never reconstructed from the currently selected server.
 struct BotArtifactContext: Hashable {
     let connectionID: UUID
     let profile: String
@@ -8,8 +7,6 @@ struct BotArtifactContext: Hashable {
     let generation: Int
 }
 
-/// `folder` is a download the host refused because the path is a folder, as a symlinked folder
-/// the workspace listing shows as a file is (#1112); it reads as `unavailable` anywhere else.
 enum BotArtifactFailure: Error, LocalizedError {
     case unavailable, tooLarge, invalidReference, folder
 
@@ -22,22 +19,17 @@ enum BotArtifactFailure: Error, LocalizedError {
     }
 }
 
-/// Paths stay server-side. In particular, relative paths and ~ are resolved by
-/// fs/download using the originating session and Profile, never by Foundation on iOS.
 enum BotArtifactReference {
     static func path(_ raw: String, address: URL) throws -> String {
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !value.contains("\0"), !value.hasPrefix("//") else {
             throw BotArtifactFailure.invalidReference
         }
-        // A Windows host's `C:\…` would otherwise parse as a URL with scheme `C`.
         if BotAttachmentUpload.isHostAbsolute(value) { return value }
         if let url = URL(string: value), let scheme = url.scheme {
             if scheme.lowercased() == "file", url.host == nil || url.host == "" || url.host == "localhost" {
                 return url.path(percentEncoded: false)
             }
-            // Desktop may emit an authenticated download URL. Extract only its
-            // path; never carry its token, Profile override, or session override forward.
             if ["https", "http"].contains(scheme.lowercased()),
                url.scheme == address.scheme, url.host == address.host, url.port == address.port,
                ["/api/fs/download", "/api/files/download", "/api/media", "/api/fs/read-data-url"].contains(url.path),

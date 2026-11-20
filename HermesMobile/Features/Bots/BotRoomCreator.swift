@@ -1,15 +1,10 @@
 import Foundation
 import Observation
 
-/// One sheet owns one immutable create attempt. A deliberate retry uses the same
-/// room ID and payload, including after backgrounding or losing the socket.
 @MainActor @Observable final class BotRoomCreator {
     let connection: BotConnection
     let server: URL
     let roster: [BotProfile]
-    /// The Profiles a canonical host can seat (`BotRoomCapabilities.seatableProfiles`, #1605); nil
-    /// on a dashboard, which seats its whole roster. No other bot is offered or sent. Create
-    /// refreshes it from the host's latest answer.
     private(set) var seatable: Set<String>?
     private(set) var selected: [BotProfile] = []
     var name = "Group Chat"
@@ -36,11 +31,8 @@ import Observation
     var locked: Bool { attempt != nil }
     var mayContinue: Bool { (2...6).contains(selected.count) }
     var mayCreate: Bool { !busy && created == nil && mayContinue && BotRoomRPC.validName(name) }
-    /// Whether the host can seat `bot`.
     func seats(_ bot: BotProfile) -> Bool { seatable?.contains(bot.id) ?? true }
-    /// The host can't seat some bot the list would otherwise show, so the list says it left some out.
     var leavesOutBots: Bool { roster.contains { !$0.hidden && !seats($0) } }
-    /// Fewer than two bots can join, so no group can be made.
     var tooFewToSeat: Bool { seatable != nil && roster.filter(seats).count < 2 }
     var remaining: [BotProfile] {
         let filter = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -58,7 +50,6 @@ import Observation
         selected.removeAll { $0.id == bot.id }
     }
     static func member(_ bot: BotProfile) -> HermesCall.RoomMember {
-        // profiles.list at the compatibility pin exposes no separate handle.
         HermesCall.RoomMember(memberID: bot.id, profile: bot.id, handle: bot.id, displayName: bot.displayName)
     }
     var preview: BotGroupRoom {
@@ -83,9 +74,6 @@ import Observation
             try check(owner, client)
             guard caps.enabled, caps.methods.contains("groups.create"), caps.authority != nil else { throw BotFailure.unsupported }
             authority = caps.authority
-            // Rechecked at create: a bot the host stopped seating since the sheet opened is never sent.
-            // The host refuses such a member before it looks for the room, so a Try Again reads the
-            // rooms instead: the room it made, or an unlocked choice when it made none.
             if let fresh = caps.seatableProfiles, !selected.allSatisfy({ fresh.contains($0.id) }) {
                 if let attempt {
                     let rooms = try await BotRoomList.read(client) { try self.check(owner, client) }
@@ -117,13 +105,10 @@ import Observation
                     do {
                         let rooms = try await BotRoomList.read(client) { try self.check(owner, client) }
                         try check(owner, client); onReconciled(rooms)
-                        // Another client can rename the room between a lost create
-                        // reply and retry. Its permanent ID and frozen members still
-                        // identify our successful creation; the name may differ.
                         if let attempt, let room = Self.room(made: attempt, in: rooms, authority: authority) {
                             created = room; message = nil
                         }
-                    } catch { /* Keep the original rejection; a failed read is not success. */ }
+                    } catch {  }
                 }
             } else {
                 message = dispatched ? String(localized: "Outcome unknown. Try Again checks the same group creation; it will not create a second room.") : error.localizedDescription
@@ -131,8 +116,6 @@ import Observation
         }
     }
 
-    /// The room `attempt` made, found in `rooms` by its permanent id, frozen members and authority;
-    /// its name may differ, since another client can rename it in between.
     private static func room(made attempt: HermesCall.RoomCreation, in rooms: [BotGroupRoom], authority: String?) -> BotGroupRoom? {
         guard let authority, let room = rooms.first(where: { $0.id == attempt.roomID }), room.authority == authority,
               room.members.count == attempt.members.count,
@@ -152,8 +135,6 @@ import Observation
     }
 }
 
-/// A complete active-room read is needed before deciding an uncertain disband
-/// removed its room. One missing page must never look like successful deletion.
 enum BotRoomList {
     @MainActor static func read(_ client: any BotTransport, check: () throws -> Void) async throws -> [BotGroupRoom] {
         var rooms: [BotGroupRoom] = [], offset = 0

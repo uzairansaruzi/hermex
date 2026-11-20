@@ -1,9 +1,6 @@
 import Foundation
 
 extension APIClient {
-    /// Dictation's transcriber on a webui server: `transcribeAudio`, which the Sessions
-    /// composer hands to `ComposerVoiceInputController`. An empty transcript loses its `ok`,
-    /// so webui keeps failing it as before and only a Hermes host's empty success is silence (#1071).
     nonisolated var dictationTranscriber: ComposerTranscriber {
         { data, filename in
             let reply = try await self.transcribeAudio(data: data, filename: filename)
@@ -12,15 +9,6 @@ extension APIClient {
         }
     }
 
-    /// Uploads an audio clip to the server's speech-to-text endpoint and returns
-    /// the tolerant `{ok, transcript, error}` payload. Mirrors `uploadFile`'s
-    /// multipart shape but sends only the `file` field (no `session_id`).
-    ///
-    /// The server returns a JSON `{error: ...}` body even for 503/400/413
-    /// responses, so we decode the body regardless of status and let the caller
-    /// inspect `.error`. Only `401` maps to `.unauthorized`; a body that isn't the
-    /// expected shape on a non-2xx status surfaces as `.http`. Connectivity
-    /// failures map to `.network` via `sendMultipart`.
     func transcribeAudio(data: Data, filename: String) async throws -> TranscribeResponse {
         let boundary = "Boundary-\(UUID().uuidString)"
         var body = Data()
@@ -33,9 +21,6 @@ extension APIClient {
             contentType: "multipart/form-data; boundary=\(boundary)",
             requireSuccess: false
         )
-        // Decode first: the server returns `{error: ...}` even for 503/400/413, so
-        // surfacing `.error` is friendlier than a raw HTTP failure. Fall back to a
-        // thrown HTTP error only when the body isn't the expected JSON shape.
         if let decoded = try? decode(TranscribeResponse.self, from: responseData) {
             return decoded
         }

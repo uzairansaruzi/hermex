@@ -70,7 +70,6 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertGreaterThan(canvas.layout.visualLineCount(forRowAt: 0), 1)
     }
 
-    /// The unwrapped draw cap has to cover every column the widest pan can show.
     func testReachableColumnsCoverTheFurthestPan() throws {
         let long = ReviewDiffRow(
             id: "s:0",
@@ -88,8 +87,6 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertEqual(canvas.drawnCodeColumns(for: try XCTUnwrap(long.line)), canvas.reachableCodeColumns)
     }
 
-    /// Zero-width characters take no room, so text after a long run of them is still on
-    /// screen and still has to be drawn. The count is measured once per row until the rows change.
     func testDrawnColumnsGrowPastZeroWidthCharactersAndAreMeasuredOncePerRow() {
         func row(_ content: String) -> ReviewDiffRow {
             ReviewDiffRow(id: "s:0", fileID: "s", kind: .line(ReviewDiffLine(content: content, change: .context, oldLineNumber: nil, newLineNumber: 1)))
@@ -114,7 +111,6 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertLessThanOrEqual(drawn, 10_000)
     }
 
-    /// Toggling wrap grows the rows above the viewport; the row at the top must stay put.
     func testWrapToggleKeepsTheTopRowWhereItIs() throws {
         let rows = (0..<60).map { index in
             ReviewDiffRow(
@@ -130,7 +126,6 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         view.scroll(to: .row("s:30"), animated: false)
         let before = view.verticalOffset
         XCTAssertGreaterThan(before, 0)
-        // The row under the top edge is the one that must not move.
         let topRow = try XCTUnwrap(view.rows.first { row in
             guard let frame = view.frame(forRowID: row.id) else { return false }
             return frame.minY <= before && before < frame.minY + frame.height
@@ -145,8 +140,6 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertEqual(screenYAfter, screenYBefore, accuracy: 0.5)
     }
 
-    /// Files above the reader load and fold by default, one or several per publish, applied
-    /// the way `ReviewDiffSurface` does (rows, then collapse). The line being read stays put.
     func testDefaultFoldsAboveTheViewportKeepTheReadingPosition() throws {
         func loading(_ fileID: String) -> [ReviewDiffRow] {
             [header(fileID), ReviewDiffRow(id: "\(fileID):notice", fileID: fileID, kind: .notice("Loading…"))]
@@ -169,13 +162,10 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         view.setCollapsedFileIDs(["a", "b", "c"])
         XCTAssertEqual(try readingY(), before, accuracy: 0.5)
 
-        // Collapsing the file being read from its pinned header keeps that header on top (#399).
         view.setCollapsedFileIDs(["a", "b", "c", "r"])
         XCTAssertEqual(view.verticalOffset, try XCTUnwrap(view.frame(forRowID: "r:header")).minY, accuracy: 0.5)
     }
 
-    /// A wrapped deletion can be far taller than the screen; only the stripes on screen
-    /// are drawn, in the phase of the row's top.
     func testDeleteStripesStayInsideTheDirtyRect() throws {
         let dirty = CGRect(x: 0, y: 0, width: 390, height: 300)
 
@@ -183,7 +173,6 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertEqual(top.first, 10)
         XCTAssertEqual(top.count, 145)
 
-        // Scrolled deep into the row: its top is far above the screen, at an odd offset.
         let deep = Array(ReviewDiffCanvasView.deleteStripeOrigins(bar: CGRect(x: 0, y: -50_001, width: 3, height: 60_000), dirtyRect: dirty))
         let first = try XCTUnwrap(deep.first)
         XCTAssertEqual(first, -1, "Drawing starts on the row's 2 pt phase, just above the screen top.")
@@ -191,8 +180,6 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertLessThan(try XCTUnwrap(deep.last), dirty.maxY)
     }
 
-    /// A jump to a file whose rows above are still loading is clamped at first; once
-    /// they load, the chosen file must still be on screen.
     func testFileJumpSurvivesTheFilesAboveLoading() throws {
         let notice = { (fileID: String) in ReviewDiffRow(id: "\(fileID):notice", fileID: fileID, kind: .notice("Loading…")) }
         let view = ReviewDiffSurfaceView()
@@ -209,7 +196,6 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertLessThanOrEqual(headerB.minY + headerB.height, view.verticalOffset + 300)
     }
 
-    /// A status-bar tap to the top ends a held jump, so the next load leaves the reader there.
     func testScrollToTopReleasesAHeldFileJump() {
         let notice = { (fileID: String) in ReviewDiffRow(id: "\(fileID):notice", fileID: fileID, kind: .notice("Loading…")) }
         let view = ReviewDiffSurfaceView()

@@ -643,7 +643,7 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(detail.runs?.first?.runID, "run-1")
         XCTAssertEqual(detail.runs?.first?.finishedAt, "1700000002")
         XCTAssertEqual(detail.runs?.first?.workerID, "31415")
-        XCTAssertNil(detail.card?.workerID) // malformed metadata is ignored
+        XCTAssertNil(detail.card?.workerID)
 
         let minimal = try decoder.decode(KanbanCardDetailEnvelope.self, from: Data(
             #"{"task":{"id":"CARD-1","status":"future"},"future":{"nested":true}}"#.utf8

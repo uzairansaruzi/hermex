@@ -41,13 +41,6 @@ let reviewDiffSignposter = OSSignposter(
     category: "ReviewDiff"
 )
 
-/// The drawing surface. It is sized to the viewport and slid along with the scroll
-/// offset by `ReviewDiffSurfaceView`, so every draw pass paints only the rows that
-/// intersect the visible bounds (plus a four-row overscan). Rows are never views:
-/// a 5,000-line diff is one `draw(_:)` of ~40 rows.
-///
-/// Owns hit testing and the per-file horizontal pan with display-link deceleration.
-/// Drawing lives in `ReviewDiffCanvasView+Drawing`, VoiceOver in `+Accessibility`.
 final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
     enum HorizontalPanKind {
         case code
@@ -77,48 +70,38 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
             }
         }
     }
-    /// Wrap long lines on the character grid instead of panning them horizontally.
     var wrapsLines = false {
         didSet {
             guard wrapsLines != oldValue else { return }
             rebuildLayout(rows: layout.rows, collapsedFileIDs: layout.collapsedFileIDs)
         }
     }
-    /// Replaces the scaled code size when set (`CodeDisplaySettings.customSizeKey`).
     var customCodeSize: CGFloat? {
         didSet {
             guard customCodeSize != oldValue else { return }
             restyle()
         }
     }
-    /// File headers and notices use the app's font; code stays monospaced.
     var fontFamily = AppFontSettings.shared.family {
         didSet {
             guard fontFamily != oldValue else { return }
             restyle()
         }
     }
-    /// Syntax colour runs by row id, filled in for visible rows as the highlighter
-    /// answers; rows without an entry draw in the plain text colour.
     var tokensByRowID: [String: [SourceHighlightRun]] = [:] {
         didSet { setNeedsDisplay() }
     }
-    /// Scroll offset of the host; row `y` in canvas coordinates is `offset - verticalOffset`.
     var verticalOffset: CGFloat = 0
 
     var onToggleFile: ((String) -> Void)?
     var onToggleViewed: ((String) -> Void)?
     var onLinePress: ((ReviewDiffLinePress) -> Void)?
-    /// The layout height changed (rows, collapse, Dynamic Type); the host resizes content.
     var onContentHeightChange: (() -> Void)?
-    /// VoiceOver focused a row that is off screen; the host scrolls it into view.
     var onRevealRow: ((Int) -> Void)?
 
     private(set) var contentWidthsByFileID: [String: CGFloat] = [:]
     private var horizontalOffsetsByFileID: [String: CGFloat] = [:]
     private var headerPathOffsetsByFileID: [String: CGFloat] = [:]
-    /// `drawnCodeColumns(for:)` of long unwrapped rows, cleared when rows, style, wrap,
-    /// or viewport width change, so a pan frame does not re-measure.
     private var drawnCodeColumnsByRowID: [String: Int] = [:]
     private var panStartHorizontalOffset: CGFloat = 0
     private var activePanFileID: String?
@@ -127,7 +110,6 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
     private var deceleratingFileID: String?
     private var horizontalVelocity: CGFloat = 0
     private var lastDecelerationTimestamp: CFTimeInterval = 0
-    /// VoiceOver elements created on demand; cleared whenever the layout rebuilds.
     var accessibilityElementsByRowIndex: [Int: ReviewDiffRowAccessibilityElement] = [:]
 
     var rows: [ReviewDiffRow] { layout.rows }
@@ -170,7 +152,6 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         addGestureRecognizer(longPressGesture)
         tapGesture.require(toFail: longPressGesture)
 
-        // Dynamic Type resizes every row; appearance changes only need a repaint.
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: Self, _) in
             view.restyle()
         }
@@ -193,10 +174,6 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         stopHorizontalDeceleration()
     }
 
-    // MARK: - Inputs
-
-    /// Rows arrive file by file while loading, so a pan the reader already made on a
-    /// loaded file survives the rebuild; offsets are clamped to the new widths.
     func setRows(_ rows: [ReviewDiffRow]) {
         stopHorizontalDeceleration()
         activePanFileID = nil
@@ -225,23 +202,16 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         UIAccessibility.post(notification: .layoutChanged, argument: nil)
     }
 
-    /// Characters that fit between the gutter and the viewport edge, when wrapping.
     private var wrapColumns: Int? {
         guard wrapsLines else { return nil }
         let available = viewportWidth - style.codeStartX - style.codePadding
         return max(8, Int(available / max(style.codeCharacterWidth, 1)))
     }
 
-    /// Characters of an unwrapped code row a pan can ever bring on screen: the widest
-    /// pannable content plus one viewport of slack. Drawing typesets no further.
     var reachableCodeColumns: Int {
         Int(ceil((style.maxContentWidth + viewportWidth) / max(style.codeCharacterWidth, 1)))
     }
 
-    /// Characters of an unwrapped `line` drawing typesets. Starts at `reachableCodeColumns`
-    /// and doubles while that prefix renders narrower than the reach, because glyphs
-    /// narrower than the grid (zero-width characters, proportional fallback fonts) put
-    /// more characters on screen than the grid predicts.
     func drawnCodeColumns(for line: ReviewDiffLine) -> Int {
         let reach = style.maxContentWidth + viewportWidth
         let attributes: [NSAttributedString.Key: Any] = [.font: style.codeFont, .ligature: 0]
@@ -254,7 +224,6 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         return line.columnCount
     }
 
-    /// `drawnCodeColumns(for:)` for the row being drawn, measured once per long row.
     func drawnCodeColumns(forRowID rowID: String, line: ReviewDiffLine) -> Int {
         guard line.columnCount > reachableCodeColumns else { return line.columnCount }
         if let cached = drawnCodeColumnsByRowID[rowID] { return cached }
@@ -263,16 +232,11 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         return columns
     }
 
-    // MARK: - Geometry
-
-    /// Row frame in canvas coordinates (viewport space).
     func frame(forRowAt index: Int) -> CGRect? {
         guard let frame = layout.frame(forRowAt: index) else { return nil }
         return CGRect(x: 0, y: frame.minY - verticalOffset, width: max(bounds.width, viewportWidth), height: frame.height)
     }
 
-    /// Where a row is drawn right now: the pinned rect for the sticky header, the
-    /// scrolled position for everything else. VoiceOver frames use this.
     func drawnFrame(forRowAt index: Int) -> CGRect? {
         if let sticky = stickyHeaderTarget(), sticky.rowIndex == index {
             return sticky.rect
@@ -290,15 +254,12 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         layout.rowIndex(at: verticalOffset + point.y)
     }
 
-    /// Where the header is currently drawn: pinned at the top when sticky, in place otherwise.
     func scrollAnchorScreenY(forFileID fileID: String) -> CGFloat? {
         if let sticky = stickyHeaderTarget(), rows[sticky.rowIndex].fileID == fileID {
             return 0
         }
         return layout.fileHeaderOffset(forFileID: fileID).map { $0 - verticalOffset }
     }
-
-    // MARK: - Gestures
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard gestureRecognizer === horizontalPanGesture else { return true }
@@ -330,7 +291,6 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         activateRow(at: rowIndex, point: point)
     }
 
-    /// Tap behaviour for a row, shared with VoiceOver activation (no point).
     func activateRow(at rowIndex: Int, point: CGPoint?) {
         let row = rows[rowIndex]
         switch row.kind {
@@ -352,7 +312,6 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         onLinePress?(ReviewDiffLinePress(rowID: row.id, fileID: row.fileID, gesture: .longPress))
     }
 
-    /// The checkbox toggles viewed; anywhere else on the header toggles collapse.
     private func handleFileHeaderTap(rowIndex: Int, rect: CGRect, point: CGPoint?) {
         let fileID = rows[rowIndex].fileID
         if let point, fileHeaderInteractiveRects(cardRect: rect).checkbox.contains(point) {
@@ -397,8 +356,6 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         let row = rows[rowIndex]
         return (row.fileID, row.isFileHeader ? .fileHeaderPath : .code)
     }
-
-    // MARK: - Horizontal offsets
 
     func horizontalOffset(for fileID: String?, kind: HorizontalPanKind = .code) -> CGFloat {
         guard let fileID else { return 0 }
@@ -477,7 +434,6 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         let next = min(max(horizontalOffset(for: fileID) + horizontalVelocity * CGFloat(dt), 0), maxOffset)
         setHorizontalOffset(next, for: fileID, kind: .code)
 
-        // UIScrollView deceleration rates are expressed per millisecond.
         horizontalVelocity *= CGFloat(pow(Double(UIScrollView.DecelerationRate.normal.rawValue), dt * 1000))
         if abs(horizontalVelocity) < 20 || next <= 0 || next >= maxOffset {
             stopHorizontalDeceleration()

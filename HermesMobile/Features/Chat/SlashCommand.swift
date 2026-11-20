@@ -41,9 +41,7 @@ enum ClientSideAction: String, Equatable, Sendable {
     case stop
     case new
     case help
-    /// A Hermes chat's Sessions list (#1053).
     case sessions
-    /// A Hermes chat's `/resume [name]`: a session by its title, else the Sessions list (#1053).
     case resume
 }
 
@@ -65,9 +63,7 @@ enum ServerSideAction: String, Equatable, Sendable {
     case btw
     case background
     case goal
-    /// A Hermes chat's approval bypass (#1036).
     case yolo
-    /// A Hermes chat's checkpoints: list, diff and restore (#1728).
     case rollback
 }
 
@@ -82,13 +78,6 @@ enum SlashCommandSubArgs: Equatable, Sendable {
 }
 
 extension SlashCommandSubArgs {
-    /// Whether the argument is free-form and so may contain spaces.
-    ///
-    /// A path, a personality name, and a skill query are all things the user
-    /// types spaces into, and `ParsedSlashQuery` splits them off with
-    /// `maxSplits: 1` so the whole rest of the line is the argument. The other
-    /// lists are fixed single tokens, so a space after one means the user has
-    /// stopped naming a value and gone back to writing prose.
     var allowsSpaces: Bool {
         switch self {
         case .workspaces, .personalities, .skills:

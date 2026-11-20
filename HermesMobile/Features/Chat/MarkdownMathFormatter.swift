@@ -5,24 +5,16 @@ struct MarkdownMathFormatter {
         replacingInlineMath(in: markdown) { renderedText(for: $0) }
     }
 
-    /// Image destinations carry only expression source; font and appearance belong
-    /// to the view, so streaming and settled segmentation produce identical output.
     static func inlineMathImages(in markdown: String) -> String {
         replacingInlineMath(in: markdown) { latex in
             guard latex.utf8.count <= 512 else { return nil }
             let encoded = Data(latex.utf8).base64EncodedString()
                 .replacingOccurrences(of: "+", with: "-")
                 .replacingOccurrences(of: "/", with: "_")
-            // A nonempty alt keeps Foundation from dropping an image inside a link.
             return "![\u{FFFC}](hermex-math:///" + encoded + ")"
         }
     }
 
-    /// Cheap byte walk run before the character scans. True when `text` holds a
-    /// possible math opener: `\(`, `\[`, `$$`, or a `$` followed by anything but
-    /// an ASCII digit, space, tab, or newline. It never returns false for text the
-    /// scans would change; a false positive only costs the slow path. Prices
-    /// (`$5`) and paths (`C:\Users`) are what it lets skip the scan.
     static func mayContainMath(_ text: String) -> Bool {
         var previous: UInt8 = 0
         for byte in text.utf8 {
@@ -52,8 +44,6 @@ struct MarkdownMathFormatter {
         var exhaustedParens = false
 
         while index < characters.count {
-            // Parenthesized math searches the whole line for a closer. A failed dollar
-            // candidate can stop early at another dollar, so it must not be remembered.
             if characters[index] == "\n" { exhaustedParens = false }
             guard let delimiter = inlineDelimiter(in: characters, at: index, protected: protected),
                   !(delimiter == .parens && exhaustedParens) else {
@@ -71,7 +61,6 @@ struct MarkdownMathFormatter {
             }
 
             let latex = String(characters[(index + delimiter.openLength)..<closeIndex])
-            // A `$` span ending in `/` or `:` is a shell path such as `$HOME/foo:$PATH`.
             let isShellPath = delimiter == .dollar && (latex.hasSuffix("/") || latex.hasSuffix(":"))
             if !isShellPath, looksLikeMath(latex) {
                 result += render(latex) ?? String(characters[index..<(closeIndex + delimiter.closeLength)])
@@ -186,8 +175,6 @@ struct MarkdownMathFormatter {
                 return index
             }
 
-            // A live `$` that cannot close ends the candidate, as hermes-webui's `[^$]`
-            // span does; scanning past it would pair with a later `$` and swallow prose.
             if delimiter == .dollar, characters[index] == "$", !protected[index],
                !MarkdownMathProtection.isEscaped(characters, at: index) {
                 return nil
@@ -216,7 +203,6 @@ struct MarkdownMathFormatter {
             return true
         }
         if looksLikeAssignment(trimmed) { return true }
-        // Bare numeric tuples are mathematical; bare prices and ordinary prose are not.
         if trimmed.first == "(", trimmed.last == ")",
            trimmed.range(of: #"^\(\s*[+-]?\d+(?:\.\d+)?(?:\s*,\s*[+-]?\d+(?:\.\d+)?)+\s*\)$"#,
                          options: .regularExpression) != nil { return true }
@@ -224,8 +210,6 @@ struct MarkdownMathFormatter {
         return trimmed.range(of: #"[A-Za-z0-9]\s*[=<>+\-*/|]\s*[A-Za-z0-9]"#, options: .regularExpression) != nil
     }
 
-    /// Recognizes assignment forms whose grouped right-hand side prevented the
-    /// general operator rule from seeing an alphanumeric value after `=`.
     private static func looksLikeAssignment(_ value: String) -> Bool {
         let parts = value.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
         guard parts.count == 2 else { return false }
@@ -291,10 +275,6 @@ private enum InlineDelimiter: CaseIterable {
             guard matches("$", in: characters, at: index, protected: protected) else { return false }
             if index > 0, characters[index - 1] == "$" { return false }
             if index + 1 < characters.count, characters[index + 1] == "$" { return false }
-            // `$` followed by a digit or whitespace is currency or prose, not math:
-            // mirrors hermes-webui's inline-math boundary guard, so amounts like
-            // "$250" or "$5 and $10" never open a span that swallows the text
-            // between them and the next `$` on the line.
             if index + 1 < characters.count, characters[index + 1].isNumber || characters[index + 1].isWhitespace { return false }
             return !MarkdownMathProtection.isEscaped(characters, at: index)
         case .parens:
@@ -309,8 +289,6 @@ private enum InlineDelimiter: CaseIterable {
             guard matches("$", in: characters, at: index, protected: protected) else { return false }
             if index > 0, characters[index - 1] == "$" { return false }
             if index + 1 < characters.count, characters[index + 1] == "$" { return false }
-            // Whitespace directly before a `$` reads as a prose boundary, not math:
-            // matches hermes-webui, KaTeX auto-render, and markdown-it-katex.
             if index > 0, characters[index - 1].isWhitespace { return false }
             return !MarkdownMathProtection.isEscaped(characters, at: index)
         case .parens:

@@ -35,8 +35,6 @@ final class AppColorTests: XCTestCase {
         }
     }
 
-    /// Any pick, on any theme and on Default, in both modes: a color that's too close to the
-    /// background moves until it's readable, and its label stays readable on it.
     func testAnyAccentPickIsMovedToMeetTheFloor() throws {
         for hex in ["#FFFFFF", "#000000", "#808080"] {
             for theme in ColorTheme.allCases {
@@ -57,7 +55,6 @@ final class AppColorTests: XCTestCase {
         }
     }
 
-    /// Default must look exactly like the app before themes.
     func testDefaultResolvesToSystemColors() {
         let appearance = UITraitCollection { $0[AppAppearanceTrait.self] = .default }
         for style in [UIUserInterfaceStyle.light, .dark] {
@@ -75,7 +72,6 @@ final class AppColorTests: XCTestCase {
         }
     }
 
-    /// A card sets both modes and an orb sets one, so each mode reads its own theme.
     func testTokensFollowTheThemeForTheirMode() {
         let appearance = AppAppearance(lightTheme: .paper, darkTheme: .midnight, accentHex: nil)
         let light = UITraitCollection { $0[AppAppearanceTrait.self] = appearance; $0.userInterfaceStyle = .light }
@@ -95,7 +91,6 @@ final class AppColorTests: XCTestCase {
         XCTAssertEqual(stored.darkTheme, .paper)
     }
 
-    /// Teal is the swatch the server color's luminance rule would label white, at 2.39:1.
     func testPrimaryActionsUseTheAccentWithAReadableLabel() {
         let tint = PrimaryActionTintSettings.colors(accentHex: "#30B8C4", serverHex: "#FFD700")
         let appearance = AppAppearance(lightTheme: .default, darkTheme: .default, accentHex: "#30B8C4")

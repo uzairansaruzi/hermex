@@ -22,12 +22,9 @@ final class MemoryViewModel {
     private(set) var errorMessage: String?
     private(set) var actionErrorMessage: String?
     private(set) var lastError: Error?
-    /// What a Hermes host's files add (#1073); empty on webui.
     private(set) var hiddenSections: Set<MemorySection> = []
     private(set) var characterLimits: [MemorySection: Int] = [:]
     private(set) var readOnlySections: Set<MemorySection> = []
-    /// The section whose last save found its file changed on the host since its editor
-    /// opened. Its editor keeps the draft and offers Reload; a save or Reload clears it.
     private(set) var conflictedSection: MemorySection?
     private(set) var isReloading = false
 
@@ -55,13 +52,11 @@ final class MemoryViewModel {
         }
     }
 
-    /// Clears what the last editor left: its error and its conflict.
     func clearActionError() {
         actionErrorMessage = nil
         conflictedSection = nil
     }
 
-    /// The sections the server keeps on, in screen order.
     var visibleSections: [MemorySection] {
         MemorySection.allCases.filter { !hiddenSections.contains($0) }
     }
@@ -74,16 +69,11 @@ final class MemoryViewModel {
         readOnlySections.contains(section)
     }
 
-    /// The read-only project-context section only appears when the server sent a
-    /// non-empty document. Servers without the field (or with an empty/blank one,
-    /// which is what upstream returns when no readable context file exists) render
-    /// the screen exactly as before.
     var showsProjectContext: Bool {
         guard let text = projectContextText else { return false }
         return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Non-localized "name — workspace" detail line for the project-context section.
     var projectContextDetail: String? {
         let parts = [projectContextName, projectContextWorkspace]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -113,11 +103,6 @@ final class MemoryViewModel {
         }
     }
 
-    /// Saves `content` and reloads the screen. `loaded` is the section's text when its editor
-    /// opened, the screen's current text by default. Over the section's limit, or for a file the
-    /// host turned read-only (found by Reload), nothing is sent.
-    /// A file changed on the host since `loaded` is not overwritten: `conflictedSection` names
-    /// it and the editor keeps its draft.
     func save(section: MemorySection, content: String, loaded: String? = nil) async -> Bool {
         guard !isReadOnly(section) else { return false }
         if let limit = characterLimit(for: section), MemoryCharacterCount(draft: content, limit: limit).isOver {
@@ -152,9 +137,6 @@ final class MemoryViewModel {
         }
     }
 
-    /// Reads the screen again for an editor whose save found `section` changed on the host,
-    /// and returns the host's text, which replaces the editor's draft. nil when the read
-    /// fails, with why in `actionErrorMessage`.
     func reload(_ section: MemorySection) async -> String? {
         isReloading = true
         actionErrorMessage = nil

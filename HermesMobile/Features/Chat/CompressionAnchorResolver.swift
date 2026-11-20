@@ -1,7 +1,5 @@
 import Foundation
 
-/// Session-level compaction anchor metadata carried by `SessionDetail`
-/// (`compression_anchor_*` fields in the `/api/session` payload).
 struct CompressionAnchorMetadata: Equatable {
     let visibleIdx: Int?
     let messageKey: CompressionAnchorMessageKey?
@@ -28,18 +26,10 @@ struct CompressionAnchorMetadata: Equatable {
     }
 }
 
-/// Resolves the synthesized "Context compaction · Reference only" card from
-/// session compaction metadata, mirroring the web UI's settled-reference logic
-/// (`_latestCompressionReferenceMessage`, `_shouldShowSettledCompressionReference`,
-/// `_compressionMessageAnchorKey`, and `_compressionAnchorIndex` in `ui.js`).
 enum CompressionAnchorResolver {
     struct Resolution: Equatable {
         enum Placement: Equatable {
-            /// Render the card directly after the loaded message at this raw
-            /// index into the loaded messages array.
             case afterLoadedMessageIndex(Int)
-            /// Render the card above the loaded transcript: the anchor predates
-            /// the currently loaded tail window, or only a summary resolved.
             case top
         }
 
@@ -70,13 +60,6 @@ enum CompressionAnchorResolver {
         }
 
         if let visibleIdx = metadata.visibleIdx, !candidateIndices.isEmpty {
-            // The server index counts visible messages from the absolute start
-            // of the session, while the app holds a `msg_limit` tail window.
-            // Shifting by the raw `messagesOffset` over-corrects (raw count ≥
-            // visible count), which only biases unresolved anchors toward the
-            // top clamp — the degraded behavior the issue asks for when the
-            // anchor predates the loaded tail. The key match above remains the
-            // precise path.
             let localIdx = visibleIdx - max(0, messagesOffset)
             guard localIdx >= 0 else {
                 return Resolution(referenceText: referenceText, placement: .top)
@@ -92,11 +75,6 @@ enum CompressionAnchorResolver {
         return Resolution(referenceText: referenceText, placement: .top)
     }
 
-    // MARK: - Reference text
-
-    /// Mirrors `_latestCompressionReferenceMessage`: prefer the latest literal
-    /// compaction-marker message (matching summary containment when a summary
-    /// exists), falling back to the summary itself.
     private static func referenceText(in messages: [ChatMessage], summary: String) -> String {
         let normalizedSummary = normalizedWhitespace(summary)
 
@@ -112,16 +90,12 @@ enum CompressionAnchorResolver {
         return summary
     }
 
-    /// Mirrors `_shouldShowSettledCompressionReference`: non-empty reference
-    /// text that is not itself a literal compaction marker.
     private static func shouldShowReference(_ referenceText: String) -> Bool {
         let trimmed = referenceText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
 
         return !ChatMarkerMessageClassifier.isContextCompactionText(trimmed)
     }
-
-    // MARK: - Anchor matching
 
     private struct CandidateKey {
         let role: String
@@ -130,10 +104,6 @@ enum CompressionAnchorResolver {
         let attachments: Int
     }
 
-    /// Loaded indices of messages eligible to anchor the card. Approximates the
-    /// server's `visible_messages_for_anchor` list (which both the anchor key
-    /// and `compression_anchor_visible_idx` are computed against): non-tool,
-    /// non-marker messages that carry text, attachments, or assistant activity.
     private static func anchorCandidateIndices(in messages: [ChatMessage]) -> [Int] {
         messages.indices.filter { index in
             let message = messages[index]
@@ -152,7 +122,6 @@ enum CompressionAnchorResolver {
         }
     }
 
-    /// Mirrors `_compressionMessageAnchorKey`.
     private static func candidateKey(for message: ChatMessage) -> CandidateKey? {
         guard let role = message.role, !role.isEmpty, role != "tool" else { return nil }
 
@@ -166,9 +135,6 @@ enum CompressionAnchorResolver {
         return CandidateKey(role: role, ts: ts, text: normalizedText, attachments: attachments)
     }
 
-    /// Mirrors `_compressionAnchorIndex`'s reverse scan: role and normalized
-    /// text must match exactly, attachment counts must match, and timestamps
-    /// are compared only when both sides have one.
     private static func latestMatch(
         of anchorKey: CompressionAnchorMessageKey,
         in messages: [ChatMessage],
@@ -190,8 +156,6 @@ enum CompressionAnchorResolver {
         return nil
     }
 
-    /// First 160 characters of whitespace-normalized text, matching the server's
-    /// `" ".join(text.split()).strip()[:160]` key construction.
     static func normalizedAnchorText(_ text: String) -> String {
         String(normalizedWhitespace(text).prefix(160))
     }

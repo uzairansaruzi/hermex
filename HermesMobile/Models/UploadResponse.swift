@@ -18,12 +18,7 @@ struct PendingAttachment: Identifiable, Equatable {
     let size: Int?
     let isImage: Bool
     let thumbnailData: Data?
-    /// File name of the durable app-owned draft copy in ChatDraftAttachmentStore.
-    /// Fresh composer attachments always have one; standalone sends such as voice
-    /// notes do not participate in draft persistence and leave it nil.
     let draftFileName: String?
-    /// A long paste the composer staged as `pasted-text.txt` (#1381), never a picked file
-    /// of the same name. Its text becomes the prompt's `title_preview` (#1701).
     let isClipboardPaste: Bool
 
     init(
@@ -164,8 +159,6 @@ extension PendingAttachment {
             return draft
         }
 
-        // Attachment-only sends synthesize the message the web UI sends
-        // (`static/messages.js`), since the server requires non-empty text.
         let base = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         if base.isEmpty {
             return "I've uploaded \(references.count) file(s): \(references.joined(separator: ", "))"
@@ -174,16 +167,10 @@ extension PendingAttachment {
         return "\(draft)\n\n[Attached files: \(references.joined(separator: ", "))]"
     }
 
-    /// True for the text `chatMessageText` makes up for an attachment-only
-    /// send: it names the files, not anything the user typed.
     static func isAttachmentOnlyMessageText(_ text: String) -> Bool {
         text.wholeMatch(of: /I've uploaded \d+ file\(s\): .+/) != nil
     }
 
-    /// The steer text with the web UI's attached-files note appended verbatim
-    /// (`static/commands.js`, `_steerTextWithPendingFiles`), so a steer reads
-    /// the same from either client. The files are already uploaded, so the
-    /// note is all the agent needs to find them.
     static func steerMessageText(draft: String, attachments: [PendingAttachment]) -> String {
         let references = agentReferences(for: attachments)
 
@@ -196,8 +183,6 @@ extension PendingAttachment {
         return "\(draft)\n\n\(note)"
     }
 
-    /// Where the agent reads each attachment: its uploaded path, or its name
-    /// when the upload returned no path.
     private static func agentReferences(for attachments: [PendingAttachment]) -> [String] {
         attachments
             .map { $0.path.isEmpty ? $0.name : $0.path }

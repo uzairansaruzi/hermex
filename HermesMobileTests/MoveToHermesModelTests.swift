@@ -3,10 +3,6 @@ import XCTest
 import UIKit
 @testable import HermesMobile
 
-/// The guided Move to Hermes sheet's model (#1218): Review reads and changes nothing, refusals
-/// come from the host's own sign-in check and the webui's running chats, the pairing is read only
-/// after Move, closing pauses, Done switches servers only after acknowledging, and the banners
-/// and removal copy say what stays behind without claiming more than the move knows.
 @MainActor
 final class MoveToHermesModelTests: XCTestCase {
     private let webui = URL(string: "https://webui.example")!
@@ -52,10 +48,6 @@ final class MoveToHermesModelTests: XCTestCase {
         MoveWebuiFixture.reset()
     }
 
-    // MARK: Review
-
-    /// The scan reads both servers and changes nothing. A same-name Profile is preselected and
-    /// any other starts on the host's default Profile (#1266), which the user can still change.
     func testReviewPreselectsSameNameProfilesAndChangesNothing() async throws {
         host.listed = ["default": ["had"]]
         host.defaultProfile = "research"
@@ -87,7 +79,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertTrue(auth.servers.allSatisfy { $0.kind == .webui })
     }
 
-    /// Chats Hermes didn't answer about are counted apart from those to copy.
     func testUncheckedChatsAreCountedApart() async throws {
         host.failingReads = ["flaky"]
         MoveWebuiFixture.rows = [row("flaky", profile: "default"), row("new", profile: "default")]
@@ -99,8 +90,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(model.counts, .init(present: 0, toCopy: 1, overLimit: 0, unchecked: 1, drafts: 0))
     }
 
-    /// R3 is the host's own sign-in refusal; any other failure shows its advice inline. Neither a
-    /// browser sign-in (#1266) nor a dashboard without one (#1314) is refused.
     func testRefusalsComeFromTheHostSignInCheck() async throws {
         let cases: [(BotFailure, MoveToHermesModel.Screen?)] = [
             (.unsupported, nil), (.browserSignIn, nil),
@@ -121,8 +110,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertTrue(MoveWebuiFixture.requests.isEmpty, "A refused host stops before the webui is read")
     }
 
-    /// R4: chats the webui is streaming, by either field the session list reads, and this
-    /// iPhone's running Live Activities for it. A running CLI session the webui shows isn't one.
     func testRunningChatsRefuseTheMove() async throws {
         var stream = row("streamID", profile: "default")
         stream["active_stream_id"] = .string("s1")
@@ -138,7 +125,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .refused(.running(3)))
     }
 
-    /// A chat that starts running while Review is open stops Move before the commit.
     func testMoveChecksRunningChatsAgainBeforeSending() async throws {
         MoveWebuiFixture.rows = [row("new", profile: "default")]
         MoveWebuiFixture.exports = ["new": exportData("new")]
@@ -157,7 +143,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(pairingReads, 0)
         XCTAssertTrue(notices.running.isEmpty)
 
-        // A list that can't be read is unknown, never "nothing running".
         MoveWebuiFixture.rows = [row("new", profile: "default")]
         MoveWebuiFixture.listingFailure = 503
         model.retryCheckedPass()
@@ -171,9 +156,6 @@ final class MoveToHermesModelTests: XCTestCase {
         guard case .finished = model.screen else { return XCTFail("Try Again runs the same pass, got \(model.screen)") }
     }
 
-    /// Without a saved Hermes sign-in, D asks. Its "Sign in to a Hermes host" is the normal
-    /// sign-in (#1266), which adds the server without switching to it; the move then scans it
-    /// with that server's own sign-in, adopts it at the commit, and only Done switches.
     func testWithoutASavedSignInTheHostIsChosen() async throws {
         try BotConnectionStore(keychain: keychain).remove(server: webui)
         MoveWebuiFixture.rows = [row("new", profile: "default")]
@@ -206,8 +188,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(auth.activeServerID, hermes.absoluteString)
     }
 
-    /// The offer after a sign-in scans the server it names, even where the webui server's Bots
-    /// connection names another host; a Bots connection alone skips the host choice as before.
     func testTheOfferScansTheServerJustSignedIn() async throws {
         let other = URL(string: "https://other.example")!
         XCTAssertTrue(auth.addHermesServer(BotConnection(id: UUID(), name: "", address: other, username: "me", password: "pw")))
@@ -225,8 +205,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(bots.review?.connection.address, hermes, "The Bots connection still names the host")
     }
 
-    /// Adding a Hermes server offers the first webui server in the list without a move record,
-    /// one at a time; a sign-in opened from a move offers nothing.
     func testAHermesSignInOffersTheFirstWebuiServerThatHasntMoved() async throws {
         let studio = URL(string: "https://studio.example")!
         await auth.configure(serverURLString: studio.absoluteString, password: "")
@@ -259,8 +237,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveOffer, "Every webui server has a move record")
     }
 
-    /// The offer holds only while its destination is the signed-in active server and both
-    /// servers are still there: switching away, signing out, or removing either one ends it.
     func testTheOfferEndsWhenItsServersChange() async throws {
         let studio = URL(string: "https://studio.example")!
         await auth.configure(serverURLString: studio.absoluteString, password: "")
@@ -290,9 +266,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveOffer, "Removing the destination")
     }
 
-    /// Signing in again to a Hermes server already in the list offers the move too, keeping
-    /// the server's saved connection; not from a move's own sign-in, or once the webui server
-    /// has moved.
     func testSigningInAgainToAHermesServerOffersTheMove() async throws {
         let one = URL(string: "https://one.example")!
         let connection = BotConnection(id: UUID(), name: "", address: one, username: "me", password: "pw")
@@ -322,11 +295,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveOffer, "The webui server has a move record")
     }
 
-    // MARK: The one-time question and its banner (#1267)
-
-    /// Each webui server is asked once, one server a launch, and only while it is the active
-    /// server. Its second line follows whether it has a Bots connection, and the banner follows
-    /// the question.
     func testEachWebuiServerIsAskedOnceAndOneALaunch() async throws {
         let studio = URL(string: "https://studio.example")!
         await auth.configure(serverURLString: studio.absoluteString, password: "")
@@ -361,8 +329,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveQuestion, "Every webui server was asked")
     }
 
-    /// The question belongs to its server's screens: it ends when another server becomes active
-    /// or its server's sign-in expires, and the server stays asked, with its banner.
     func testTheQuestionEndsWhenItsServerIsNoLongerActive() async throws {
         let studio = URL(string: "https://studio.example")!
         await auth.configure(serverURLString: studio.absoluteString, password: "")
@@ -382,8 +348,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveQuestion, "Not over its sign-in form")
     }
 
-    /// The question shows over its server's chat list only: not while a chat is pushed over it
-    /// (iPhone) or its sidebar is hidden (iPad), and once the list is back.
     func testTheQuestionWaitsForItsChatListToBeOnScreen() async throws {
         let notices = MoveToHermesNotices()
         notices.noteChatList(of: webui.absoluteString, onScreen: true)
@@ -399,8 +363,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
     }
 
-    /// A covering presentation parks the question until it closes, one layer at a time, even a
-    /// full-screen cover over a sheet, which takes the sheet out of the window (#1274).
     func testTheQuestionWaitsOutAFullScreenCoverOverASheet() async throws {
         let notices = MoveToHermesNotices()
         notices.noteChatList(of: webui.absoluteString, onScreen: true)
@@ -450,8 +412,6 @@ final class MoveToHermesModelTests: XCTestCase {
         }
     }
 
-    /// ✕ hides one server's banner for good: across a server switch, an identity edit from an
-    /// older copy of the entry, and a relaunch. The other server keeps its banner.
     func testADismissedBannerStaysDismissedForItsServerOnly() async throws {
         let studio = URL(string: "https://studio.example")!
         await auth.configure(serverURLString: studio.absoluteString, password: "")
@@ -475,8 +435,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveQuestion)
     }
 
-    /// A webui server with a move record, in progress or finished, gets neither the question nor
-    /// the invite; its Paused, Finished and Moved banners speak for it (#1225).
     func testAServerWithAMoveRecordIsNeverAskedOrInvited() throws {
         let account = try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString })
         try auth.commitMove(from: account, to: BotConnection(id: UUID(), name: "", address: hermes, username: "admin", password: "secret"),
@@ -493,8 +451,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertFalse(auth.showsMoveInvite(for: hermes.absoluteString), "A Hermes server is never invited")
     }
 
-    /// The question never stacks on the sign-in offer, and an offer shown this launch takes the
-    /// launch's one move sheet. It never shows over a Hermes server or a sign-in form.
     func testTheQuestionWaitsForTheOfferAndASignIn() async throws {
         let one = URL(string: "https://one.example")!
         XCTAssertTrue(auth.addHermesServer(BotConnection(id: UUID(), name: "", address: one, username: "me", password: "pw")))
@@ -523,7 +479,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
     }
 
-    /// Removing a webui server forgets its question and banner with it; added back, it is new.
     func testRemovingAServerForgetsItsQuestion() async throws {
         let studio = URL(string: "https://studio.example")!
         await auth.configure(serverURLString: studio.absoluteString, password: "")
@@ -538,7 +493,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(auth.moveQuestion?.sourceID, studio.absoluteString)
     }
 
-    /// Closing during the scan cancels it: nothing is committed and no Review appears.
     func testClosingBeforeMoveChangesNothing() async throws {
         MoveWebuiFixture.rows = [row("new", profile: "default")]
         let model = makeModel()
@@ -553,10 +507,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(pairingReads, 0)
     }
 
-    // MARK: Moving
-
-    /// Move runs the landed runner: the pairing read comes after the commit, the report waits
-    /// for Done, and only Done switches to the destination, after acknowledging.
     func testMoveFinishesAndOnlyDoneSwitchesToTheDestination() async throws {
         MoveWebuiFixture.rows = [row("new", profile: "default")]
         MoveWebuiFixture.exports = ["new": exportData("new")]
@@ -583,8 +533,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(notices.banner(for: webui.absoluteString, in: auth.servers)?.stage, .moved)
     }
 
-    /// Remove from the report switches to the destination as Done does, then removes the webui
-    /// server; the destination keeps the move record, so old links still route (#1224).
     func testRemovingFromTheReportKeepsTheMoveRecord() async throws {
         MoveWebuiFixture.rows = [row("new", profile: "default")]
         MoveWebuiFixture.exports = ["new": exportData("new")]
@@ -608,8 +556,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(notices.banner(for: hermes.absoluteString, in: auth.servers), "The report was acknowledged")
     }
 
-    /// Move Next opens at the host step even with a saved Hermes sign-in, which it offers first:
-    /// neither server is read until the user picks it.
     func testMoveNextWaitsForAHostBeforeChecking() async throws {
         MoveWebuiFixture.rows = [row("new", profile: "default")]
         let model = makeModel()
@@ -631,9 +577,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(MoveWebuiFixture.requests.compactMap { $0.url?.path }.filter { $0 != "/api/profiles" }, ["/api/sessions"])
     }
 
-    /// Move Next from a finished report acknowledges it without switching servers, then opens the
-    /// next webui server at the host step: even with its own saved sign-in, neither server is
-    /// read until the user picks a host.
     func testMoveNextAcknowledgesTheReportAndWaitsForAHost() async throws {
         MoveWebuiFixture.rows = [row("new", profile: "default")]
         MoveWebuiFixture.exports = ["new": exportData("new")]
@@ -669,9 +612,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(notices.banner(for: webui.absoluteString, in: auth.servers)?.stage, .moved)
     }
 
-    /// Move Next inside the one-time question's sheet: the next webui server, without a Bots
-    /// connection, signs in the normal way (#1266), which neither switches servers, raises the
-    /// offer, nor closes the question's sheet (#1267). Only its Done does, by switching away.
     func testMoveNextFromTheQuestionSignsInWithoutClosingIt() async throws {
         let studio = URL(string: "https://studio.example")!
         await auth.configure(serverURLString: studio.absoluteString, password: "")
@@ -721,9 +661,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveOffer)
     }
 
-    /// Remove after a move the sign-in offer started (#1266): the offer's sheet survives the
-    /// commit, then Remove ends it with the webui server. The destination keeps its own sign-in
-    /// and the move record (#1224, #1265).
     func testRemovingAfterTheOffersMoveKeepsTheDestinationsSignIn() async throws {
         try BotConnectionStore(keychain: keychain).remove(server: webui)
         let signedIn = BotConnection(id: UUID(), name: "", address: hermes, username: "admin", password: "secret")
@@ -752,8 +689,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNotNil(auth.moveRecord(forSource: webui.absoluteString)?.record.completedAt)
     }
 
-    /// Copy Missing Chats Again keeps the finished report until Move starts the next pass: a
-    /// scan that can't read the webui leaves the report to reopen, and the next pass replaces it.
     func testCopyMissingChatsAgainKeepsTheReportUntilMove() async throws {
         MoveWebuiFixture.rows = [row("new", profile: "default")]
         MoveWebuiFixture.exports = ["new": exportData("new")]
@@ -782,8 +717,6 @@ final class MoveToHermesModelTests: XCTestCase {
         await reopened.settled()
         XCTAssertEqual(reopened.screen, .review)
 
-        // A chat that starts running while this Review is open stops Move, though the old
-        // journal has nothing left to copy, and the report is still there.
         MoveWebuiFixture.rows = [row("new", profile: "default"), row("later", profile: "default", streaming: true)]
         reopened.move()
         await reopened.settled()
@@ -801,8 +734,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(next.copied, ["later"])
     }
 
-    /// Closing mid-move pauses it; the paused details show its counts and that it was closed,
-    /// and Resume finishes it.
     func testClosingPausesAndResumeFinishes() async throws {
         MoveWebuiFixture.rows = [row("a", profile: "default"), row("b", profile: "default")]
         MoveWebuiFixture.exports = ["a": exportData("a"), "b": exportData("b")]
@@ -834,7 +765,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(model.snapshot?.total, 2)
         XCTAssertEqual(model.snapshot?.unplanned, 2, "Copied chats whose titles, pins, folders and drafts wait for Resume")
         XCTAssertEqual(model.snapshot?.copyLeft, 0)
-        // With nothing left to copy, Resume finishes on Hermes even while the webui is unreachable.
         MoveWebuiFixture.listingFailure = 503
 
         model.resume()
@@ -843,8 +773,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(report.chatsInHermes, 2)
         XCTAssertFalse(model.wasClosed)
     }
-
-    // MARK: Notices
 
     func testBannersShowOnTheRightServers() {
         let source = ServerAccount(id: webui.absoluteString, urlString: webui.absoluteString, displayName: "Home Mac", initials: "HM",
@@ -875,10 +803,6 @@ final class MoveToHermesModelTests: XCTestCase {
                                                   running: ["\(source.id)\n\(destination.id)"])?.stage, .running)
     }
 
-    // MARK: Removal
-
-    /// S2: what may stay only on the webui server, and the routes that keep working. Notifications
-    /// keep opening only for a shared install. No draft warning.
     func testRemovingTheSourceCountsWhatStaysBehind() {
         let pairing = { (key: String) in PushPairing(relayURL: URL(string: "https://relay.example")!, installKey: key, previewKey: "k") }
         let report = MovedWebuiReport(remaining: 6, unchecked: 1, oversized: 1, kept: 5, recordedAt: .now)
@@ -923,8 +847,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertTrue(message.contains("The move to Hermes Home hasn’t finished. At the last count, 11 chats were only on Home Mac. 2 more couldn’t be checked."), message)
     }
 
-    /// The record keeps the kept-chat count for S2, unknown after a partial scan, and reads
-    /// records saved before it existed.
     func testTheRecordKeepsTheKeptCount() throws {
         var report = MoveToHermesReport()
         report.keptOnWebui = ["a", "b"]
@@ -937,8 +859,6 @@ final class MoveToHermesModelTests: XCTestCase {
         let old = try JSONDecoder().decode(MovedWebuiReport.self, from: Data(#"{"remaining":1,"recordedAt":0}"#.utf8))
         XCTAssertNil(old.kept)
     }
-
-    // MARK: Helpers
 
     private func runnerEnvironment() -> MoveToHermesRunner.Environment {
         let configuration = URLSessionConfiguration.ephemeral
@@ -958,7 +878,6 @@ final class MoveToHermesModelTests: XCTestCase {
         return environment
     }
 
-    /// A new app launch over the same Keychain: a fresh `AuthManager` and registry.
     private func relaunch() {
         auth = AuthManager(
             keychain: keychain,
@@ -993,7 +912,6 @@ final class MoveToHermesModelTests: XCTestCase {
         return (try? JSONEncoder().encode(export)) ?? Data()
     }
 
-    /// A webui server "Home Mac" moved to the Hermes server "Hermes Home", keeping "ops".
     private func moved(report: MovedWebuiReport?, completed: Bool = true) -> (source: ServerAccount, servers: [ServerAccount]) {
         let source = ServerAccount(id: webui.absoluteString, urlString: webui.absoluteString, displayName: "Home Mac", initials: "HM",
                                    headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: .now, updatedAt: .now)
@@ -1008,7 +926,6 @@ final class MoveToHermesModelTests: XCTestCase {
     }
 }
 
-/// The webui server is paired, so the carry reads the host once after the commit.
 @MainActor private final class ModelRegistrar: PushPairingCopying {
     func pairing(for server: URL) -> PushPairing? {
         guard server.host == "webui.example" else { return nil }

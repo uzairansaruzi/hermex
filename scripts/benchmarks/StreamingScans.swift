@@ -1,8 +1,5 @@
 import Foundation
 
-/// Per-call timings of the scans a streaming reply pays on every update, at an
-/// early and a late point of a code-heavy reply. Flat growth from 5 KB to 30 KB
-/// means the cost tracks the reply length linearly, not quadratically.
 @main
 struct StreamingScansBenchmark {
     static func reply(bytes: Int) -> String {

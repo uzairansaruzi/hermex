@@ -2,8 +2,6 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// A Hermes server's Sessions list (#1046): `SessionListViewModel` with a Hermes backend on a
-/// scripted wire whose pages, read marks and live states are the shapes the 0.21.5 pin answers.
 @MainActor final class HermesSessionListTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
@@ -55,17 +53,13 @@ import Observation
         wire.holdsPages = false
         wire.release()
         await waitUntil("refresh has extended to the newly loaded page") { wire.scheduledReads.count == 4 }
-        // The refresh reads live states only once it has applied its pages: it kept the Load more's rows.
         await waitUntil("refresh applied") { wire.calls.filter { $0.method == "session.active_list" }.count == 2 }
         XCTAssertEqual(list.sessions.count, 101)
-        // Reopening waits for its complete refresh too, while retaining that page depth.
         await list.openHermes()
         XCTAssertEqual(list.sessions.count, 101)
         XCTAssertTrue(list.sessions.contains { $0.sessionId == "last-job" })
         XCTAssertFalse(list.hasMoreScheduledSessions)
     }
-
-    // MARK: Scheduled sessions
 
     func testScheduledSectionLoadsGroupsCountsAndFollowsProfile() async throws {
         let wire = HermesSessionListWire()
@@ -102,7 +96,6 @@ import Observation
         XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["ordinary"])
         XCTAssertEqual(groups.scheduled.compactMap(\.sessionId), ["past-page-job"])
         XCTAssertEqual(wire.scheduledSearches.map(\.query), ["needle"])
-        // Cron Sessions off in Settings hides the host's cron matches too (#1585).
         var cronHidden = AutomatedSessionVisibility.showAll
         cronHidden.showsCron = false
         let hidden = list.scheduledSessionGroups(searchText: "needle", selectedProjectID: nil, automatedVisibility: cronHidden)
@@ -127,8 +120,6 @@ import Observation
         XCTAssertEqual(list.sessions.count, 101)
     }
 
-    /// A list read that replaces a scheduled "Load more" and then fails lets go of that
-    /// "Load more", as it does the ordinary one, so the next one reads the page.
     func testAFailedListReadDuringScheduledLoadMoreLeavesItUsable() async throws {
         let wire = HermesSessionListWire()
         let first = (0..<100).map { HermesSessionRow(id: "job-\($0)", lastActive: Double(200 - $0), source: "cron") }
@@ -149,8 +140,6 @@ import Observation
         await more.value
 
         XCTAssertFalse(list.isLoadingMoreScheduledSessions, "the failed read let go of the scheduled Load more")
-        // The failed refresh may or may not start its own scheduled read before the ordinary
-        // failure cancels it, so count only what this Load more reads.
         let earlierReads = wire.scheduledReads.count
         await list.loadMoreHermesScheduledSessions()
         XCTAssertEqual(wire.scheduledReads.dropFirst(earlierReads).map(\.offset), [100])
@@ -158,7 +147,6 @@ import Observation
         XCTAssertFalse(list.hasMoreScheduledSessions)
     }
 
-    /// A refused scheduled "Load more" shows over the rows until a retry loads the page (#1374).
     func testARefusedScheduledLoadMoreClearsOnceARetryLoads() async {
         let wire = HermesSessionListWire()
         wire.scheduledPages = ["default": [0: page(rows(0..<100)), 100: page(rows(100..<101))]]
@@ -196,8 +184,6 @@ import Observation
         XCTAssertTrue(try XCTUnwrap(search.results.first).row.summary(in: "research").isCronSession)
     }
 
-    /// A scheduled row's archive leaves the section and its count at once, and the ordinary
-    /// rows stay as they were.
     func testArchivingAScheduledRowLeavesTheSectionAndItsCount() async throws {
         let wire = HermesSessionListWire()
         wire.scheduledPages = ["default": [0: HermesSessionPage(rows: [HermesSessionRow(id: "job-a", lastActive: 2, source: "cron"),
@@ -218,8 +204,6 @@ import Observation
         XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["ordinary"])
     }
 
-    // MARK: Paging
-
     func testPagesLoadInTurnAndAShortPageEndsTheList() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page(rows(0..<100)), 100: page(rows(100..<130))]
@@ -235,8 +219,6 @@ import Observation
         XCTAssertFalse(list.hasMoreSessions)
     }
 
-    /// Every page repeats the pinned rows it missed, archived ones included: each shows once,
-    /// pinned first, and an archived one never.
     func testPinnedBackFillShowsOnceAndArchivedPinnedRowsNever() async {
         let wire = HermesSessionListWire()
         let pinned = HermesSessionRow(id: "pinned", lastActive: 1, pinned: true)
@@ -255,8 +237,6 @@ import Observation
         XCTAssertFalse(shown.contains("archived"))
     }
 
-    /// A list read that begins while "Load more" waits replaces it and reads that page itself,
-    /// so the list still pages past 100 rows and "Load more" never stays disabled.
     func testAListReadDuringLoadMoreReadsThatPageItself() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page(rows(0..<100)), 100: page(rows(100..<130))]
@@ -279,9 +259,6 @@ import Observation
         XCTAssertFalse(list.hasMoreSessions)
     }
 
-    /// View all shows the list's own rows, and each screen opens the list as it appears, before
-    /// the one it replaces disappears (the order SwiftUI used on the simulator). So moving
-    /// between them keeps `sessions.changed` read on both; a chat opened from View all pauses it.
     func testMovingBetweenTheListAndViewAllKeepsLiveUpdates() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -290,7 +267,6 @@ import Observation
         await list.openHermes()
         var covers = HermesSessionListCovers()
 
-        // View all pushed: it opens the list, then the list's rows disappear.
         covers.showingScheduled = true
         await list.openHermes()
         covers.listDisappeared(list)
@@ -298,7 +274,6 @@ import Observation
         wire.emit("sessions.changed")
         await waitUntil("View all read the change") { wire.pageReads.count > reads }
 
-        // Back: the list opens as it appears, then View all disappears.
         covers.showingScheduled = false
         await list.openHermes()
         covers.scheduledDisappeared(list)
@@ -306,7 +281,6 @@ import Observation
         wire.emit("sessions.changed")
         await waitUntil("the list read the change") { wire.pageReads.count > reads }
 
-        // A chat opened from View all pauses the list and keeps its socket.
         covers.showingScheduled = true
         await list.openHermes()
         covers.listDisappeared(list)
@@ -315,8 +289,6 @@ import Observation
         XCTAssertTrue(list.isHermesConnected)
     }
 
-    /// Coming back to the foreground reopens only a list whose rows, or View all's, are on
-    /// screen: a chat over View all on a phone stays closed until it returns (#1317).
     func testForegroundReopensOnlyAListWhoseRowsAreShowing() {
         var covers = HermesSessionListCovers()
         covers.showingScheduled = true
@@ -331,11 +303,6 @@ import Observation
         XCTAssertFalse(covers.reopensOnForeground(usesSplit: false), "another screen over the list")
     }
 
-    // MARK: Rows
-
-    /// The attachment-title rule (#1046 comment of 2026-10-05): a title or `preview` drops the
-    /// reference lines a Hermex send appends, whole or cut off by the host, and falls back to
-    /// the first attachment's name, or to nothing.
     func testTitlesAndPreviewsDropAttachmentReferences() {
         let image = "[The user attached an image: dashboard_20261005_120000_0123abcd_IMG_2041.jpg]"
         let examine = "[Examine it with the vision_analyze tool using image_url: /h/.hermes/images/dashboard_20261005_120000_0123abcd_IMG_2041.jpg]"
@@ -350,7 +317,6 @@ import Observation
             ("Summarize report.pdf @file:`/Users/someone/.hermes/attach...", "Summarize report.pdf"),
             ("Plan the launch for the new pricing page and draft the e...", "Plan the launch for the new pricing page and draft the e..."),
             ("Email bob@example.com about [the plan]", "Email bob@example.com about [the plan]"),
-            // A host's own image notes (#1644): its native hint, cut, and its text-mode note.
             ("What is this?  [Image attached at: /private/var/folders/sk/6...", "What is this?"),
             ("What do you see in this image?  [Image attached at: /h/.hermes/cache/documents/native-inputs/3f/"
                 + "dashboard_20261111_194223_195f8b19_cat.png] [screenshot]", "cat.png"),
@@ -367,10 +333,6 @@ import Observation
         XCTAssertEqual(SessionRowView.displayTitle(for: photoOnly.summary(in: "default")), "Untitled Session")
     }
 
-    // MARK: Unread
-
-    /// Opening a row clears its dot at once and marks it read on the host, so Desktop agrees.
-    /// A write the host refuses shows the host's mark again.
     func testOpeningARowMarksItReadAndARefusedWriteShowsItUnreadAgain() async throws {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a", unread: true, profile: "default")])]
@@ -389,9 +351,6 @@ import Observation
         await waitUntil("rolled back") { list.isUnread(row) }
     }
 
-    /// Marking a row unread and opening it at once makes two marks. Sent together they could
-    /// land in either order and leave the older one on the host, so the newer waits for the
-    /// older to land.
     func testASessionsMarksReachTheHostInTheOrderTheyWereMade() async throws {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a", unread: false)])]
@@ -403,7 +362,6 @@ import Observation
         list.toggleUnread(row)
         await waitUntil("unread mark sent") { wire.unreadWrites.count == 1 }
         list.beginViewing(row)
-        // One main-queue turn: a write started alongside the first would be on the wire now.
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             DispatchQueue.main.async { continuation.resume() }
         }
@@ -417,8 +375,6 @@ import Observation
         XCTAssertFalse(list.isUnread(row))
     }
 
-    /// The reply you just watched finished after the chat marked the session read, so the
-    /// host calls it unread: the first read after returning marks it read again, and only it.
     func testReturningFromAChatMarksItReadAgain() async throws {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a", unread: false), HermesSessionRow(id: "b", unread: true)])]
@@ -438,10 +394,6 @@ import Observation
         XCTAssertEqual(list.sessions.map { list.isUnread($0) }, [false, true])
     }
 
-    // MARK: Live state
-
-    /// `session.active_list` marks the listed rows by session key; idle and other Profiles'
-    /// runtimes mark nothing.
     func testLiveStatesMarkListedRowsBySessionKey() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page(["a", "b", "c"].map { HermesSessionRow(id: $0) })]
@@ -455,10 +407,6 @@ import Observation
         XCTAssertEqual(list.attentionStatesBySessionID, ["a": .working, "b": .input])
     }
 
-    /// A waiting row whose runtime holds an unresolved approval reads as Approval, one waiting on
-    /// a question as Input, each asked by its runtime id; both lift into Needs you (#1679). The
-    /// rows' states show before the approval reads answer, and a row keeps Approval while any of
-    /// its runtimes' reads failed.
     func testWaitingRowsTellApprovalFromInput() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page(["approve", "ask", "work"].map { HermesSessionRow(id: $0) })]
@@ -488,9 +436,6 @@ import Observation
         XCTAssertEqual(list.attentionStatesBySessionID["approve"], .approval)
     }
 
-    /// The Archived row counts the listed Profile's archived sessions (#1679). A slow count holds
-    /// no later list read back, and a read a Profile switch left behind can't stop the new
-    /// Profile's count; a list of every Profile has no row, so no count.
     func testTheArchivedRowCountsTheListedProfile() async {
         let wire = HermesSessionListWire()
         wire.archivedTotals = ["default": 3, "research": 5]
@@ -518,10 +463,6 @@ import Observation
         XCTAssertNil(list.archivedCount)
     }
 
-    /// A row whose turn ended while its delegated children or background processes still run reads
-    /// Working, matched by its session key or its lineage root (#1730). A roster id the list
-    /// doesn't hold marks nothing, an entry with nothing running marks nothing, Approval still wins
-    /// and keeps its row in Needs you, and the label goes on the first list read after the work ends.
     func testBackgroundWorkKeepsAnEndedTurnWorking() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([
@@ -554,8 +495,6 @@ import Observation
         XCTAssertEqual(state("approve"), .approval)
     }
 
-    /// A roster entry for a row the list hasn't loaded yet marks that row once Load more brings it
-    /// in, with no further roster read (#1730).
     func testBackgroundWorkMarksARowLoadMoreBringsIn() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page(rows(0..<100)), 100: page(rows(100..<101))]
@@ -574,8 +513,6 @@ import Observation
         XCTAssertEqual(wire.calls.filter { $0.method == "subagent.roster" }.count, 1)
     }
 
-    /// The roster is read with each list read and never by the busy re-read: ticks of
-    /// `statusPollInterval` send no further roster call, and a `sessions.changed` sends one (#1730).
     func testTheRosterIsReadOncePerListRead() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -597,8 +534,6 @@ import Observation
         await waitUntil("list read again") { count("subagent.roster") == 2 }
     }
 
-    /// A host without `subagent.roster` (-32601) shows exactly the states `session.active_list`
-    /// gives, and the socket never asks it again (#1730).
     func testAHostWithoutTheRosterShowsOnlyTheActiveListStates() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a"), HermesSessionRow(id: "b")])]
@@ -626,8 +561,6 @@ import Observation
         XCTAssertNil(state("b"))
     }
 
-    /// The rating prompt's idle check reads the host fresh: any running or waiting session, listed
-    /// or not, is busy, and a list that isn't live has no answer.
     func testHostIdleCheckReadsTheHostFresh() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -647,9 +580,6 @@ import Observation
         XCTAssertEqual(unknown, false, "a status the app doesn't know is not idle")
     }
 
-    /// Loaded rows waiting on the user lift into Needs you in list order, pinned ones too, after
-    /// the project lane; working and cron rows stay put, a search lifts nothing, and an answered
-    /// row returns on the next status read (#1393).
     func testWaitingRowsLiftIntoNeedsYouUntilAnswered() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([
@@ -684,8 +614,6 @@ import Observation
                        ["pinned-waiting", "pinned-idle", "working", "waiting", "idle"])
     }
 
-    /// CLI and Messaging Sessions off (#1674) drops every row with a source chip, a waiting
-    /// one's Needs-you lift included, and keeps Hermex's own chats.
     func testHidingCliAndMessagingSessionsDropsChippedRows() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([
@@ -707,10 +635,6 @@ import Observation
         XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["hermex"])
     }
 
-    // MARK: Refresh
-
-    /// A burst of `sessions.changed` reads once; events while that read is out ask for one more
-    /// after it, and the list ends on the host's latest rows.
     func testSessionsChangedBurstsReadOnceAndQueueOneMore() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a", title: "First")])]
@@ -729,7 +653,6 @@ import Observation
         XCTAssertEqual(wire.pageReads.count, 3, "open, the burst's read and exactly one more")
     }
 
-    /// A read that began before a newer one never replaces the newer one's rows.
     func testOnlyTheNewestReadApplies() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a", title: "Old")])]
@@ -749,10 +672,6 @@ import Observation
         XCTAssertEqual(list.sessions.first?.title, "New")
     }
 
-    // MARK: Connection
-
-    /// A lost socket reconnects quietly over the rows. A refusal the user has to act on, such
-    /// as a host below the minimum release, stops there and is kept as the list's error.
     func testOnlyALostSocketReconnects() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -769,10 +688,6 @@ import Observation
         XCTAssertEqual(list.sessions.map(\.sessionId), ["a"], "the rows stay")
     }
 
-    /// A lost socket keeps the rows' last known states, marked stale, while the list reconnects
-    /// (#1374). A tap reconnects past the backoff; the rows settle the reconnect, and only the
-    /// host's next status reply makes the states current. A refusal the user has to act on
-    /// clears them.
     func testALostSocketKeepsTheLastKnownStatesUntilTheHostAnswersAgain() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -800,9 +715,6 @@ import Observation
         XCTAssertEqual(list.attentionStatesBySessionID, [:], "a refusal leaves nothing to reconnect to")
     }
 
-    /// A read that fails on the socket that just came back recovers as a lost socket does
-    /// (#1374): a retryable failure waits on another reconnect, which a tap runs; a refusal
-    /// ends the reconnect, clears the states and shows over the rows.
     func testAFailedReadAfterAReconnectRecoversAsALostSocket() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -814,7 +726,6 @@ import Observation
         wire.onDisconnect?(BotFailure.transport)
         wire.pageFailure = .rejected(503)
         list.reconnectNow()
-        // The drop that closes the socket also arms the reconnect the next tap runs.
         await waitUntil("the read failed") { wire.connects == 2 && wire.closes == 2 }
         XCTAssertTrue(list.isHermesReconnecting)
 
@@ -825,8 +736,6 @@ import Observation
         XCTAssertNotNil(list.hermesRefusalOverRows, "the refusal shows over the rows")
     }
 
-    /// An offline path makes the states the last known ones, and the home says Offline, before
-    /// the socket notices (#1374).
     func testAnOfflinePathMarksTheStatesStaleBeforeTheSocketDrops() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -843,8 +752,6 @@ import Observation
         XCTAssertEqual(HomeConnectionStatus(list.hermesConnection, isOnline: false), .offline)
     }
 
-    /// A lost list's reconnect holds while offline; the network's return runs it at once, not on
-    /// its backoff, unless a chat now covers the list (#1372).
     func testALostListReconnectsAtOnceWhenTheNetworkReturns() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -869,8 +776,6 @@ import Observation
         XCTAssertEqual(list.sessions.map(\.sessionId), ["a"], "the rows stay")
     }
 
-    /// A client that left the socket without a word answers every read `.stale`: the next read
-    /// reconnects instead of leaving the list stale for as long as it is open.
     func testAClientThatLeftTheSocketReconnects() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a", title: "Old")])]
@@ -884,8 +789,6 @@ import Observation
 
         XCTAssertEqual(wire.connects, 2)
     }
-
-    // MARK: Profiles
 
     func testSwitchingProfileListsItsSessionsAndSavesThePick() async {
         let wire = HermesSessionListWire()
@@ -904,8 +807,6 @@ import Observation
                        "the composer's Profile chip shares the pick")
     }
 
-    /// A Profile deleted on the host answers 4064: the list drops it as the server's pick and
-    /// moves to the Profile the host's dashboard runs.
     func testARemovedProfileMovesToTheHostsCurrentProfile() async {
         let wire = HermesSessionListWire()
         wire.removed = ["gone"]
@@ -922,11 +823,6 @@ import Observation
         XCTAssertNil(defaults.string(forKey: HermesProfilePreference.key(for: server)))
     }
 
-    // MARK: All Profiles (#709)
-
-    /// All Profiles lists every Profile's sessions, each row in its own Profile, watches every
-    /// Profile's store and is remembered for the server; New Session keeps the pick. Picking a
-    /// Profile goes back to its sessions alone.
     func testAllProfilesListsEveryProfileUntilOneIsPicked() async {
         let wire = HermesSessionListWire()
         wire.pages = ["default": [0: page([HermesSessionRow(id: "d", lastActive: 1)])],
@@ -949,8 +845,6 @@ import Observation
         XCTAssertFalse(HermesProfilePreference.showsAllProfiles(for: server, in: defaults))
     }
 
-    /// New Session starts in the selected lane's folder, and in the Profile's default with no lane
-    /// or once All Profiles shows, whose list keeps the old lanes (#1671).
     func testNewSessionStartsInTheSelectedLanesFolderUntilAllProfiles() async {
         let wire = HermesSessionListWire()
         wire.projectTree = .object(["projects": .array([.object([
@@ -968,9 +862,6 @@ import Observation
         XCTAssertNil(list.hermesNewSessionFolder(lane: "p_1"))
     }
 
-    /// A merged list holds back rows older than the oldest row a Profile with more pages has read,
-    /// pinned rows aside, so the next page never lands above rows already shown. "Load more" reads
-    /// the next page of each Profile with more, and none of a Profile at its end.
     func testAllProfilesHoldsBackOlderRowsUntilTheNextPagesAreIn() async {
         let wire = HermesSessionListWire()
         wire.pages = ["default": [0: page(rows(0..<100)), 100: page(rows(100..<110))],
@@ -997,8 +888,6 @@ import Observation
         XCTAssertEqual(wire.pageReads.filter { $0.profile == "research" }.map(\.offset), [0])
     }
 
-    /// A Profile added on another client joins All Profiles on the next refresh, which names it on
-    /// the socket so its changes reach the list too.
     func testRefreshingAllProfilesListsAProfileAddedElsewhere() async {
         let wire = HermesSessionListWire()
         wire.pages = ["default": [0: page([HermesSessionRow(id: "d", lastActive: 1)])],
@@ -1015,8 +904,6 @@ import Observation
         XCTAssertEqual(wire.calls.last { $0.method == "session.most_recent" && $0.profile == "ops" }?.profile, "ops")
     }
 
-    /// A pick removed on another client while All Profiles shows (here, opened offline on the saved
-    /// pick) moves to the host's current Profile, so New Session never opens in a missing one.
     func testAllProfilesMovesOffAPickTheHostNoLongerHas() async {
         let wire = HermesSessionListWire()
         wire.current = "research"
@@ -1032,7 +919,6 @@ import Observation
         XCTAssertTrue(list.hermesShowsAllProfiles)
     }
 
-    /// The home's list opens on no Profile (#709): it takes the one the host's dashboard runs.
     func testAListWithoutAProfileOpensOnTheHostsCurrentProfile() async {
         let wire = HermesSessionListWire()
         wire.current = "research"
@@ -1045,7 +931,6 @@ import Observation
         XCTAssertEqual(list.sessions.map(\.sessionId), ["r"])
     }
 
-    /// A search of All Profiles asks the host once for each Profile.
     func testAllProfilesSearchesEveryProfile() async {
         let wire = HermesSessionListWire()
         wire.pages = ["default": [0: page([])], "research": [0: page([])]]
@@ -1060,10 +945,6 @@ import Observation
         XCTAssertEqual(list.visibleSessions(searchText: "nimbus", selectedProjectID: nil).compactMap(\.sessionId), ["far"])
     }
 
-    // MARK: Shortcuts
-
-    /// A list that read the host and then lost it, closed or dropped, holds a Shortcut's new
-    /// chat again (#1180) until its next read, rather than opening a chat on a host it can't reach.
     func testANewChatWaitsAgainAfterTheListLosesTheHost() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -1087,9 +968,6 @@ import Observation
         XCTAssertEqual(chat()?.target, .new(profile: "research"))
     }
 
-    /// A Shortcut's new chat arriving while a cached chat covers the paused list (#1180) closes it
-    /// at once, so the list shows and reads the host again (its appearing reopens it), and the new
-    /// chat opens after that read rather than waiting for the user to go back to Sessions.
     func testAHeldNewChatOverACachedChatOpensAfterTheListReadsAgain() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -1111,9 +989,6 @@ import Observation
         XCTAssertEqual(covers.chat?.target, .new(profile: "research"))
     }
 
-    /// A share arriving while a new-session chat covers a list the trip to the sharing app closed
-    /// (#1212) closes that chat at once, so the list shows and reads the host again, rather than
-    /// waiting for the user to go back to Sessions; the share then opens as a new session.
     func testAShareOverAChatTheBackgroundClosedOpensAfterTheListReadsAgain() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -1138,8 +1013,6 @@ import Observation
         XCTAssertEqual(chat.target, .new(profile: "default"))
     }
 
-    /// A Shortcut's text naming a Profile deleted on the host while a chat paused the list (#1402)
-    /// asks the host again rather than trusting the list's last read, and opens nowhere.
     func testAShortcutsProfileDeletedWhileAChatCoveredTheListIsReportedMissing() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
@@ -1163,8 +1036,6 @@ import Observation
         XCTAssertEqual(confirmed, .missingProfile("research"))
     }
 
-    /// A Shortcut's text held past its lifetime while its list couldn't open it (#1402) is
-    /// consumed without a chat once the list shows, not opened a day late.
     func testAShortcutTextHeldPastItsLifetimeOpensNoChat() {
         let entry = HermesSessionListEntry(server: server, connection: connection, profile: "default")
         var covers = HermesSessionListCovers()
@@ -1177,8 +1048,6 @@ import Observation
         XCTAssertEqual(covers.open(share, on: entry, listed: "default", isLive: true), .nothing)
     }
 
-    // MARK: Status filter and Mark All as Read (#1733)
-
     private func launchLane(sessionIDs: [String]) -> BotJSON {
         .object(["projects": .array([.object([
             "id": .string("p_1"), "label": .string("Launch"), "path": .string("/launch"), "isAuto": .bool(false),
@@ -1187,8 +1056,6 @@ import Observation
         ])])])
     }
 
-    /// Unread keeps the unread rows of the lane the list shows; Working and Draft narrow the same
-    /// way, and All shows the lane again. A chat opened from a draft's row keys by its lineage root.
     func testTheStatusFiltersKeepOnlyMatchingRowsInTheLane() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page([
@@ -1211,8 +1078,6 @@ import Observation
         XCTAssertEqual(ids(.all), ["a", "b", "tip"])
     }
 
-    /// Mark All writes read for the unread rows of the list's scope only, never another lane's, and
-    /// says how many the host took. A refused write shows its row unread again.
     func testMarkAllAsReadWritesOnlyTheScopesUnreadRowsAndCountsWhatTheHostTook() async throws {
         let wire = HermesSessionListWire()
         wire.pages = [
@@ -1238,7 +1103,6 @@ import Observation
         XCTAssertEqual(state, ["a": false, "b": true, "seen": false, "out": true])
     }
 
-    /// Four writes are out at a time; the rest start as those finish.
     func testMarkAllAsReadSendsAtMostFourWritesAtOnce() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page((0..<6).map { HermesSessionRow(id: "u\($0)", lastActive: Double(10 - $0), unread: true) })]
@@ -1248,7 +1112,6 @@ import Observation
 
         let marking = Task { await list.markAllHermesRead(rows: list.unreadRowsInScope(selectedProjectID: nil)) }
         await waitUntil("four writes out") { wire.unreadWrites.count == 4 }
-        // One main-queue turn: a fifth write would be on the wire now.
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             DispatchQueue.main.async { continuation.resume() }
         }
@@ -1262,8 +1125,6 @@ import Observation
         XCTAssertEqual(wire.unreadWrites.count, 6)
     }
 
-    /// A second Mark All while the first still writes starts nothing: the rows the first has not
-    /// reached still read unread, and writing them twice would count them twice.
     func testMarkAllAsReadIgnoresARepeatWhileItsWritesAreOut() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page((0..<6).map { HermesSessionRow(id: "u\($0)", lastActive: Double(10 - $0), unread: true) })]
@@ -1275,7 +1136,6 @@ import Observation
         let first = Task { await list.markAllHermesRead(rows: rows) }
         await waitUntil("four writes out") { wire.unreadWrites.count == 4 }
         let second = Task { await list.markAllHermesRead(rows: list.unreadRowsInScope(selectedProjectID: nil)) }
-        // One main-queue turn: a repeat's writes would be on the wire now.
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             DispatchQueue.main.async { continuation.resume() }
         }
@@ -1291,8 +1151,6 @@ import Observation
         XCTAssertEqual(wire.unreadWrites.count, 6, "no row is written twice")
     }
 
-    // MARK: Fixture
-
     private func makeList(_ wire: HermesSessionListWire, profile: String? = "default",
                           reconnectDelays: [Duration] = [.seconds(3600)], statusPollInterval: Duration = .seconds(3600),
                           isNetworkAvailable: @escaping @MainActor () -> Bool = { true }) -> SessionListViewModel {
@@ -1305,18 +1163,14 @@ import Observation
 
     private func page(_ rows: [HermesSessionRow]) -> HermesSessionPage { HermesSessionPage(rows: rows) }
 
-    /// Rows `s<n>`, newest first.
     private func rows(_ range: Range<Int>) -> [HermesSessionRow] {
         range.map { HermesSessionRow(id: "s\($0)", lastActive: Double(10_000 - $0)) }
     }
 
-    /// One `subagent.roster` entry in the host's shape (`methods_subagents.py`): live children and
-    /// running background processes of one stored conversation.
     private func rosterEntry(_ id: String, subagents: Int = 0, background: Int = 0) -> BotJSON {
         .object(["session_id": .string(id), "subagents": .number(Double(subagents)), "background": .number(Double(background))])
     }
 
-    /// One `session.active_list` item in the host's shape (`server.py` `_session_live_item`).
     private func live(_ key: String, _ status: String, runtime: String? = nil) -> BotJSON {
         .object(["id": .string(runtime ?? "runtime-" + key), "session_key": .string(key), "status": .string(status),
                  "last_active": .number(100), "started_at": .number(90), "message_count": .number(2),
@@ -1324,8 +1178,6 @@ import Observation
     }
 }
 
-/// A Hermes server's Sessions list search (#1053): the host's matches merged into the loaded
-/// rows, their snippets, labels and Bot Chat routing, on the scripted wire below.
 @MainActor final class HermesSessionSearchTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
@@ -1344,8 +1196,6 @@ import Observation
         super.tearDown()
     }
 
-    /// Every parameter is sent: the Profile, a limit, and the sources the list leaves out, so a
-    /// search never finds a row the list never shows. A typed `+` stays a `+`.
     func testTheSearchAsksForTheQueryInTheListedProfile() throws {
         let request = try HermesREST.sessionSearch(query: "c++ nimb", profile: "research")
             .request(base: URL(string: "https://hermes.example/base")!)
@@ -1357,10 +1207,6 @@ import Observation
         XCTAssertThrowsError(try HermesREST.sessionSearch(query: "nimb", profile: "").request(base: server))
     }
 
-    /// The pin's shapes, as `scripts/local-hermes` answered them: a content match carries the
-    /// message's marked snippet, an id match only the preview, and a match without the
-    /// session's row has no `last_active`, so recency falls back to `session_started`. A result
-    /// without an id is skipped.
     func testResultsReadAsRowsWithTheirSnippetsAndRecency() throws {
         let reply = Data(#"""
         {"results": [
@@ -1388,10 +1234,6 @@ import Observation
         XCTAssertEqual(results[0].row.messageCount, 4)
     }
 
-    /// The loaded rows filter at once; the host's matches follow in its order, each merged by
-    /// identity (a compression lineage's root): a loaded row shows as listed, pin and read mark
-    /// included, with the host's snippet, and one the pages lack shows from the result. A row
-    /// both found is listed once.
     func testHostMatchesMergeByLineageRootWithTheLoadedRows() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: HermesSessionPage(rows: [
@@ -1426,8 +1268,6 @@ import Observation
         XCTAssertNil(list.searchExcerpt(for: tip, searchText: "rollout"), "another screen's query shows none")
     }
 
-    /// An archived match is labeled "Archived" and opens as a session. A bot's Bot Chat is named
-    /// after its Profile and opens in that bot, not as a session, without the session actions.
     func testArchivedAndBotChatMatchesAreLabeledAndRouted() async throws {
         let wire = HermesSessionListWire()
         wire.searchResults = [
@@ -1458,9 +1298,6 @@ import Observation
         XCTAssertTrue(list.canToggleUnread(archived))
     }
 
-    /// A Profile's room sessions (`Group: <room id>`, and Desktop's `Group: <name> · …`) are never
-    /// a match (#1146): a regular chat opened on one fails to send or desyncs the room. The reply
-    /// has no `hidden`, so the title is the tell.
     func testARoomSessionIsNeverASearchMatch() throws {
         let reply = """
         {"results": [
@@ -1474,9 +1311,6 @@ import Observation
         XCTAssertEqual(search.results.map(\.row.id), ["bot", "plan"])
     }
 
-    /// No list read refreshes the host's matches, so a delete, archive or rename confirmed here
-    /// shows on them: the deleted match leaves, the archived one is labeled, the renamed one
-    /// shows its new title, and the host is not searched again.
     func testAMatchChangedHereShowsTheChange() async throws {
         let wire = HermesSessionListWire()
         wire.searchResults = ["gone", "old", "draft"].map { id in
@@ -1501,8 +1335,6 @@ import Observation
         XCTAssertEqual(wire.searches.count, 1)
     }
 
-    /// A search that found the list's socket not yet attached, as a list opened searching
-    /// starts one, runs once the socket is, and says nothing went wrong meanwhile.
     func testASearchBeforeTheSocketIsAttachedRunsOnceItIs() async {
         let wire = HermesSessionListWire()
         wire.searchResults = [HermesSessionSearchResult(row: HermesSessionRow(id: "old", title: "Old", profile: "default"))]
@@ -1522,8 +1354,6 @@ import Observation
         XCTAssertEqual(wire.searches.map(\.query), ["old"])
     }
 
-    /// The host's matches follow the project lanes as the list reads them again, so a match the
-    /// loaded pages lack shows in the lane that now claims it.
     func testMatchesFollowTheProjectLanesReadAfterTheSearch() async {
         let wire = HermesSessionListWire()
         wire.searchResults = [HermesSessionSearchResult(row: HermesSessionRow(id: "old", title: "Old", profile: "default"))]
@@ -1541,7 +1371,6 @@ import Observation
         XCTAssertEqual(list.visibleSessions(searchText: "old", selectedProjectID: "p_1").compactMap(\.sessionId), ["old"])
     }
 
-    /// Clearing the search shows the loaded list again, without the host's matches or snippets.
     func testClearingTheSearchRestoresTheList() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: HermesSessionPage(rows: [HermesSessionRow(id: "a", title: "Alpha", lastActive: 2),
@@ -1559,8 +1388,6 @@ import Observation
         XCTAssertEqual(wire.searches.count, 1, "an empty query never asks the host")
     }
 
-    /// The same search running again, as when a chat opened from its matches closes, keeps them
-    /// on screen until the host answers; a new query clears them at once.
     func testRepeatingTheSearchKeepsItsMatchesUntilTheHostAnswers() async {
         let wire = HermesSessionListWire()
         wire.searchResults = [HermesSessionSearchResult(row: HermesSessionRow(id: "old", title: "Old", profile: "default"))]
@@ -1582,8 +1409,6 @@ import Observation
         await other.value
     }
 
-    /// A delete confirmed while the same search runs again may postdate the host's answer, so
-    /// that answer is dropped and the host asked again: the deleted match stays gone.
     func testAWriteConfirmedDuringARepeatedSearchIsNotUndoneByItsAnswer() async throws {
         let wire = HermesSessionListWire()
         wire.searchResults = ["gone", "kept"].map { HermesSessionSearchResult(row: HermesSessionRow(id: $0, title: "Old \($0)", profile: "default")) }
@@ -1606,8 +1431,6 @@ import Observation
         XCTAssertEqual(wire.searches.count, 3)
     }
 
-    /// A list that reconnects (the socket dropped, or the app came back) searches again, since a
-    /// match past the loaded pages that another device deleted meanwhile changes only then.
     func testAReconnectSearchesAgainSoAMatchDeletedElsewhereGoes() async throws {
         let wire = HermesSessionListWire()
         wire.searchResults = ["gone", "kept"].map { HermesSessionSearchResult(row: HermesSessionRow(id: $0, title: "Old \($0)", profile: "default")) }
@@ -1623,7 +1446,6 @@ import Observation
         XCTAssertEqual(wire.searches.count, 2)
     }
 
-    /// A search the list moved off its Profile from never applies there.
     func testASearchAnotherProfileReplacedIsDropped() async {
         let wire = HermesSessionListWire()
         wire.searchResults = [HermesSessionSearchResult(row: HermesSessionRow(id: "old", title: "Old", profile: "default"))]
@@ -1649,10 +1471,6 @@ import Observation
     }
 }
 
-/// A scripted Hermes host for the Sessions list: pages by Profile and offset, read marks and
-/// other changes, `session.active_list`, `profiles.list`, `session.most_recent`,
-/// `session.delete`, `projects.tree` and the search (#1053). A test
-/// can park page reads, lane reads, read-mark writes or searches, and push gateway events.
 @MainActor @Observable final class HermesSessionListWire: BotTransport {
     struct UnreadWrite: Hashable { let key: String; let profile: String; let unread: Bool }
 
@@ -1661,62 +1479,40 @@ import Observation
     var onDisconnect: ((Error) -> Void)?
     var pages: [String: [Int: HermesSessionPage]] = [:]
     var active: [BotJSON] = []
-    /// The Archived screen's total by Profile; a Profile without one refuses the read.
     var archivedTotals: [String: Int] = [:]
-    /// `approval.pending`'s approvals by runtime id; none for any other.
     var approvals: [String: [BotJSON]] = [:]
-    /// `subagent.roster`'s entries by Profile; an empty roster for any other.
     var roster: [String: [BotJSON]] = [:]
-    /// While true, `subagent.roster` answers "method not found", as a host without it does.
     var lacksRoster = false
-    /// While true, `session.active_list` waits for `release()`, then answers from `active` as it is then.
     var holdsActive = false
-    /// While true, `approval.pending` waits for `release()`.
     var holdsApprovals = false
-    /// While true, the archived count waits for `release()`.
     var holdsArchivedCount = false
-    /// Profiles whose `projects.tree` waits for `releaseProjects()`.
     var holdsProjects: Set<String> = []
-    /// Runtime ids whose `approval.pending` fails.
     var failingApprovals: Set<String> = []
     var profiles = ["default", "research"]
     var current = "default"
-    /// Profiles the host no longer has: 4064 over the socket, 404 over REST.
     var removed: Set<String> = []
-    /// While true, page reads wait for `release()`, answering what they read when they arrived.
     var holdsPages = false
     var holdsUnread = false
     var unreadFails = false
-    /// Session keys whose read-mark write is refused, while the others are taken.
     var failingUnreadKeys: Set<String> = []
-    /// Thrown by the next page read instead of its page.
     var pageFailure: BotFailure?
-    /// The scheduled (cron) pages and search matches, read apart from the ordinary ones.
     var scheduledPages: [String: [Int: HermesSessionPage]] = [:]
     var scheduledResults: [HermesSessionSearchResult] = []
-    /// While true, scheduled page reads wait for `release()`, as `holdsPages` does.
     var holdsScheduledPages = false
     private(set) var scheduledReads: [(profile: String, offset: Int)] = []
     private(set) var scheduledSearches: [(query: String, profile: String)] = []
-    /// What every search answers, whatever its query. A search before `connect()` finishes is
-    /// refused as `BotClient`'s is, with `.stale`.
     var searchResults: [HermesSessionSearchResult] = []
     var holdsSearch = false
-    /// While true, `connect()` waits for `release()`.
     var holdsConnect = false
-    /// Thrown by every `connect()` while set: a host that can't be reached, or a proxy answering for it (#1054).
     var connectFailure: Error?
-    /// `projects.tree`'s reply; nil refuses the call.
     var projectTree: BotJSON?
     private(set) var attached = false
     private(set) var searches: [(query: String, profile: String)] = []
     private(set) var connects = 0
-    /// Every `close()`: the list drops the socket only once it has given up on it.
     private(set) var closes = 0
     private(set) var pageReads: [(profile: String, offset: Int)] = []
     private(set) var answeredPages = 0
     private(set) var unreadWrites: [UnreadWrite] = []
-    /// Every other change written, each accepted with the title as sent.
     private(set) var changes: [HermesSessionChange] = []
     private(set) var calls: [(method: String, profile: String?)] = []
     @ObservationIgnored private var held: [CheckedContinuation<Void, Never>] = []
@@ -1776,7 +1572,6 @@ import Observation
 
     func currentProfile() async throws -> String { current }
 
-    /// A page read before `connect()` finishes is refused as `BotClient`'s is, with `.stale`.
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
         guard attached else { throw BotFailure.stale }
         pageReads.append((profile, offset))

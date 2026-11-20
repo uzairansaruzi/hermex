@@ -2,8 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class ToolCallSummaryFormatterTests: XCTestCase {
-    // MARK: - Shell wrapper unwrap
-
     func testUnwrapsKnownShellWrappers() {
         XCTAssertEqual(ToolCallSummaryFormatter.unwrappingShellWrapper(#"bash -lc "git status""#), "git status")
         XCTAssertEqual(ToolCallSummaryFormatter.unwrappingShellWrapper("/bin/zsh -c 'ls -la'"), "ls -la")
@@ -17,8 +15,6 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
         XCTAssertEqual(ToolCallSummaryFormatter.unwrappingShellWrapper("bash -lc"), "bash -lc")
         XCTAssertEqual(ToolCallSummaryFormatter.unwrappingShellWrapper("bash script.sh"), "bash script.sh")
     }
-
-    // MARK: - Exit code
 
     func testStripsTrailingExitCodeMarker() {
         let stripped = ToolCallSummaryFormatter.strippingTrailingExitCode("hello\n<exited with exit code 2>")
@@ -49,8 +45,6 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
         XCTAssertEqual(row.status, .failure)
     }
 
-    // MARK: - Changed files and read ranges
-
     func testChangedFilePreviewShowsFirstFileAndRemainder() throws {
         let patch = ToolCall(
             name: "patch",
@@ -76,8 +70,6 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
         )
         XCTAssertEqual(ToolCallSummaryFormatter.row(for: write, isLive: false)?.detail, "Notes.md")
     }
-
-    // MARK: - Edit counts
 
     func testEditRowsCarryTheirDiffCountsAndSpeakThem() throws {
         let patch = ToolCall(
@@ -138,8 +130,6 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
         XCTAssertEqual(row.detail, "L12-31 · File.swift")
         XCTAssertEqual(row.status, .success)
     }
-
-    // MARK: - Failure heuristics
 
     func testFailureTextHeuristicsReadTheFirstLineAndTheExitMarker() {
         XCTAssertTrue(ToolCallSummaryFormatter.looksLikeFailure("zsh: command not found: foo"))
@@ -242,8 +232,6 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
         XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: true)?.status, .failure)
         XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.status, .failure)
     }
-
-    // MARK: - Drop rule and fallbacks
 
     func testDropsRowsWithoutSignalButKeepsFailures() {
         let empty = ToolCall(name: nil, preview: nil, args: nil, isCompleted: true)

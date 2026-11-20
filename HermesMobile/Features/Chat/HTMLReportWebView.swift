@@ -2,12 +2,9 @@ import SwiftUI
 import UIKit
 import WebKit
 
-/// Lets an inline report row take a still image of its page before the page is released.
 @MainActor final class HTMLReportWebViewHandle {
     fileprivate weak var webView: WKWebView?
 
-    /// At most 2x, so a page three screens tall stays a bounded image; it shows only until the
-    /// live page paints again.
     func snapshot() async -> UIImage? {
         guard let webView, webView.bounds.width > 0, webView.bounds.height > 0,
               let image = try? await webView.takeSnapshot(configuration: nil) else { return nil }
@@ -20,30 +17,13 @@ import WebKit
     }
 }
 
-/// One agent-generated HTML page (#1623), shared by the inline transcript row and the sheet.
-///
-/// The page runs JavaScript and loads remote resources, as a browser would, but reaches nothing
-/// of Hermex's: it loads from a string with an opaque origin into a non-persistent data store,
-/// so no cookie, credential or custom header of any server is in reach. Camera, microphone,
-/// motion, downloads and new windows are refused, and its top frame can't navigate
-/// (`HTMLReportNavigation`); tapped links go to the environment's `openURL`. The app's scripts
-/// run in their own content world, so the page can't call them or message the app at all.
-///
-/// The view stays transparent until the page has painted, so a dark page never flashes white.
-/// When the web process dies it reloads once, then reports `onFailure`.
 struct HTMLReportWebView: UIViewRepresentable {
     let html: String
     let theme: HTMLReportTheme
-    /// Inline rows don't scroll: they measure the page once and show it at that height. The
-    /// sheet scrolls.
     let scrolls: Bool
     var handle: HTMLReportWebViewHandle?
-    /// The page's content height once it has loaded and painted; the inline row locks its
-    /// height to it. Without it, the page shows as soon as it finishes loading.
     var onMeasure: ((CGFloat) -> Void)?
     var onFailure: (() -> Void)?
-    /// A tapped link to an anchor in the page. An inline row can't scroll to it, so it opens the
-    /// sheet instead; without this, the page jumps to the anchor itself.
     var onAnchorTap: (() -> Void)?
     @Environment(\.openURL) private var openURL
 
@@ -100,7 +80,6 @@ struct HTMLReportWebView: UIViewRepresentable {
 
         deinit { measureTask?.cancel() }
 
-        /// Loads the page with the current theme already in place, so its first paint is themed.
         func load() {
             guard let webView else { return }
             hasLoaded = false
@@ -116,7 +95,6 @@ struct HTMLReportWebView: UIViewRepresentable {
             webView.loadHTMLString(parent.html, baseURL: nil)
         }
 
-        /// Restyles a live page in place. A later reload starts from the new theme too.
         func apply(_ theme: HTMLReportTheme) {
             guard let webView, theme != appliedTheme else { return }
             appliedTheme = theme
@@ -136,8 +114,6 @@ struct HTMLReportWebView: UIViewRepresentable {
                 completionHandler: nil
             )
         }
-
-        // MARK: Navigation
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
@@ -211,14 +187,11 @@ struct HTMLReportWebView: UIViewRepresentable {
             load()
         }
 
-        /// A cancelled navigation (a refused link, an anchor) is not a failed page.
         private func failIfUnloaded(_ error: Error) {
             guard !hasLoaded, (error as? URLError)?.code != .cancelled,
-                  (error as NSError).code != 102 /* WebKitErrorFrameLoadInterruptedByPolicyChange */ else { return }
+                  (error as NSError).code != 102  else { return }
             parent.onFailure?()
         }
-
-        // MARK: UI
 
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                      for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
@@ -243,11 +216,6 @@ struct HTMLReportWebView: UIViewRepresentable {
             decisionHandler(.deny)
         }
 
-        // MARK: Scripts
-
-        /// Runs before the page's own content: the theme as the first style in the document, so
-        /// every later rule of the page's wins, and a phone-width viewport for a page that names
-        /// none. A page's own viewport comes later and wins too.
         private static func bootstrap(css: String) -> String {
             let literal = (try? JSONEncoder().encode(css)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
             return """
@@ -266,9 +234,6 @@ struct HTMLReportWebView: UIViewRepresentable {
             """
         }
 
-        /// The page's content height after two frames, so script-drawn content has laid out.
-        /// `scrollHeight` never reports less than the view, so a page shorter than the view
-        /// measures its elements instead.
         private static let measureScript = """
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const root = document.documentElement;
@@ -280,8 +245,6 @@ struct HTMLReportWebView: UIViewRepresentable {
     }
 }
 
-/// A report in its full-height sheet: it scrolls, follows the app's theme, and routes its links
-/// as the transcript does. A nil page shows the failure state, as a page that fails to load does.
 struct HTMLReportSheetPage: View {
     let html: String?
     @Environment(\.appAppearance) private var appearance

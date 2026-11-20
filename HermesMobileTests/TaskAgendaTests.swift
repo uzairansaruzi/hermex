@@ -1,15 +1,8 @@
 import XCTest
 @testable import HermesMobile
 
-/// Covers the three pieces the Tasks agenda list is built on: humanising cron
-/// expressions, assigning each job to exactly one group, and stripping the
-/// terminal escapes out of server run text.
 final class TaskAgendaTests: XCTestCase {
 
-    // MARK: - Fixtures
-
-    /// Eastern time, matching the reference server the eleven real expressions
-    /// came from, so rendered clock times are the ones cron fires at.
     private static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .gmt
@@ -53,14 +46,9 @@ final class TaskAgendaTests: XCTestCase {
         CronScheduleHumanizer.describe(expression, locale: Self.locale, calendar: Self.calendar)
     }
 
-    /// `Date.FormatStyle` separates the time from AM/PM with a narrow no-break
-    /// space (U+202F). Fold it back to a plain space so the expectations below
-    /// stay readable and the assertions are about the words, not the spacing.
     private func sentence(_ expression: String) -> String? {
         describe(expression)?.sentence.replacingOccurrences(of: "\u{202F}", with: " ")
     }
-
-    // MARK: - Humanising
 
     func testHumanisesEveryExpressionOnTheReferenceServer() {
         let expectations: [String: String] = [
@@ -87,7 +75,6 @@ final class TaskAgendaTests: XCTestCase {
         XCTAssertEqual(describe("25 9 * * 1-5")?.recurrence, "Weekdays")
         XCTAssertEqual(describe("0 16 1 * *")?.recurrence, "Monthly on the 1st")
         XCTAssertEqual(describe("0 20 * * 0")?.recurrence, "Weekly on Sunday")
-        // An interval has no time of day, so both forms are the same string.
         XCTAssertEqual(describe("*/15 * * * *")?.recurrence, "Every 15 minutes")
     }
 
@@ -96,7 +83,6 @@ final class TaskAgendaTests: XCTestCase {
         XCTAssertEqual(sentence("*/1 * * * *"), "Every minute")
         XCTAssertEqual(sentence("0 */2 * * *"), "Every 2 hours")
         XCTAssertEqual(sentence("0 12 * * 0,6"), "Weekends at 12:00 PM")
-        // Cron's day 7 is Sunday.
         XCTAssertEqual(sentence("0 20 * * 7"), "Weekly on Sunday at 8:00 PM")
     }
 
@@ -104,23 +90,21 @@ final class TaskAgendaTests: XCTestCase {
         let unrecognised = [
             "",
             "not a cron",
-            "*/15 * * *",          // too few fields
-            "*/15 * * * * *",      // too many fields
-            "0 7 * * 9",           // day of week out of range
-            "0 99 * * *",          // hour out of range
-            "*/0 * * * *",         // zero step
-            "0 7 1 * 1",           // day-of-month and day-of-week together
-            "0 7 * 3 *",           // month restricted
-            "0 7 * * 2-4",         // a weekday range we do not name
-            "0,30 7 * * *"         // a minute list
+            "*/15 * * *",
+            "*/15 * * * * *",
+            "0 7 * * 9",
+            "0 99 * * *",
+            "*/0 * * * *",
+            "0 7 1 * 1",
+            "0 7 * 3 *",
+            "0 7 * * 2-4",
+            "0,30 7 * * *"
         ]
 
         for expression in unrecognised {
             XCTAssertNil(describe(expression), expression)
         }
     }
-
-    // MARK: - Grouping
 
     private func group(
         _ job: CronJob,
@@ -242,8 +226,6 @@ final class TaskAgendaTests: XCTestCase {
         XCTAssertEqual(sections.flatMap(\.jobs).map(\.name), ["Alpha", "Zulu", "Beta"])
     }
 
-    // MARK: - Filters
-
     func testFilterCountsMatchTheReferenceServer() throws {
         let now = Date(timeIntervalSince1970: 1_772_000_000)
         let jobs = try referenceServerJobs(now: now)
@@ -276,8 +258,6 @@ final class TaskAgendaTests: XCTestCase {
         XCTAssertEqual(TaskAgenda.count(of: .paused, in: [job], runningJobIDs: ["job-1"]), 0)
     }
 
-    /// The shape of the maintainer's server: eleven jobs, three scheduled,
-    /// eight paused, one of the paused ones carrying a failed run.
     private func referenceServerJobs(now: Date) throws -> [CronJob] {
         var jobs: [CronJob] = [
             try makeJob(
@@ -317,8 +297,6 @@ final class TaskAgendaTests: XCTestCase {
         return jobs
     }
 
-    // MARK: - ANSI stripping
-
     func testStripsColourCodesFromRunOutput() {
         let raw = "\u{1B}[0;32m[BOT START]\u{1B}[0m Starting Trading Bot"
 
@@ -326,7 +304,6 @@ final class TaskAgendaTests: XCTestCase {
     }
 
     func testDropsASequenceSplitAcrossATruncationBoundary() {
-        // A transcript clipped mid-escape must not leak its bytes into the UI.
         XCTAssertEqual("done \u{1B}[0;3".strippingANSIEscapes(), "done ")
         XCTAssertEqual("done \u{1B}".strippingANSIEscapes(), "done ")
         XCTAssertEqual("done \u{1B}]0;title".strippingANSIEscapes(), "done ")

@@ -1,32 +1,22 @@
 import SwiftUI
 import UIKit
 
-/// Where a lightbox is in its caller's load. The caller owns the fetch, so the transcript
-/// and attachment surfaces keep their own loading, retry, and error rules.
 enum ImageLightboxContent {
     case loading(String)
-    /// `detail` is the one-line fact under the path, usually the file size.
     case image(UIImage, detail: String?)
     case failure(String)
 }
 
-/// The gesture thresholds of the lightbox, kept apart from UIKit so they can be reasoned
-/// about and tested without a running scroll view.
 enum ImageLightboxGesturePolicy {
-    /// The drag distance that both closes the viewer and drives the shrink underneath it.
     static let dismissDistance: CGFloat = 220
     static let dismissDistanceThreshold: CGFloat = 110
     static let dismissVelocityThreshold: CGFloat = 900
 
-    /// A flick down closes on either distance or speed, so a short fast flick works as
-    /// well as a slow long drag. Upward and sideways drags never close.
     static func shouldDismiss(translation: CGFloat, velocity: CGFloat) -> Bool {
         guard translation > 0 else { return false }
         return translation > dismissDistanceThreshold || velocity > dismissVelocityThreshold
     }
 
-    /// The dismiss drag only exists at fit scale. Once the image is zoomed the same
-    /// downward drag has to pan it instead, so the two gestures never compete.
     static func canBeginDismiss(
         zoomScale: CGFloat,
         minimumZoomScale: CGFloat,
@@ -36,28 +26,16 @@ enum ImageLightboxGesturePolicy {
         return velocity.y > 0 && velocity.y > abs(velocity.x)
     }
 
-    /// How far the image can be zoomed: enough to reach its own pixels, but always at
-    /// least 3x so a small image is still inspectable, and never so far that a huge
-    /// screenshot turns into a maze.
     static func maximumZoomScale(imagePixelWidth: CGFloat, fittedWidth: CGFloat) -> CGFloat {
         guard fittedWidth > 0, imagePixelWidth > 0 else { return 3 }
         return min(8, max(3, imagePixelWidth / fittedWidth))
     }
 
-    /// Where a double tap lands when the image is at fit scale.
     static func doubleTapZoomScale(maximumZoomScale: CGFloat) -> CGFloat {
         min(maximumZoomScale, 2.5)
     }
 }
 
-/// A full-bleed image viewer: pinch, double tap, and pan to inspect, flick down at fit
-/// scale to close. One tap takes the chrome away so nothing covers the picture. VoiceOver
-/// keeps the chrome up, because a hidden Done button is not a way out.
-///
-/// The caller supplies the loaded image and any toolbar actions; use
-/// `ImageLightboxActionButton` for those so an empty action list draws nothing. Inside
-/// `ImageLightboxPager`, `page` adds the "2 of 4" counter and shares chrome and zoom
-/// with the pager.
 struct ImageLightboxView<Actions: View>: View {
     let content: ImageLightboxContent
     let title: String
@@ -106,14 +84,11 @@ struct ImageLightboxView<Actions: View>: View {
         page?.showsChrome ?? $ownShowsChrome
     }
 
-    /// "2 of 4", only in a gallery of more than one.
     private var positionText: String? {
         guard let position = page?.position, position.count > 1 else { return nil }
         return String(localized: "\(position.index + 1) of \(position.count)")
     }
 
-    /// The chrome hides only once there is an image to look at: while loading or after a
-    /// failure the way out has to stay on screen.
     private var isChromeVisible: Bool {
         guard case .image = content, !voiceOverEnabled else { return true }
         return showsChrome.wrappedValue && !isZoomed
@@ -197,11 +172,9 @@ struct ImageLightboxView<Actions: View>: View {
                         .monospacedDigit()
                         .foregroundStyle(.white.opacity(0.6))
                         .fixedSize()
-                        // The image already reads it as its value.
                         .accessibilityHidden(true)
                 }
             }
-            // Clears two trailing buttons and their spacing, so the title stays centered.
             .padding(.horizontal, 104)
 
             HStack(spacing: 10) {
@@ -270,8 +243,6 @@ extension ImageLightboxView where Actions == EmptyView {
     }
 }
 
-/// A gallery image is adjustable for VoiceOver: swiping up or down moves to the next or
-/// previous image, and the image reads its new "3 of 4".
 private struct ImageLightboxStepAction: ViewModifier {
     let onStep: ((Int) -> Void)?
 
@@ -290,9 +261,6 @@ private struct ImageLightboxStepAction: ViewModifier {
     }
 }
 
-/// A round glass button for the lightbox's floating chrome, sized like the chat toolbar's
-/// 44pt buttons. Each action carries its own background, so a surface with no actions adds
-/// nothing to the bar.
 struct ImageLightboxActionButton: View {
     let systemImage: String
     let accessibilityLabel: String
@@ -327,9 +295,6 @@ struct ImageLightboxActionButton: View {
     }
 }
 
-/// A `UIScrollView` around one image. UIKit already arbitrates pinch, pan, and double tap
-/// correctly; the only addition is a drag that closes the viewer, and it is allowed to
-/// start only at fit scale so it can never steal a pan from a zoomed image.
 struct ZoomableImageView: UIViewRepresentable {
     let image: UIImage
     let reduceMotion: Bool
@@ -381,7 +346,6 @@ struct ZoomableImageView: UIViewRepresentable {
             target: coordinator,
             action: #selector(Coordinator.handleDismissPan(_:))
         )
-        // One finger only: a two-finger pinch that drifts downward must stay a zoom.
         dismissPan.maximumNumberOfTouches = 1
         dismissPan.delegate = coordinator
         scrollView.addGestureRecognizer(dismissPan)
@@ -419,8 +383,6 @@ struct ZoomableImageView: UIViewRepresentable {
 
         private var isDismissing = false
 
-        /// Fits the image to the viewport and resets the zoom. Called on every size
-        /// change, so a rotation re-fits instead of leaving the image half off screen.
         func layoutImage(in size: CGSize) {
             guard let scrollView,
                   let imageView,
@@ -448,8 +410,6 @@ struct ZoomableImageView: UIViewRepresentable {
             onZoomChange(false)
         }
 
-        // MARK: - UIScrollViewDelegate
-
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
             imageView
         }
@@ -461,8 +421,6 @@ struct ZoomableImageView: UIViewRepresentable {
         func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
             onZoomChange(scale > scrollView.minimumZoomScale + 0.01)
         }
-
-        // MARK: - Gestures
 
         @objc func handleSingleTap() {
             onSingleTap()
@@ -529,10 +487,6 @@ struct ZoomableImageView: UIViewRepresentable {
             )
         }
 
-        /// At fit scale the scroll view's own pan has nothing to scroll, so letting the two
-        /// pans run together avoids a `require(toFail:)` delay on every touch. Nothing else
-        /// pairs with the dismiss drag: sharing with the pinch would let a zoom and a
-        /// dismiss animate the same image view at once.
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
@@ -540,8 +494,6 @@ struct ZoomableImageView: UIViewRepresentable {
             guard gestureRecognizer === dismissPan else { return true }
             return other === scrollView?.panGestureRecognizer
         }
-
-        // MARK: - Helpers
 
         private func centerContent() {
             guard let scrollView else { return }
@@ -569,7 +521,6 @@ struct ZoomableImageView: UIViewRepresentable {
             )
         }
 
-        /// Reduce Motion drops the throw-away animation entirely: the viewer just closes.
         private func dismiss(from translation: CGPoint) {
             guard !isDismissing else { return }
             isDismissing = true
@@ -592,8 +543,6 @@ struct ZoomableImageView: UIViewRepresentable {
         private func restoreImagePosition() {
             guard let imageView else { return }
 
-            // Once zoomed, the transform belongs to the scroll view; resetting it here
-            // would snap the image back to fit while `zoomScale` still says otherwise.
             if let scrollView, scrollView.zoomScale > scrollView.minimumZoomScale + 0.01 {
                 return
             }
@@ -617,8 +566,6 @@ struct ZoomableImageView: UIViewRepresentable {
     }
 }
 
-/// A scroll view that reports viewport size changes, which is the one thing a
-/// `UIViewRepresentable` cannot see on its own.
 final class ZoomableScrollView: UIScrollView {
     var onLayoutSizeChange: ((CGSize) -> Void)?
 

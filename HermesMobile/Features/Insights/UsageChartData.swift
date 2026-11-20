@@ -1,10 +1,6 @@
 import Foundation
 import SwiftUI
 
-/// The figure the Usage hero and chart plot over a multi-day window.
-///
-/// The 24-hour window has neither: `activity_by_hour` reports session counts and
-/// nothing else, so that window ignores the metric entirely.
 enum UsageMetric: String, CaseIterable, Identifiable {
     case cost
     case tokens
@@ -21,22 +17,13 @@ enum UsageMetric: String, CaseIterable, Identifiable {
     }
 }
 
-/// What one chart bar knows about itself.
-///
-/// A `day` bucket carries a full `daily_tokens` row. An `hour` bucket comes from
-/// `activity_by_hour`, which reports session counts only — there is deliberately
-/// nowhere to put tokens or cost on it.
 enum UsageBucketDetail: Equatable {
     case day(input: Int, output: Int, cacheRead: Int, sessions: Int, cost: Double)
     case hour(sessions: Int)
 }
 
-/// One bar in the Usage chart, in window order.
 struct UsageBucket: Identifiable, Equatable {
-    /// Position in the window. Stable for as long as a window is on screen, which
-    /// keeps chart identity from churning while values refresh.
     let id: Int
-    /// Short axis label, localized ("Aug 28", "9 AM").
     let label: String
     let detail: UsageBucketDetail
 
@@ -49,9 +36,6 @@ struct UsageBucket: Identifiable, Equatable {
         }
     }
 
-    /// Input plus output, matching the server's `total_tokens`. Cache reads are
-    /// deliberately not folded in: the server keeps them out of that field, and
-    /// the chart stacks them as their own layer, so the two must not be conflated.
     var processedTokens: Int {
         switch detail {
         case let .day(input, output, _, _, _):
@@ -79,15 +63,11 @@ struct UsageBucket: Identifiable, Equatable {
         }
     }
 
-    /// A bucket counts as active when it moved tokens or ran sessions. Cost is
-    /// excluded on purpose: a server that prices everything at zero still has
-    /// activity worth charting.
     var hasActivity: Bool {
         processedTokens > 0 || cacheReadTokens > 0 || sessions > 0
     }
 }
 
-/// A stack layer, or a whole bar when the metric has nothing to stack.
 enum UsageChartSegment: String, Identifiable, CaseIterable {
     case input
     case output
@@ -128,7 +108,6 @@ enum UsageChartSegment: String, Identifiable, CaseIterable {
     }
 }
 
-/// The three lines of the hero figure above the chart.
 struct UsageHeroFigure: Equatable {
     let label: String
     let value: String
@@ -136,13 +115,6 @@ struct UsageHeroFigure: Equatable {
 }
 
 enum UsageBuckets {
-    /// Daily buckets for the 7 / 30 / 90-day windows.
-    ///
-    /// The server already returns one row per calendar day, but gaps are filled
-    /// between the first and last returned date and the front is padded up to
-    /// `windowDays` so the x-axis always spans the whole window. Every date is
-    /// derived from the server's own strings, so the app never has to guess which
-    /// calendar the server keeps.
     static func daily(
         from rows: [InsightsDailyToken],
         windowDays: Int,
@@ -166,7 +138,6 @@ enum UsageBuckets {
             cursor = next
         }
 
-        // Pad the leading edge so a short series still spans the requested window.
         while dates.count < windowDays, let earlier = calendar.date(byAdding: .day, value: -1, to: dates[0]) {
             dates.insert(earlier, at: 0)
         }
@@ -187,8 +158,6 @@ enum UsageBuckets {
         }
     }
 
-    /// Hourly buckets for the 24-hour window: hours 0–23 in order, session counts
-    /// only, zero-filled for hours the server omits.
     static func hourly(
         from rows: [InsightsActivityByHour],
         calendar: Calendar = usageCalendar
@@ -214,9 +183,6 @@ enum UsageBuckets {
 }
 
 extension UsageBucket {
-    /// The stack layers this bucket draws for `metric`, in bottom-to-top order.
-    /// Token windows stack input, output, and cache reads; cost windows and the
-    /// 24-hour window get a single layer, because the server reports one scalar.
     func segments(for metric: UsageMetric) -> [(segment: UsageChartSegment, value: Double)] {
         switch detail {
         case let .day(input, output, cacheRead, _, cost):
@@ -236,7 +202,6 @@ extension UsageBucket {
     }
 }
 
-/// The segments that earn a legend. A single-colour bar does not need one.
 func usageChartLegendSegments(buckets: [UsageBucket], metric: UsageMetric) -> [UsageChartSegment] {
     guard metric == .tokens, buckets.contains(where: { if case .day = $0.detail { return true } else { return false } }) else {
         return []
@@ -245,14 +210,9 @@ func usageChartLegendSegments(buckets: [UsageBucket], metric: UsageMetric) -> [U
 }
 
 extension UsageHeroFigure {
-    /// The hero while the user drags across the chart: the selected bucket's own
-    /// figures, not the window total.
     static func selection(_ bucket: UsageBucket, metric: UsageMetric) -> UsageHeroFigure {
         switch bucket.detail {
         case let .day(_, _, cacheRead, sessions, cost):
-            // A token bar stacks cache reads on top of processed tokens, so the
-            // readout names both. Letting the bar's height stand for one figure
-            // that excludes the other is how a chart starts lying.
             let sessionsText = String(localized: "\(sessions) sessions")
             let cachedText = cacheRead > 0
                 ? String(localized: "\(usageFormattedTokens(cacheRead)) cached")
@@ -290,8 +250,6 @@ extension UsageHeroFigure {
 }
 
 extension UsageBucket {
-    /// What VoiceOver reads for the bar, since the visual hero only appears while
-    /// a sighted user is dragging. The bar's accessibility label is its `label`.
     var accessibilityValue: String {
         switch detail {
         case let .day(_, _, cacheRead, sessions, cost):
@@ -310,11 +268,6 @@ extension UsageBucket {
     }
 }
 
-// MARK: - Formatting
-
-/// The calendar the Usage screen reads server day strings with. The server sends
-/// bare `YYYY-MM-DD` in its own local time, so days are treated as wall-clock
-/// dates rather than instants.
 let usageCalendar: Calendar = {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
@@ -329,8 +282,6 @@ private let usageServerDayFormatter: DateFormatter = {
     return formatter
 }()
 
-/// Parses a server `daily_tokens[].date` string. Returns nil for anything else,
-/// so a shape change drops the bar instead of inventing a date.
 func usageDate(fromServerDay value: String?, calendar: Calendar = usageCalendar) -> Date? {
     guard let value, !value.isEmpty, let date = usageServerDayFormatter.date(from: value) else {
         return nil
@@ -357,15 +308,10 @@ func usageHourLabel(_ hour: Int, calendar: Calendar = usageCalendar, locale: Loc
     )
 }
 
-/// Locale-aware grouped token count ("1,234,567").
 func usageFormattedTokens(_ value: Int, locale: Locale = .current) -> String {
     value.formatted(.number.locale(locale))
 }
 
-/// Formats a server-reported amount. The server prices in USD whatever the
-/// user's locale is, so the currency code is fixed and only the presentation
-/// localizes. Amounts under a cent keep four digits rather than rounding away to
-/// nothing.
 func usageFormattedCost(_ value: Double, locale: Locale = .current) -> String {
     let fractionDigits = (value > 0 && value < 0.01) ? 4 : 2
     return value.formatted(

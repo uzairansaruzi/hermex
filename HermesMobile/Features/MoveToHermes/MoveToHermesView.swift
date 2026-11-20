@@ -2,11 +2,6 @@ import SwiftData
 import SwiftUI
 import UIKit
 
-/// The guided Move to Hermes sheet (#1218): host choice (D), the checking scan (A1b), refusals
-/// (R), Review with Profile mapping (A2, M), progress (A3), paused details and pauses (finish-early
-/// A, 3A, 4C), and the report kept until Done (A4). Static rows, no spinners or repeating
-/// animation. Closing it pauses a move; Done switches to the destination. The report can also
-/// remove the webui server or move the next one in this sheet (#1268).
 struct MoveToHermesSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -77,7 +72,6 @@ struct MoveToHermesSheet: View {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
         case .paused:
             ToolbarItem(placement: .confirmationAction) { Button("Close") { dismiss() } }
-        // The report's Done is its first button (5A).
         case .loading, .progress, .finished, .couldNotStart:
             ToolbarItem(placement: .cancellationAction) { EmptyView() }
         }
@@ -102,19 +96,15 @@ struct MoveToHermesSheet: View {
         }
     }
 
-    /// Done acknowledges the report, then switches to the destination.
     private func finish() {
         model.done()
         dismiss()
     }
 
-    /// "Move <next> Next" shows the next webui server's move in this sheet.
     private func moveNext() {
         if let next = model.moveNext() { model = next }
     }
 
-    /// Remove's confirmation: switches to the destination as Done does, then removes the webui
-    /// server. The removal outlives the sheet, which the switch may tear down.
     private func removeSource() {
         let model = model
         let modelContext = modelContext
@@ -125,8 +115,6 @@ struct MoveToHermesSheet: View {
     private var keptProfiles: [String] {
         auth.moveRecord(forSource: model.sourceID)?.record.profiles.filter { $0.destination == .keepOnWebui }.map(\.source) ?? []
     }
-
-    // MARK: D
 
     private var hostChoice: some View {
         AppList {
@@ -157,13 +145,10 @@ struct MoveToHermesSheet: View {
         }
     }
 
-    /// A host as D lists it: with its port, so two hosts on one machine read apart.
     private static func hostAndPort(_ address: String) -> String {
         guard let url = URL(string: address), let host = url.host else { return address }
         return url.port.map { "\(host):\($0)" } ?? host
     }
-
-    // MARK: A1b
 
     private var checking: some View {
         let state = model.checking
@@ -190,8 +175,6 @@ struct MoveToHermesSheet: View {
         }
     }
 
-    // MARK: R
-
     @ViewBuilder
     private func refused(_ refusal: MoveToHermesModel.Refusal) -> some View {
         switch refusal {
@@ -216,8 +199,6 @@ struct MoveToHermesSheet: View {
             }
         }
     }
-
-    // MARK: A2 and M
 
     @ViewBuilder
     private var review: some View {
@@ -316,8 +297,6 @@ struct MoveToHermesSheet: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: A3
-
     private func progress(_ step: MoveToHermesRunner.Step?) -> some View {
         let order: [MoveToHermesRunner.Step] = [.pairing, .copying, .reconciling, .movingDrafts, .finishing]
         let index = step.flatMap { order.firstIndex(of: $0) } ?? -1
@@ -341,8 +320,6 @@ struct MoveToHermesSheet: View {
             Section { Button("Close") { dismiss() } }
         }
     }
-
-    // MARK: Paused (finish-early A1, 3A, 4C)
 
     @ViewBuilder
     private func paused(_ pause: MoveToHermesRunner.Pause) -> some View {
@@ -442,7 +419,6 @@ struct MoveToHermesSheet: View {
         }
     }
 
-    /// 3A: neutral, unless the app knows the user closed the move or the webui server is gone.
     private func pausedLine(_ pause: MoveToHermesRunner.Pause, signedOut: Bool) -> String {
         switch pause {
         case .destinationUnavailable where signedOut: return String(localized: "Sign in to \(destination) again, then Resume.")
@@ -459,7 +435,6 @@ struct MoveToHermesSheet: View {
         return String(localized: "Some work didn’t finish. Resume tries it again. Changes it can’t confirm are listed, not sent again.")
     }
 
-    /// Finish-early A2's confirmation, with the counts as they stand.
     private var finishMessage: String {
         guard let report = model.snapshot?.report else { return "" }
         var sentences = [String(localized: "The move stops retrying.")]
@@ -480,8 +455,6 @@ struct MoveToHermesSheet: View {
         return sentences.joined(separator: " ")
     }
 
-    // MARK: Couldn't start
-
     private func couldNotStart(_ failure: MoveToHermesRunner.StartFailure) -> some View {
         let reason: String = switch failure {
         case .moveInProgress: String(localized: "A move from \(source) is already in progress. Resume or finish it first.")
@@ -499,9 +472,6 @@ struct MoveToHermesSheet: View {
     }
 }
 
-// MARK: - M2
-
-/// Where one webui Profile's chats go: a Hermes Profile, or kept on the webui server.
 private struct MoveToHermesProfilePicker: View {
     @Bindable var model: MoveToHermesModel
     let choice: MoveToHermesModel.ProfileChoice
@@ -552,23 +522,16 @@ private struct MoveToHermesProfilePicker: View {
     }
 }
 
-// MARK: - A4
-
-/// The move's report, kept until Done (A4, A4b, finish-early A3), with its actions stacked
-/// below (5A): Done, "Move <next> Next" while another webui server hasn't moved, and Remove
-/// while the webui server is still configured.
 private struct MoveToHermesReportView: View {
     let report: MoveToHermesReport
     let source: String
     let destination: String
     let keptProfiles: [String]
     let canCopyAgain: Bool
-    /// The next webui server's name, while one hasn't moved.
     let next: String?
     let copyAgain: () -> Void
     let done: () -> Void
     let moveNext: () -> Void
-    /// Asks to remove the webui server; nil once it is gone.
     let remove: (() -> Void)?
 
     var body: some View {
@@ -683,12 +646,10 @@ private struct MoveToHermesReportView: View {
         return ListFormatter.localizedString(byJoining: parts)
     }
 
-    /// Up to three chats by title, so the user knows which to check.
     private func titles(_ ids: [String]) -> String {
         Self.shortList(ids) { "“\(report.titles[$0] ?? $0)”" }
     }
 
-    /// Three items joined naturally, or the first three and how many more. Formats only those shown.
     private static func shortList<Item>(_ items: [Item], _ format: (Item) -> String) -> String {
         let shown = items.prefix(3).map(format)
         guard items.count > 3 else { return ListFormatter.localizedString(byJoining: shown) }
@@ -707,9 +668,6 @@ private struct MoveToHermesReportView: View {
     }
 }
 
-// MARK: - Shared pieces
-
-/// One step: done, current (numbered), waiting, needing attention or failed. Static glyphs only.
 struct MoveToHermesStep: View {
     enum State: Equatable {
         case done, waiting, attention, failed
@@ -758,7 +716,6 @@ struct MoveToHermesStep: View {
     }
 }
 
-/// A title with a secondary line, as the host list and Profile rows show.
 private struct MoveToHermesRow: View {
     let title: String
     let detail: String
@@ -780,7 +737,6 @@ private struct MoveToHermesRow: View {
     }
 }
 
-/// A whole-screen stop or refusal (R, 4C): what happened, what didn't, and the way out.
 private struct MoveToHermesNoticeScreen<Actions: View>: View {
     let tint: Color
     let title: String
@@ -806,13 +762,6 @@ private struct MoveToHermesNoticeScreen<Actions: View>: View {
     }
 }
 
-// MARK: - Banners
-
-/// The session list's Move to Hermes banner for `serverID` (S1, 2A, A5), shown on the webui
-/// server and, while a move is paused or its report waits, on the destination too. It opens
-/// the guided sheet; A5's More menu offers Copy Missing Chats Again and removal (S2). Before
-/// any move, a webui server asked the one-time question shows the invite instead (#1267, 2A)
-/// until ✕.
 struct MoveToHermesBanner: View {
     let serverID: String
     @Environment(AuthManager.self) private var auth
@@ -821,9 +770,6 @@ struct MoveToHermesBanner: View {
     @State private var isConfirmingRemove = false
     private let notices = MoveToHermesNotices.shared
 
-    /// The banner a sheet opened from: the row stays while its sheet is up, though a running
-    /// move has no banner of its own, so the sheet isn't torn down with it. The invite's has no
-    /// notice yet.
     private struct Request: Identifiable {
         let sourceID: String
         let notice: MoveToHermesNotice?
@@ -834,7 +780,6 @@ struct MoveToHermesBanner: View {
     var body: some View {
         let notice = notices.banner(for: serverID, in: auth.servers) ?? request?.notice
         if notice != nil || request != nil || auth.showsMoveInvite(for: serverID) {
-            // One row for every card, so a sheet survives the invite turning into a notice.
             VStack(spacing: 0) {
                 if let notice { banner(notice) } else { invite }
             }
@@ -857,8 +802,6 @@ struct MoveToHermesBanner: View {
         auth.servers.first { $0.id == sourceID }.map(MoveToHermesModel.name) ?? URL(string: sourceID)?.host ?? sourceID
     }
 
-    /// "Move <server> to Hermes" (2A): Move starts the guided move as Settings does; ✕ hides it
-    /// for this server for good.
     private var invite: some View {
         let source = sourceName(serverID)
         return HStack(spacing: 12) {
@@ -940,7 +883,6 @@ struct MoveToHermesBanner: View {
 }
 
 private extension View {
-    /// The Move banners' shared card.
     func moveToHermesCard(_ background: Color) -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
@@ -950,10 +892,6 @@ private extension View {
 }
 
 extension View {
-    /// Applied once at the root (`ContentView`): hands `auth` to the Move banners, keeps
-    /// `MoveToHermesNotices` current when the registry changes and on foreground, and shows
-    /// the offer after a Hermes sign-in (`AuthManager.moveOffer`) and the one-time question
-    /// (`AuthManager.moveQuestion`), above any server's screens.
     func moveToHermesNotices(_ auth: AuthManager) -> some View {
         modifier(MoveToHermesNoticesRefresh(auth: auth))
     }
@@ -980,9 +918,6 @@ private struct MoveToHermesNoticesRefresh: ViewModifier {
             }
     }
 
-    /// What can make the one-time question due: a launch, a sign-in or switch, a server added,
-    /// the offer closing, a return to the foreground, or the active server's chat list coming
-    /// back on screen.
     private struct QuestionTrigger: Equatable {
         let state: AuthManager.State
         let servers: [ServerAccount]
@@ -992,16 +927,8 @@ private struct MoveToHermesNoticesRefresh: ViewModifier {
     }
 }
 
-/// When the root asks the one-time question (#1267): once it is due, the active server's chat
-/// list is on screen (`MoveToHermesNotices.showsChatList`), and no window presents a sheet or
-/// alert. The topmost covering presentation is waited out, not skipped: its dismissal checks again. A
-/// hidden list ends the wait; the root asks again when it returns.
 @MainActor
 enum MoveToHermesQuestionTiming {
-    /// Asks `auth`'s question once it is due over its chat list and nothing covers the app. Waits
-    /// `settle` first and after each covering presentation closes, so a launch's own sheets and
-    /// links, or a sheet closing, finish before it. Returns once asked, no longer due, off its
-    /// list, or cancelled (another trigger, the app leaving the foreground).
     static func ask(_ auth: AuthManager, notices: MoveToHermesNotices, settle: Duration = .seconds(1),
                     windows: @MainActor () -> [UIWindow] = { appWindows }) async {
         func isDue() -> Bool { auth.isMoveQuestionDue && notices.showsChatList(of: auth.activeServer?.id) }
@@ -1011,7 +938,6 @@ enum MoveToHermesQuestionTiming {
             guard var cover = windows().lazy.compactMap({ $0.rootViewController?.presentedViewController }).first else {
                 return auth.askAboutMoveIfDue()
             }
-            // The topmost layer: a full-screen cover takes the ones beneath it out of the window.
             while let above = cover.presentedViewController { cover = above }
             await dismissal(of: cover)
         }
@@ -1021,9 +947,6 @@ enum MoveToHermesQuestionTiming {
         UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
     }
 
-    /// Returns when `controller`'s view leaves its window (it was dismissed) or the task is
-    /// cancelled. UIKit has no public dismissal callback a non-owner can observe, so a hidden
-    /// probe view in the presentation reports it.
     private static func dismissal(of controller: UIViewController) async {
         let probe = DismissalProbe()
         controller.view.addSubview(probe)
@@ -1039,7 +962,6 @@ enum MoveToHermesQuestionTiming {
     }
 
     private final class DismissalProbe: UIView {
-        /// Called once, the first time the probe leaves a window.
         var onDismissal: (() -> Void)?
 
         init() {
@@ -1063,10 +985,6 @@ enum MoveToHermesQuestionTiming {
     }
 }
 
-/// "Move <server> to Hermes" (#1267, 1A): asked once for each webui server that hasn't moved.
-/// Move to Hermes turns this sheet into the guided move as Settings starts it: straight to the
-/// scan with a Bots connection, otherwise the host choice and its Hermes sign-in. Not Now and
-/// closing leave the chat list's banner.
 private struct MoveToHermesQuestionSheet: View {
     let auth: AuthManager
     let question: MoveToHermesQuestion
@@ -1136,9 +1054,6 @@ private struct MoveToHermesQuestionSheet: View {
     }
 }
 
-/// "Signed in to <host>" (#1266, 3A): offers to bring a webui server's chats to the Hermes
-/// server just signed in to. Bring My Chats turns this sheet into the guided move, scanning that
-/// server; Not Now and closing leave everything as it is.
 private struct MoveToHermesOfferSheet: View {
     let auth: AuthManager
     let offer: MoveToHermesOffer

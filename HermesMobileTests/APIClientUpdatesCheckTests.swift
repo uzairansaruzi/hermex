@@ -44,8 +44,6 @@ final class APIClientUpdatesCheckTests: APIClientTestCase {
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.url?.path, "/api/updates/check")
 
-            // The forced path must send { "force": true } so upstream runs a real
-            // git fetch instead of returning the cached status (issue #308).
             let body = apiTestBodyData(from: request)
             let decodedBody = try XCTUnwrap(body.flatMap {
                 try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
@@ -83,7 +81,6 @@ final class APIClientUpdatesCheckTests: APIClientTestCase {
         { "disabled": true }
         """)
 
-        // Distinct from `.error`: the popup wording differs (checks off vs failure).
         XCTAssertEqual(response.forcedCheckOutcome, .disabled)
     }
 
@@ -131,7 +128,6 @@ final class APIClientUpdatesCheckTests: APIClientTestCase {
         let stale = try decodeUpdatesCheck("""
         { "webui": { "name": "webui", "behind": 5, "stale_check": true } }
         """)
-        // Stale results are not trusted even when they claim a non-zero gap.
         XCTAssertEqual(stale.webuiUpdateState, .unavailable)
     }
 

@@ -1,17 +1,12 @@
 import SwiftUI
 
-// The Thinking slider's looks built from paths rather than particles. All of them share one clock:
-// `ThinkingSliderLook.advancePhase`, which stands still at the bottom of the ladder.
-
 extension ThinkingSliderLook {
-    /// Moves the shared clock, and returns the level the look should draw at.
     private static func advancePhase(_ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) -> Double {
         let active = frame.level < 0.002 ? 0 : frame.level
         if active > 0 { store.phase += frame.delta * (0.12 + 2.8 * active * active) }
         return active
     }
 
-    /// `dashPhase` for a dash pattern that runs rightward at `offset`.
     private static func dashPhase(_ offset: Double, period: Double) -> CGFloat {
         let wrapped = offset.truncatingRemainder(dividingBy: period)
         return period - wrapped
@@ -27,7 +22,6 @@ extension ThinkingSliderLook {
         return path
     }
 
-    /// Silk ribbons accelerate rightward, gaining layers and wider bends.
     static func drawSilk(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let active = advancePhase(frame, store), width = frame.width, height = frame.height
         context.fillThinkingTrack(frame, 0x11151C)
@@ -59,7 +53,6 @@ extension ThinkingSliderLook {
         }
     }
 
-    /// Broad copper vanes march rightward and pack together toward the top of the ladder.
     static func drawVectorDrive(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let active = advancePhase(frame, store), width = frame.width, height = frame.height
         context.fillThinkingTrack(frame, 0x11151C)
@@ -110,7 +103,6 @@ extension ThinkingSliderLook {
         context.stroke(grip, with: .color(Color(thinkingHex: 0xFFF0DF)), style: StrokeStyle(lineWidth: 2, lineCap: .round))
     }
 
-    /// Wide elliptical wavefronts get closer, brighter and faster, like pressure building.
     static func drawPressureWave(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let active = advancePhase(frame, store), width = frame.width, height = frame.height
         context.fillThinkingTrack(frame, 0x11151C)
@@ -153,7 +145,6 @@ extension ThinkingSliderLook {
         context.fill(circle(4), with: .color(Color(thinkingHex: 0xE7FFF1)))
     }
 
-    /// Braided coils tighten into a dense traveling helix.
     static func drawInduction(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let active = advancePhase(frame, store), width = frame.width, height = frame.height
         context.fillThinkingTrack(frame, 0x11151C)
@@ -178,7 +169,6 @@ extension ThinkingSliderLook {
         )
     }
 
-    /// Interlocking metallic facets slide rightward, sharpening into a dense weave.
     static func drawFoldedLight(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let active = advancePhase(frame, store), width = frame.width, height = frame.height
         context.fillThinkingTrack(frame, 0x11151C)
@@ -214,7 +204,6 @@ extension ThinkingSliderLook {
         context.fill(Path(CGRect(x: x - 5, y: y - 1, width: 10, height: 2)), with: .color(Color(thinkingHex: 0x45605D)))
     }
 
-    /// Signals take angular routes through a circuit, lighting more lanes and moving faster.
     static func drawRelay(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let active = advancePhase(frame, store), width = frame.width, height = frame.height
         context.fillThinkingTrack(frame, 0x11151C)
@@ -269,7 +258,6 @@ extension ThinkingSliderLook {
         context.stroke(pins, with: .color(Color(thinkingHex: 0xB1D6DD)), lineWidth: 1)
     }
 
-    /// A silver-blue liquid rises from a quiet surface to a deep, fast current.
     static func drawLiquidCore(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let active = advancePhase(frame, store), width = frame.width, height = frame.height
         context.fillThinkingTrack(frame, 0x11151C)

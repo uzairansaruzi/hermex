@@ -38,8 +38,6 @@ import XCTest
         creator.remove(creator.selected[0]); XCTAssertEqual(creator.selected.count, 5)
     }
 
-    /// A canonical host names the Profiles it can seat (#1605). No other bot is listed, can be
-    /// chosen, or is sent, and one the host stopped seating after the sheet opened stops Create.
     func testOnlyBotsTheHostCanSeatCanJoinAGroup() async throws {
         let wire = RoomWire()
         let creator = try creator(wire, seatable: ["default", "dev", "bot1"])
@@ -55,13 +53,10 @@ import XCTest
         XCTAssertTrue(wire.writes.isEmpty)
         XCTAssertNil(creator.created)
         XCTAssertNotNil(creator.message)
-        // The picker follows the host's answer: the refused bot leaves, and one it seats now shows.
         XCTAssertEqual(creator.selected.map(\.id), ["default"])
         XCTAssertEqual(creator.remaining.map(\.id), ["bot1"])
         XCTAssertTrue(try self.creator(RoomWire(), seatable: ["dev"]).tooFewToSeat)
 
-        // The host refuses an unseatable member before it looks for the room, so a Try Again after
-        // a lost reply reads the rooms: the one it made, or an unlocked choice and no resend.
         for made in [true, false] {
             let wire = RoomWire(), creator = try self.creator(wire, seatable: ["default", "dev"])
             creator.select(creator.roster[0]); creator.select(creator.roster[1])
@@ -221,8 +216,6 @@ import XCTest
         reader.leave(owner: second); XCTAssertEqual(reader.link, .idle)
     }
 
-    /// Peer administration and extra member keys have no `HermesCall` shape at all;
-    /// what remains is the value rules the host applies.
     func testRoomMutationValidationIsExactAndCountsUnicodeLikeServer() throws {
         let members = [profile("default"), profile("dev")].map(BotRoomCreator.member)
         var room = HermesCall.RoomCreation(roomID: "room", name: "Group", members: members)

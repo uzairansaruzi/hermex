@@ -10,11 +10,7 @@ struct StreamingMarkdownBlockSegments: Equatable {
     let activeMarkdown: String
 }
 
-/// Seals the settled front of a streaming reply into stable chunks so only
-/// the active tail re-parses per token. Runs over the whole reply on every
-/// streaming update, so it walks the text once without allocating per line.
 enum StreamingMarkdownBlockSplitter {
-    /// Measured in UTF-8 bytes, which native strings count in O(1).
     static let stableChunkTargetUTF8Count = 6_000
 
     static func split(_ text: String) -> StreamingMarkdownBlockSegments {
@@ -58,9 +54,6 @@ enum StreamingMarkdownBlockSplitter {
         )
     }
 
-    /// The `\n` ending the line that starts at `start`, found by byte. A
-    /// `\r\n` pair is one Character, which the Character search this replaced
-    /// never matched, so it does not end a line here either.
     private static func lineEnd(in text: String, from start: String.Index) -> String.Index {
         let utf8 = text.utf8
         var searchStart = start
@@ -98,8 +91,6 @@ enum StreamingMarkdownBlockSplitter {
         )
     }
 
-    /// `trimmingCharacters(in: .whitespacesAndNewlines)` as a view into
-    /// `line` rather than a new string.
     private static func trimmed(_ line: Substring) -> Substring {
         let scalars = line.unicodeScalars
         let isContent: (Unicode.Scalar) -> Bool = { !whitespacesAndNewlines.contains($0) }
@@ -111,9 +102,6 @@ enum StreamingMarkdownBlockSplitter {
 
     private static let whitespacesAndNewlines = CharacterSet.whitespacesAndNewlines
 
-    /// The opening run of a fenced code block. Per CommonMark, only a line of the same
-    /// character, at least as long, with no info string closes it, so a ```` fence can
-    /// hold ``` lines and a ~~~ fence can hold ``` lines.
     private struct FenceRun {
         let character: Character
         let length: Int

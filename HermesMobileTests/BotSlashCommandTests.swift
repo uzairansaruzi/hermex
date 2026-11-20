@@ -1,11 +1,7 @@
 import XCTest
 @testable import HermesMobile
 
-/// What a Bot connection's `commands.catalog` is read as, and how a draft's opening
-/// `/name` is read back out. A Hermes chat's panel and sends are `HermesSlashCommandTests`.
 @MainActor final class BotSlashCommandTests: XCTestCase {
-    /// `commands.catalog` as 0.21.2 answers it: skill keys in `skills`, every
-    /// entry's description in `pairs`, commands in `canon` and `commands`.
     private func catalogReply(
         skills: [String: BotJSON] = ["/work": .object(["origin": .string("user"), "usage": .number(3)]),
                                      "/write-tests": .object(["origin": .string("bundled")])],
@@ -19,12 +15,9 @@ import XCTest
             "skills": .object(skills), "pairs": .array(pairs), "canon": .object(canon),
             "commands": .object(commands), "categories": .array([]),
             "skill_count": .number(Double(skills.count)), "warning": .string(""),
-            // A field this app has never heard of must not cost it the catalog.
             "future_field": .object(["nested": .bool(true)])
         ])
     }
-
-    // MARK: - Catalog decode
 
     func testCatalogReadsSkillsWithTheirDescriptions() {
         let skills = BotSlashCatalog.skills(from: catalogReply())
@@ -35,9 +28,6 @@ import XCTest
         XCTAssertEqual(skills.last?.description, "Add tests")
     }
 
-    /// `command.dispatch` resolves quick, plugin and registry commands ahead of
-    /// skills, and a quick command can run a shell command on the host. A skill
-    /// key that collides with one is never offered.
     func testCatalogDropsSkillsShadowedByACommand() {
         let reply = catalogReply(
             skills: ["/work": .object([:]), "/deploy": .object([:]), "/m": .object([:])],
@@ -58,11 +48,6 @@ import XCTest
         XCTAssertNil(BotSlashCatalog.skills(from: ragged).first?.description)
     }
 
-    // MARK: - Ranking
-
-    /// The panel ranks through the same `SlashCommandRanker` the Sessions panel
-    /// uses, so a name prefix still beats a word boundary, which beats a
-    /// description hit.
     func testRankingMatchesTheSessionsPanel() {
         let skills = [
             SkillSlashSuggestion(name: "review-notes", category: nil, description: "Tidy meeting notes"),
@@ -73,8 +58,6 @@ import XCTest
                        ["review-notes", "code-review", "triage"])
         XCTAssertEqual(SlashSkillFormatter.matching("nothing-here", in: skills).map(\.name), [])
     }
-
-    // MARK: - Draft parsing
 
     func testInvocationReadsTheOpeningNameAndArgument() {
         XCTAssertEqual(BotSlashCatalog.invocation(in: "  /work fix the leak "),

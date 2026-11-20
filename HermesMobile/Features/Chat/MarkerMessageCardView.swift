@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Collapsible card for context-compaction marker messages, replacing the user
-/// bubble they would otherwise render as. Mirrors the web UI's collapsed cards
-/// and follows the `ReasoningBlockView` disclosure pattern.
 struct MarkerMessageCardView: View {
     let kind: ChatMarkerMessageKind
     let content: String?
@@ -109,8 +106,6 @@ struct MarkerMessageCardView: View {
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // The synthesized anchor card mirrors the web UI's
-        // "Reference only · <preview>" collapsed line.
         if kind == .compressionReference {
             guard !oneLine.isEmpty else { return String(localized: "Reference only") }
             return String(localized: "Reference only · \(truncated(oneLine))")
@@ -132,10 +127,6 @@ struct MarkerMessageCardView: View {
     }
 }
 
-/// A scheduled task's run prompt (#1413) in place of its user bubble, styled like the
-/// delegation completion card: the host wrote the row, not the user. Collapsed, it names the
-/// job's skills and previews its text; expanded, it shows that text and Copy, which copies the
-/// whole row, hint included (`onCopy`, the bubble's Copy). The run's time stays in the meta row.
 struct CronRunPromptCard: View {
     let prompt: CronRunPrompt
     let onCopy: (() -> Void)?
@@ -235,7 +226,6 @@ struct CronRunPromptCard: View {
         .contentShape(Rectangle())
     }
 
-    /// The body's first line, which opens the collapsed card.
     private var preview: String? {
         prompt.body.split(whereSeparator: \.isNewline).first.map(String.init)
     }

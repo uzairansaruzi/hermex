@@ -2,7 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class ToolCallDiffTests: XCTestCase {
-    /// hermes-agent `patch` output: `difflib.unified_diff` with `a/`/`b/` headers and a trailing newline.
     private let unifiedDiff = """
     --- a/HermesMobile/App.swift
     +++ b/HermesMobile/App.swift
@@ -21,7 +20,6 @@ final class ToolCallDiffTests: XCTestCase {
         "path": .string("HermesMobile/App.swift"),
         "old_string": .string("let b = 2"),
         "new_string": .string("let b = 3\nlet c = 4"),
-        // The webui stringifies every argument value.
         "replace_all": .string("False")
     ]
 
@@ -37,8 +35,6 @@ final class ToolCallDiffTests: XCTestCase {
     private func call(_ name: String, preview: String?, args: [String: JSONValue], isCompleted: Bool = true) -> ToolCall {
         ToolCall(name: name, preview: preview, args: args, isCompleted: isCompleted)
     }
-
-    // MARK: - Result sources
 
     func testPatchResultDiffIsTheSourceAndItsCountsMatch() throws {
         let toolCall = call("patch", preview: try patchResult(diff: unifiedDiff), args: replacementArgs)
@@ -72,8 +68,6 @@ final class ToolCallDiffTests: XCTestCase {
         }
     }
 
-    /// hermes-agent appends AGENTS.md-style subdirectory hints after "\n\n" to the
-    /// stored result, so a reloaded row's snippet is no longer valid JSON.
     private func withHints(_ result: String, paddedTo length: Int? = nil) -> String {
         let hinted = result + "\n\n[Subdirectory context discovered: HermesMobile/AGENTS.md]\n# Agent notes\n"
         guard let length else { return hinted }
@@ -108,8 +102,6 @@ final class ToolCallDiffTests: XCTestCase {
         XCTAssertEqual(diff.counts, ToolCallDiff.Counts(additions: 3, deletions: 1))
         XCTAssertTrue(diff.hidesResult)
     }
-
-    // MARK: - Argument sources and truncation
 
     func testResultCutAtTheSnippetLimitFallsBackToTheArguments() throws {
         let longDiff = unifiedDiff + String(repeating: " context line\n", count: 400)
@@ -156,7 +148,6 @@ final class ToolCallDiffTests: XCTestCase {
         let cutPreview = String(repeating: "x", count: 4_000)
         let toolCall = call("patch", preview: cutPreview, args: [
             "path": .string("App.swift"),
-            // The webui cuts content arguments at 4,000 characters and appends "...".
             "old_string": .string(String(repeating: "line\n", count: 800) + "..."),
             "new_string": .string("b")
         ])
@@ -196,15 +187,12 @@ final class ToolCallDiffTests: XCTestCase {
         XCTAssertEqual(diff.consumedArgumentKeys, ["content"])
     }
 
-    // MARK: - No diff
-
     func testNonEditRowsResolveNothing() {
         let terminal = call("terminal", preview: unifiedDiff, args: ["command": .string("git diff")])
         XCTAssertNil(ToolCallDiff.resolve(for: terminal))
     }
 
     func testFailedOrNoOpEditsResolveNothing() throws {
-        // The webui unwraps a failed patch's `error` into plain text.
         let webuiFailure = call("patch", preview: "Could not find match for old_string in App.swift", args: replacementArgs)
         let envelopeFailure = call("patch", preview: try json(["success": false, "error": "Could not find match"]), args: replacementArgs)
         let noChange = call("patch", preview: try json(["success": true, "no_change": true, "note": "already applied"]), args: replacementArgs)
@@ -220,10 +208,6 @@ final class ToolCallDiffTests: XCTestCase {
         XCTAssertNil(ToolCallDiff.resolve(for: failed), "the requested change never landed")
     }
 
-    // MARK: - Live results and the opened body
-
-    /// A Hermes chat's `tool.complete` result reaches the row as `toolResultPreview`, whose
-    /// re-encoded envelope keeps the full diff.
     func testToolCompleteResultCarriesTheFullDiff() throws {
         let longDiff = unifiedDiff + String(repeating: "+added line\n", count: 400)
         let fullDiff = longDiff.replacingOccurrences(of: "@@ -9,4 +9,6 @@", with: "@@ -9,4 +9,406 @@")
@@ -236,8 +220,6 @@ final class ToolCallDiffTests: XCTestCase {
         XCTAssertEqual(diff.counts, ToolCallDiff.Counts(additions: 403, deletions: 1))
     }
 
-    /// An error envelope keeps its fields through `toolResultPreview`, so the row reads as a
-    /// failure; a string result stays plain text.
     func testErrorEnvelopeReadsAsFailureAndStringResultsStayText() {
         let failed = call("read_file", preview: BotJSON.object(["error": .string("No such file")]).toolResultPreview, args: [:])
         XCTAssertEqual(ToolCallSummaryFormatter.row(for: failed, isLive: false)?.status, .failure)

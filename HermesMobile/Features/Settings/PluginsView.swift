@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// A Hermes server's Plugins page (#1582), opened from its Settings page: one Profile's plugins with
-/// search and filters, each row's switch applying at once unless Hermex or sign-in relies on it. **+**
-/// installs after a review, and a user install swipes to Remove, or to its own page for the two
-/// plugins Hermex manages itself.
 struct PluginsView: View {
     @State private var model: PluginsModel
     @State private var isConfirmingRestart = false
@@ -46,8 +42,6 @@ struct PluginsView: View {
         .settingsPage(String(localized: "Plugins"))
         .listSectionSpacing(.compact)
         .searchable(text: $model.query, placement: .navigationBarDrawer(displayMode: .always), prompt: model.tab == .installed ? Text("Search installed") : Text("Search plugins"))
-        // Closing search otherwise slides the bar back and resizes the list for the keyboard at once,
-        // which drops frames on a phone. The list stays still, and scrolling reaches what's under the keyboard.
         .searchPresentationToolbarBehavior(.avoidHidingContent)
         .ignoresSafeArea(.keyboard)
         .scrollDismissesKeyboard(.immediately)
@@ -115,7 +109,6 @@ struct PluginsView: View {
             : String(localized: "Turn off \(pending.plugin.name)?")
     }
 
-    /// What the host last reported, and the restart it asked for. The restart stays until it's requested.
     @ViewBuilder
     private var noticeSection: some View {
         if model.notice != nil || model.needsRestart {
@@ -176,9 +169,6 @@ struct PluginsView: View {
 }
 
 private extension PluginsView {
-    /// A user install's way out. hermex-push and hermex-screen go to the pages that manage them,
-    /// because each has its own pairing or hold to undo. Screen's page can remove it only while it's
-    /// running, so one that's off removes like any other. Bundled plugins have none.
     @ViewBuilder
     func pluginActions(_ plugin: HermesPlugin) -> some View {
         if plugin.key == "hermex-push" {
@@ -191,7 +181,6 @@ private extension PluginsView {
     }
 }
 
-/// The Profile a sheet was opened for, fixed for as long as it's up.
 private struct InstallProfile: Identifiable {
     let name: String
     var id: String { name }
@@ -221,7 +210,6 @@ private extension PluginsModel.Filter {
     }
 }
 
-/// The filters, each with how many rows it holds, in a row that scrolls sideways.
 private struct PluginFilterChips: View {
     let model: PluginsModel
 
@@ -242,13 +230,10 @@ private struct PluginFilterChips: View {
     }
 }
 
-/// One dense plugin row: tap it for its page, and the switch shows the state asked for and stays off
-/// limits until the host answers. An update has its own button, one plugin at a time.
 private struct PluginRow: View {
     let plugin: HermesPlugin
     let isOn: Bool
     let isBusy: Bool
-    /// Why Nous took this plugin out of the catalog, when it did.
     let removalReason: String?
     let onOpen: () -> Void
     let onUpdate: () -> Void
@@ -297,8 +282,6 @@ private struct PluginRow: View {
         }
     }
 
-    /// Its folder, which tells apart plugins with the same name, then its version and origin. While
-    /// the host works, which can take minutes on a toggle that syncs packages, it says so instead.
     private var details: String {
         if isBusy { return String(localized: "Applying…") }
         return [plugin.category, plugin.version, plugin.origin].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")

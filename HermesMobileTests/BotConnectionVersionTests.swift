@@ -2,13 +2,11 @@ import SwiftData
 import XCTest
 @testable import HermesMobile
 
-/// The pin file is the maintainer-facing record; `HermesCompatibility.testedVersion`
-/// is the runtime mirror. Reading the file via `#filePath` keeps it out of the bundle.
 final class BotConnectionVersionTests: XCTestCase {
     private var pinFile: URL {
         URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // HermesMobileTests
-            .deletingLastPathComponent()   // repo root
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
             .appendingPathComponent("HERMES_AGENT_TESTED_SHA")
     }
 
@@ -23,8 +21,6 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertTrue(HermesCompatibility.isSupported(HermesCompatibility.testedVersion), "the minimum is at or below the tested release")
     }
 
-    /// Releases compare by number, part by part, on the leading `MAJOR.MINOR.PATCH` only.
-    /// Anything without one is a proxy or a fork, so it is not refused on a guess.
     func testOnlyAReadableReleaseOlderThanTheMinimumIsUnsupported() {
         let rows: [(String?, Bool)] = [
             ("0.21.2", false), ("0.21.2+canary.20260928T071354Z", false), ("0.9.99", false), ("0.20.10", false),
@@ -54,7 +50,6 @@ final class BotConnectionVersionTests: XCTestCase {
         let ats = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "NSAppTransportSecurity") as? [String: Any])
         let domains = try XCTUnwrap(ats["NSExceptionDomains"] as? [String: [String: Any]])
         XCTAssertNil(ats["NSAllowsArbitraryLoads"])
-        // .local and single-label names, which scheme inference sends over HTTP.
         XCTAssertEqual(ats["NSAllowsLocalNetworking"] as? Bool, true)
         XCTAssertEqual(Set(domains.keys), Set(["10.0.0.0/8", "127.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
                                                "169.254.0.0/16", "100.64.0.0/10", "::1", "fc00::/7", "fe80::/10",
@@ -62,7 +57,6 @@ final class BotConnectionVersionTests: XCTestCase {
         for (range, policy) in domains {
             XCTAssertEqual(policy["NSExceptionAllowsInsecureHTTPLoads"] as? Bool, true, range)
         }
-        // Tailscale MagicDNS names sit below the tailnet: host.tailnet.ts.net.
         XCTAssertEqual(domains["ts.net"]?["NSIncludesSubdomains"] as? Bool, true)
     }
 
@@ -94,7 +88,6 @@ final class BotConnectionVersionTests: XCTestCase {
         }
     }
 
-    /// Removing the connection takes its Bot Chats from the offline cache.
     func testRemovingTheConnectionDropsItsCachedBotChats() async throws {
         let store = BotConnectionStore(keychain: InMemoryKeychainStore())
         let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me", password: "old")
@@ -138,7 +131,6 @@ final class BotConnectionVersionTests: XCTestCase {
             " HTTPS://HERMES.LOCAL:9119/ ": "https://hermes.local:9119",
             "http://public.example": "http://public.example",
             "192.168.1.5:9119": "http://192.168.1.5:9119",
-            // Links copied from a browser, a config file or a curl command.
             "https://hermes.example.com/sessions": "https://hermes.example.com",
             "https://hermes.example.com/login?next=%2F": "https://hermes.example.com",
             "https://hermes.example.com/auth/login?provider=nous&next=%2F": "https://hermes.example.com",
@@ -214,8 +206,6 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertEqual(try store.load(server: other), old)
     }
 
-    /// A Hermes server's own sign-in (#899): its address is the server's, even after a
-    /// sign-out deleted the record, and the record is removed only with the server.
     func testAHermesServersSignInKeepsItsAddressAndOffersNoRemove() async throws {
         let hermes = URL(string: "https://hermes.example:9119")!
         let store = BotConnectionStore(keychain: InMemoryKeychainStore())
@@ -239,9 +229,6 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertTrue(side.offersRemoval)
     }
 
-    /// A Hermes server whose host signs in through the browser (#708) shows no username or
-    /// password, and signing the same account in again keeps the connection's UUID, and with it
-    /// its drafts, cache and push pairing, with the new refresh token.
     func testAHermesServerSignsInAgainThroughTheBrowserAndKeepsItsConnection() async throws {
         defer { HermesHostFixture.reset() }
         let hermes = URL(string: "https://hermes.example")!
@@ -279,10 +266,6 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertEqual(record.password, "")
     }
 
-    /// On a host offering both, a saved browser sign-in opens on Browser; switching it to
-    /// Password saves no `oauth`, and back to Browser saves no password (#1539). Neither switch
-    /// is another account, even with no `install_id` to compare: the UUID, and with it drafts,
-    /// cache and push pairing, stays.
     func testSwitchingASavedServerBetweenBrowserAndPasswordKeepsOnlyOneCredential() async throws {
         defer { HermesHostFixture.reset() }
         let hermes = URL(string: "https://hermes.example")!
@@ -326,8 +309,6 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertEqual(browserRecord.password, "")
     }
 
-    /// A signed-out Hermes server whose status read failed can't tell whether it signs in
-    /// through the browser, so it offers to read it again; one that answered doesn't.
     func testASignedOutServerWhoseStatusFailedOffersToCheckAgain() async {
         var reply: Result<BotHostStatus, BotHostProbeFailure> = .failure(.unreachable("offline"))
         let model = BotConnectionSetup(server: URL(string: "https://hermes.example")!, isServerSignIn: true,
@@ -454,9 +435,6 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertEqual(wire.calls, 0, "A dismissed attempt cannot load the roster or save credentials")
     }
 
-    /// The candidate signs in with the form's headers, so a host behind an access proxy
-    /// can be reached before anything is saved. A header change keeps the connection's
-    /// UUID (Decision 2), and blank rows are dropped.
     func testTheCandidateSignsInAndSavesWithTheFormsHeaders() async throws {
         let store = BotConnectionStore(keychain: InMemoryKeychainStore())
         let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me", password: "pw")
@@ -483,8 +461,6 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertNil(try store.load(server: server)?.headers, "Removing them saves the record without headers")
     }
 
-    /// A header the policy refuses keeps Connect off and says why under the row. A half
-    /// Cloudflare Access pair only warns (Decision 3).
     func testHeaderRejectionsBlockConnectAndAHalfAccessPairOnlyWarns() async {
         let wire = ConnectionSetupWire()
         let model = BotConnectionSetup(server: server, store: BotConnectionStore(keychain: InMemoryKeychainStore()),
@@ -600,7 +576,6 @@ final class BotConnectionVersionTests: XCTestCase {
     var replayEpoch: String? = "fixture"
     var serverVersion: String? = "999.0"
     var serverInstallID: String?
-    /// The record the setup probed with; `connect()` applies its `install_id` check.
     var connection: BotConnection?
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
@@ -632,8 +607,6 @@ private struct ConnectionSetupFailingKeychain: KeychainStoring {
     func delete(_ key: KeychainStore.Key, scope: String) throws {}
 }
 
-/// The public status probe: one credential-free GET whose replies map to screen
-/// states. Transport faults use a raw-body fixture so non-JSON replies are testable.
 @MainActor final class BotHostStatusTests: XCTestCase {
     private let host = URL(string: "https://hermes.example")!
     private let access = CustomHeader(name: "X-Access", value: "token")
@@ -686,8 +659,6 @@ private struct ConnectionSetupFailingKeychain: KeychainStoring {
         XCTAssertEqual(wedged.gatewayNote, String(localized: "Scheduled Tasks may not run until it responds."))
     }
 
-    /// Only the saved Connection Headers go out: behind Cloudflare Access even this public
-    /// route needs the service token.
     func testProbeSendsTheSavedHeadersButNoCredentialsOrCookies() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         var seen: URLRequest?
@@ -726,8 +697,6 @@ private struct ConnectionSetupFailingKeychain: KeychainStoring {
         XCTAssertFalse(reason.isEmpty)
     }
 
-    /// The fixture carries the headers onto the redirected request, as a server's redirect
-    /// would, so only the probe's redirect guard can keep them from the other host.
     func testARedirectToAnotherHostCarriesNoneOfTheSavedHeaders() async throws {
         BotStatusHTTPFixture.redirect = URL(string: "https://team.cloudflareaccess.com/cdn-cgi/access/login")!
         var hop: URLRequest?
@@ -744,7 +713,6 @@ private struct ConnectionSetupFailingKeychain: KeychainStoring {
 
 private final class BotStatusHTTPFixture: URLProtocol {
     static var handler: ((URLRequest) throws -> (Int, Data))?
-    /// When set, a request to any other host is answered with a 302 to this URL.
     static var redirect: URL?
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }

@@ -2,9 +2,6 @@ import XCTest
 import AppIntents
 @testable import HermesMobile
 
-/// Covers the "New Chat in <Profile>" App Intent plumbing (issue #339): the profile-carrying
-/// deep link, its non-aliasing with the other new-chat links, the `NewChatRequest` threading,
-/// the intent itself, and the shared `ProfileEntity` mapping + cache.
 final class AppIntentNewChatInProfileTests: XCTestCase {
 
     override func setUp() async throws {
@@ -17,8 +14,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         ProfileStatusFixture.replies = [:]
         try await super.tearDown()
     }
-
-    // MARK: - With a Hermes server active (#899)
 
     private func account(_ id: String, _ kind: ServerKind) -> ServerAccount {
         ServerAccount(id: id, urlString: id, displayName: "", initials: "", headerLogoColorHex: HeaderLogoColor.defaultHex,
@@ -38,8 +33,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertNil(profileServer("https://hermes.example", [hermes]))
         XCTAssertNil(profileServer(nil, [first]))
     }
-
-    // MARK: - Hermes servers' Profiles (#1180)
 
     private func account(_ id: String, _ kind: ServerKind, named name: String) -> ServerAccount {
         var named = account(id, kind)
@@ -89,8 +82,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertTrue(HermesDeepLink.isWebuiNewChatInProfileURL(bare), "A link with no profile stays a plain webui new chat")
     }
 
-    /// A link naming a server never falls back to the webui route, which would open another
-    /// server's composer.
     func testALinkNamingAServerThatCannotOpenIsNotAWebuiLink() throws {
         for query in ["server=https%3A%2F%2Fstudio.test&profile=", "server=https%3A%2F%2Fstudio.test&profile=%20",
                       "server=https%3A%2F%2Fstudio.test", "server=not%20a%20url&profile=dev",
@@ -182,7 +173,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertEqual(names.names(for: air), [.init(profile: "default", title: "Air")])
     }
 
-    /// Server URLs are credential-like and stay out of the app group (#1180).
     func testTheNameCacheStoresNoServerURL() throws {
         let (names, suite, defaults) = makeIsolatedNames()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -199,7 +189,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertEqual(names.names(for: studio), [.init(profile: "default", title: "Hermes")])
     }
 
-    /// `/api/status` through `ProfileStatusFixture`, as the picker reads it.
     private static let liveNames: @Sendable (ServerAccount) async -> [String]? = { account in
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ProfileStatusFixture.self]
@@ -223,9 +212,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertEqual(WebuiEntryRoute.resolve(active: nil, servers: [hermes]), .stay)
     }
 
-    // MARK: - After Move to Hermes (#1217)
-
-    /// A Hermes server holding move records for webui servers, each with Review's mappings.
     private func moved(_ id: String, from moves: [(source: String, profiles: [MovedWebuiProfile])]) -> ServerAccount {
         var holder = account(id, .hermes)
         holder.movedWebuiServers = moves.map { MovedWebuiServer(sourceServerID: $0.source, profiles: $0.profiles) }
@@ -237,14 +223,11 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         MovedWebuiRoute.newChat(inProfile: profile, active: active.flatMap(URL.init(string:)), servers: servers)
     }
 
-    /// Where a Hermes outcome opens, without the request's fresh id.
     private func opens(_ outcome: MovedWebuiRoute.Outcome<HermesNewChatDestination>) -> String? {
         guard case .hermes(let destination) = outcome else { return nil }
         return "\(destination.server.absoluteString)|\(destination.profile ?? "")"
     }
 
-    /// A moved webui server's Profile opens where Review mapped it: a Hermes Profile, or the
-    /// webui server it was kept on, which can't open it once removed.
     func testAWebuiProfileShortcutFollowsItsMove() {
         let webui = account("https://webui.test", .webui)
         let toResearch = moved("https://hermes.test", from: [("https://webui.test", [
@@ -264,9 +247,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
                        "A Profile its Review didn't name never goes to the moved server")
     }
 
-    /// Once a move names the Profile, every place that could take it counts, an unmoved webui
-    /// server included, and the active server never breaks the tie. With no move naming it,
-    /// today's route among unmoved webui servers.
     func testAWebuiProfileShortcutRefusesWhenAnotherPlaceCouldTakeIt() {
         let webui = account("https://webui.test", .webui), unmoved = account("https://other.test", .webui)
         let toResearch = moved("https://hermes.test", from: [("https://webui.test", [
@@ -296,8 +276,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertEqual(newChat("dev", active: "https://hermes.test", none), .webui(.switchServer(webui)), "No move: as before")
     }
 
-    /// A saved bare-id Shortcut keeps resolving while a move named its Profile, with its webui
-    /// server gone, so running it decides where it goes.
     @MainActor func testASavedBareShortcutResolvesWhileAMoveNamesItsProfile() async {
         let (names, suite, defaults) = makeIsolatedNames()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -310,8 +288,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
 
         XCTAssertEqual(resolved.map(\.id), ["dev"])
     }
-
-    // MARK: - Deep link shape
 
     func testBlankProfileNameProducesNoURL() {
         XCTAssertNil(HermesDeepLink.newChatInProfileURL(profileName: ""))
@@ -328,8 +304,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         let url = try XCTUnwrap(HermesDeepLink.newChatInProfileURL(profileName: "  dev  "))
         XCTAssertEqual(HermesDeepLink.profileName(fromNewChatInProfile: url), "dev")
     }
-
-    // MARK: - Non-aliasing with the other new-chat links
 
     func testProfileURLDoesNotAliasPlainVoiceOrSession() throws {
         let profileURL = try XCTUnwrap(HermesDeepLink.newChatInProfileURL(profileName: "dev"))
@@ -348,10 +322,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertNil(HermesDeepLink.profileName(fromNewChatInProfile: plain))
     }
 
-    // MARK: - NewChatRequest threading
-
-    // MARK: - Intent
-
     @MainActor
     func testIntentQueuesTheProfileDeepLink() async throws {
         var intent = NewChatInProfileIntent()
@@ -362,10 +332,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
             HermesDeepLink.newChatInProfileURL(profileName: "dev")
         )
     }
-
-    // MARK: - ProfileEntity mapping
-
-    // MARK: - Cache
 
     func testCacheRoundTripsProfilesAsEntities() throws {
         let (cache, suite, defaults) = makeIsolatedCache()
@@ -428,8 +394,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertFalse(cache.save([]), "clearing an already-empty cache is not a change")
     }
 
-    /// A `ProfileEntityCache` backed by a throwaway `UserDefaults` suite so tests never touch
-    /// the real app-group cache.
     private func makeIsolatedCache() -> (ProfileEntityCache, String, UserDefaults) {
         let suite = "test.profileentitycache.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -437,7 +401,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
     }
 }
 
-/// Answers `/api/status` per host from `replies`; any other host can't be reached.
 private final class ProfileStatusFixture: URLProtocol {
     nonisolated(unsafe) static var replies: [String: (Int, String)] = [:]
     override class func canInit(with request: URLRequest) -> Bool { true }

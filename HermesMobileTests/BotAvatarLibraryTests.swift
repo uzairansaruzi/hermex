@@ -73,7 +73,6 @@ import XCTest
     }
 }
 
-/// "Describe It" over a scripted socket.
 @MainActor final class BotAvatarGenerationTests: XCTestCase {
     private let valid = #"{"name":"Box","path":"M20 20 L80 20 L80 80 L20 80 Z","eyes":{"x":50,"y":46,"spacing":16,"scale":1.2}}"#
 

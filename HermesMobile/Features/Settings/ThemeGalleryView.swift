@@ -1,8 +1,6 @@
 #if DEBUG
 import SwiftUI
 
-/// The real chat components under one theme and color scheme at a time, switched with the real
-/// settings: nested hosting in a reply reads the window's trait, not a local override. Debug builds only.
 struct ThemeGalleryView: View {
     private static let user = ChatMessage(role: "user", content: "Fix the login retry bug", timestamp: 1, messageId: "gallery-user")
     private static let reply = ChatMessage(role: "assistant", content: """

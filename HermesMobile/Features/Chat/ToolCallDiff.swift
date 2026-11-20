@@ -1,60 +1,31 @@
 import Foundation
 
-/// A file edit's change, resolved from an edit-type tool call so its log row can
-/// show "+N −M" and its opened body can draw #762's red and green diff rows.
-/// Pure: `resolve(for:)` reads only the call, and parsed documents are cached by
-/// source text, so rebuilding rows on every body pass never re-parses a diff.
 struct ToolCallDiff: Equatable {
-    /// Where the diff text came from, in the order `resolve(for:)` tries them.
     enum Source: Equatable {
-        /// The result envelope's `diff` (hermes-agent `patch`): the real change, with context lines.
         case resultDiff
-        /// A result that is itself a unified diff (MCP editors).
         case resultText
-        /// An args `patch` or `diff` string.
         case argumentPatch
-        /// Args `old_string`/`new_string` as removed and added lines.
         case argumentReplacement
-        /// Args `content` (`write_file`) as added lines. The old file is never sent.
         case argumentContent
     }
 
     struct Counts: Equatable {
         let additions: Int
-        /// `nil` when the source cannot know them (written content).
         let deletions: Int?
     }
 
     let document: MarkdownDiffDocument
     let source: Source
-    /// The server cut part of the source off, so the diff is partial.
     let isTruncated: Bool
-    /// The collapsed row's "+N −M"; nil when the diff would undercount the edit:
-    /// a partial diff, or one `replace_all` pair standing in for every occurrence.
     let counts: Counts?
-    /// Argument keys the diff stands in for in the opened body.
     let consumedArgumentKeys: Set<String>
-    /// Whether the opened body drops the Result section: the diff came from the
-    /// result, or the result was cut off and would show as partial raw JSON.
     let hidesResult: Bool
 
-    /// The webui's result snippet cap (`_TOOL_RESULT_SNIPPET_MAX`). A cut result has no marker.
     private static let snippetLimit = 4_000
-    /// The webui cuts content arguments at the snippet cap and appends this.
     private static let argumentCutMarker = "..."
-    /// Appended when a paginated session load clips a `role: tool` message.
     private static let paginatedNotice = "\n\n[Tool output truncated in paginated session response;"
-    /// Argument keys that describe the change itself rather than where it went.
     private static let changeArgumentKeys = ["patch", "diff", "old_string", "new_string", "content"]
 
-    /// The diff for a `.write` row (names containing `write`, `patch` or `edit`), or
-    /// nil when the call is not an edit, failed (the server's `is_error`, or a
-    /// result reporting a failure or no-op), or carries nothing to diff. Sources,
-    /// first complete one wins: the result's `diff`, a result that is a unified
-    /// diff, then args `patch`/`diff`, `old_string`/`new_string`, and `content`.
-    /// The args only stand in while the result is missing, cut off, or an
-    /// envelope reporting success. When every source is cut off, the first one
-    /// is returned as a partial diff.
     static func resolve(for toolCall: ToolCall) -> ToolCallDiff? {
         guard ToolCallSummaryFormatter.kind(forToolNamed: toolCall.name) == .write,
               toolCall.isError != true
@@ -83,31 +54,19 @@ struct ToolCallDiff: Equatable {
         return partial.flatMap { diff(from: $0, args: args, resultIsCutOff: result.isCutOff) }
     }
 
-    /// Whether a write's result says its args did not land: an envelope reporting
-    /// an error, failure, or no-op, or a plain-text result that reads as an error.
-    /// Plain success text, such as an MCP server's "Successfully wrote to …",
-    /// still counts as landed. The tool group summary counts a write that did not
-    /// land as another action, not a changed file.
     static func resultReportsNoChange(for toolCall: ToolCall) -> Bool {
         ResultReading(preview: toolCall.preview).reportsNoChange
     }
-
-    // MARK: - Sources
 
     private struct Candidate {
         let source: Source
         let text: String
         let isTruncated: Bool
-        /// The argument keys it was built from; nil for a result source.
         var consumedKeys: Set<String>?
-        /// A `@@ -1,<old> +1,<new> @@` line that only keeps the parser counting.
         var hasSyntheticHeader = false
-        /// False when the text shows less than the edit changed, though none of it was cut.
         var hasExactCounts = true
     }
 
-    /// What the result preview says about the edit, across the webui snippet,
-    /// the paginated message fallback, and the gateway's re-encoded result.
     private struct ResultReading {
         var envelopeDiff: String?
         var plainDiff: String?
@@ -128,17 +87,12 @@ struct ToolCallDiff: Equatable {
             case .string(let string):
                 plainText = ToolCallDiff.unescaped(string)
             case nil:
-                // Python slices by code point, so the cap is counted in scalars.
-                // Never unescaped: a cut JSON envelope would then read as a diff.
                 isCutOff = notice != nil || preview.unicodeScalars.count == ToolCallDiff.snippetLimit
                 plainText = notice.map { String(preview[..<$0.lowerBound]) } ?? preview
             case .array, .number, .bool, .null:
                 plainText = nil
             }
 
-            // hermes-agent stores its one-line JSON envelope and then appends notes,
-            // such as subdirectory hints, after "\n\n". A reloaded result that no
-            // longer parses whole can still lead with the complete envelope.
             if let plainText, let envelope = Self.leadingEnvelope(of: plainText) {
                 isCutOff = false
                 read(envelope)
@@ -148,27 +102,21 @@ struct ToolCallDiff: Equatable {
             if let plainText, ToolCallDiff.looksLikeUnifiedDiff(plainText) {
                 plainDiff = plainText
             } else if !isCutOff {
-                // The webui unwraps a failed edit's `error` into plain text, so any
-                // other complete, non-envelope result means the args did not land.
                 allowsArgumentDiff = false
                 reportsNoChange = plainText.map(Self.looksLikeWriteError) ?? false
             }
         }
 
-        /// hermes-agent's write and patch errors carry no marker once the webui
-        /// unwraps them, so they are recognized only by how they start. Anything
-        /// else, including success text that names an alarming path, landed.
-        /// Sources at the pinned hermes-agent commit are noted per lead.
         private static let writeErrorLead = "^(?:" + [
-            "could not find",                          // tools/fuzzy_match.py:397, tools/file_operations.py:1329
-            #"found \d+ (?:approximate )?matches"#,    // tools/fuzzy_match.py:372, :377
-            "old_string is (?:empty|only whitespace)", // tools/fuzzy_match.py:350, :358
-            "no edit was applied",                     // tools/fuzzy_match.py:20
-            "escape-drift detected",                   // tools/fuzzy_match.py:416, :445
-            "failed to",                               // tools/file_operations.py:1091, :1103, :1297, :1385, :1402
-            "refusing to (?:write|overwrite)",         // tools/file_operations.py:1119, :1137, tools/file_tools_write_guards.py:532
-            "post-write verification failed",          // tools/file_operations.py:1244, :1344, :1350
-            "(?:write|delete|move) denied:"            // agent/file_safety.py:168, :294, :299
+            "could not find",
+            #"found \d+ (?:approximate )?matches"#,
+            "old_string is (?:empty|only whitespace)",
+            "no edit was applied",
+            "escape-drift detected",
+            "failed to",
+            "refusing to (?:write|overwrite)",
+            "post-write verification failed",
+            "(?:write|delete|move) denied:"
         ].joined(separator: "|") + ")"
 
         private static func looksLikeWriteError(_ text: String) -> Bool {
@@ -177,7 +125,6 @@ struct ToolCallDiff: Equatable {
         }
 
         private mutating func read(_ envelope: [String: JSONValue]) {
-            // A failed or already-applied edit changed nothing, whatever the args asked for.
             reportsNoChange = Self.hasValue(envelope["error"])
                 || envelope["success"] == .bool(false)
                 || envelope["no_change"] == .bool(true)
@@ -217,11 +164,6 @@ struct ToolCallDiff: Equatable {
         return nil
     }
 
-    /// `-` lines from the old text and `+` lines from the new, behind a counted
-    /// header so a line like `-- note` reads as a removal, not a `--- ` file header.
-    /// A missing half is unknown (the webui keeps only the first 4 live args), so
-    /// the diff is partial rather than a false "+0". With `replace_all` the pair
-    /// stands for every occurrence, so it draws without counts.
     private static func replacementCandidate(_ args: [String: JSONValue]) -> Candidate? {
         let old = string(args["old_string"])
         let new = string(args["new_string"])
@@ -241,7 +183,6 @@ struct ToolCallDiff: Equatable {
         )
     }
 
-    /// The gateway sends `replace_all` as a bool; the webui stringifies it ("True").
     private static func replacesAll(_ args: [String: JSONValue]) -> Bool {
         switch args["replace_all"] {
         case .bool(let value)?: value
@@ -263,8 +204,6 @@ struct ToolCallDiff: Equatable {
             hasSyntheticHeader: true
         )
     }
-
-    // MARK: - Parsing
 
     private static func diff(from candidate: Candidate, args: [String: JSONValue], resultIsCutOff: Bool) -> ToolCallDiff? {
         let text = droppingFinalLineBreak(candidate.text)
@@ -289,8 +228,6 @@ struct ToolCallDiff: Equatable {
         )
     }
 
-    /// Parsed once per source within the chat highlighter's size guards; a diff past
-    /// them resolves to nothing and the row keeps its plain argument and result text.
     private static func document(for text: String) -> MarkdownDiffDocument? {
         let key = text as NSString
         if let cached = cache.object(forKey: key) { return cached.document }
@@ -300,9 +237,6 @@ struct ToolCallDiff: Equatable {
         return document
     }
 
-    /// Kept apart from the markdown fence cache so a turn full of edits never
-    /// evicts the transcript's code blocks. `NSCache` is thread-safe and evicts
-    /// under memory pressure.
     private static let cache: NSCache<NSString, CacheBox> = {
         let cache = NSCache<NSString, CacheBox>()
         cache.countLimit = 128
@@ -314,10 +248,6 @@ struct ToolCallDiff: Equatable {
         init(_ document: MarkdownDiffDocument) { self.document = document }
     }
 
-    // MARK: - Helpers
-
-    /// Mirrors upstream `_cliLooksLikePatchDiff`: a `diff --git` line, an `@@ ` hunk
-    /// line, or both `--- ` and `+++ ` lines.
     private static func looksLikeUnifiedDiff(_ text: String) -> Bool {
         var hasOldHeader = false
         var hasNewHeader = false
@@ -331,12 +261,10 @@ struct ToolCallDiff: Equatable {
         return looksLikeDiff
     }
 
-    /// An escaped preview can leave literal `\n` sequences; a real diff always has line breaks.
     private static func unescaped(_ text: String) -> String {
         text.contains(where: \.isNewline) ? text : ToolCallDisplayFormatter.normalizedDisplayString(text)
     }
 
-    /// A webui argument cut at the cap: exactly 4,003 code points ending in `...`.
     private static func isCutArgument(_ value: String) -> Bool {
         value.unicodeScalars.count == snippetLimit + argumentCutMarker.count && value.hasSuffix(argumentCutMarker)
     }
@@ -345,8 +273,6 @@ struct ToolCallDiff: Equatable {
         isCutArgument(value) ? String(value.dropLast(argumentCutMarker.count)) : value
     }
 
-    /// The text's lines as the diff parser splits them; a final line break ends
-    /// the last line rather than starting an empty one.
     private static func lines(of text: String) -> [String] {
         guard !text.isEmpty else { return [] }
         return MarkdownPlainCodeFormatter.rawLines(in: droppingFinalLineBreak(text))

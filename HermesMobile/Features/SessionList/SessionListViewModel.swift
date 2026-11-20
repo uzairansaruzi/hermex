@@ -4,15 +4,11 @@ import SwiftData
 import SwiftUI
 
 struct ScheduledSessionGroups: Equatable {
-    /// Rows waiting on the user, shown above the rest (#1393); empty unless the list asked for it.
     let needsYou: [SessionSummary]
     let ordinary: [SessionSummary]
     let scheduled: [SessionSummary]
     let totalScheduledCount: Int
 
-    /// Splits the visible rows in one pass, keeping their order: cron rows go
-    /// to `scheduled` unless archived, unarchived rows `needsInput` picks to
-    /// `needsYou`, everything else to `ordinary`.
     init(partitioning visible: [SessionSummary], totalScheduledCount: Int,
          needsInput: ((SessionSummary) -> Bool)? = nil) {
         var needsYou: [SessionSummary] = []
@@ -55,24 +51,14 @@ enum ActiveSessionStateRefreshResult: Equatable {
     case failed
 }
 
-/// Where a Hermes server's session list (#1046) reads from: the server's saved connection, the
-/// Profile it opens on, and its client on the connection's shared socket.
 struct HermesSessionListSource {
     let connection: BotConnection
-    /// The Profile the list opens on; nil takes the server's pick, or the host's `current`, once
-    /// the socket is up (the Hermes home's list, #709).
     let profile: String?
-    /// Each open's client; tests script it.
     var makeWire: @MainActor (BotConnection) -> any BotTransport
     var preferences: UserDefaults = .standard
-    /// The quiet time after the last `sessions.changed` before the list reads again.
     var changeDebounce: Duration = .seconds(1)
-    /// The gap between live-state re-reads while a row is busy: `sessions.changed` can miss a
-    /// turn's end, since post-turn work writes nothing.
     var statusPollInterval: Duration = .seconds(5)
-    /// Waits before each reconnect after a lost socket; the last one repeats.
     var reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)]
-    /// Whether the device has a network; the list's reconnect holds while it doesn't (#1372).
     var isNetworkAvailable: @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }
 }
 
@@ -91,11 +77,7 @@ final class SessionListViewModel {
     private(set) var isViewingCachedData = false {
         didSet { if !isViewingCachedData { isCachedCopyProvisional = false } }
     }
-    /// The cached rows show because the Hermes host has yet to answer this open, not because it
-    /// can't be reached: still read-only, but without the offline banner or Cached labels. Only
-    /// while `isViewingCachedData`.
     private(set) var isCachedCopyProvisional = false
-    /// The list shows its offline presentation: the banner and each row's Cached label.
     var showsOfflineCache: Bool { isViewingCachedData && !isCachedCopyProvisional }
     private(set) var projects: [ProjectSummary] = []
     private(set) var errorMessage: String?
@@ -104,14 +86,10 @@ final class SessionListViewModel {
     private(set) var searchErrorMessage: String?
     private(set) var isSearchingRemoteSessions = false
     private(set) var sessionLoadError: Error?
-    /// The list's error while rows stay on screen: only a refusal the user has to act on (#1374).
-    /// A retryable failure retries behind the rows instead.
     var hermesRefusalOverRows: String? {
         guard !sessions.isEmpty, let sessionLoadError, !BotConnectionAdvice.isRetryable(sessionLoadError) else { return nil }
         return errorMessage
     }
-    /// What the home's status line speaks for (#1374): rows the host sent, which no cached copy
-    /// or refusal already explains, and whether the socket is coming back.
     var hermesConnection: HomeConnectionStatus.Facts {
         HomeConnectionStatus.Facts(keepsRows: !sessions.isEmpty && !isViewingCachedData && hermesRefusalOverRows == nil,
                                    isReconnecting: isHermesReconnecting)
@@ -128,40 +106,18 @@ final class SessionListViewModel {
     private(set) var switchingActiveProfileName: String?
     private(set) var activeProfileErrorMessage: String?
     private(set) var mutatingSessionIDs: Set<String> = []
-    /// Total archived sessions reported by the last successful list load
-    /// (`archived_count`, issue #17). nil until a load succeeds or when an older
-    /// server omits the field — the Archived entry stays hidden then.
     private(set) var archivedCount: Int?
 
-    /// Attention state per streaming session, refreshed on the same tick that
-    /// already checks stream liveness. Only sessions with an active stream ever
-    /// have an entry, and the map is reassigned only when a value actually
-    /// changes so rows do not invalidate on every poll tick.
     private(set) var attentionStatesBySessionID: [String: SessionRowAttentionState] = [:]
-    /// Stored session ids the host's last `subagent.roster` lists with delegated children or
-    /// background processes still running (#1730), loaded or not, so a row Load more or a search
-    /// brings in later matches by its session key or lineage root. Kept apart from
-    /// `attentionStatesBySessionID` so it never keeps the busy re-read going.
     private(set) var hermesBackgroundWork: Set<String> = []
-    /// True while a Hermes list's states are only the last ones known (#1374): kept through a
-    /// lost socket or a failed status read, until a current status reply replaces them. Never
-    /// on a webui list.
     private(set) var attentionStatesAreStale = false
-    /// True from a lost Hermes socket that kept the rows on screen until a list read on a new
-    /// socket succeeds (#1374). A refusal the user has to act on, a closed list or a Profile
-    /// change ends it instead.
     private(set) var isHermesReconnecting = false
     private(set) var seenMessageTimes: [String: Double]
 
     private(set) var remoteContentSearchSessionIDs: [String] = []
-    /// `match_preview` per content-matched session from the last search, so a
-    /// row can show why it matched. Empty against servers that omit the field.
     private(set) var remoteContentSearchExcerpts: [String: String] = [:]
     private var activeRemoteSearchQuery: String?
     private var sessionOpenGeneration = 0
-    /// The external session the live `sessionForOpening` is still importing, so
-    /// Next and Previous Chat step past it before navigation lands. Nil once
-    /// that open finishes or a newer open or navigation invalidates it.
     private(set) var openingSessionID: String?
     private var activeProfileGeneration = 0
 
@@ -175,54 +131,30 @@ final class SessionListViewModel {
     private var returnRevision = 0
     private var activeLoadCount = 0
 
-    // MARK: Hermes state (#1046)
-
-    /// Set when this list shows a Hermes server's sessions; nil on webui.
     private let hermes: HermesSessionListSource?
-    /// The Profile a Hermes list shows, and the one New Session opens in while it shows every
-    /// Profile's sessions.
     private(set) var hermesProfile: String?
-    /// The list shows every Profile's sessions, merged (#709).
     private(set) var hermesShowsAllProfiles = false
-    /// The Hermes host's Profiles, for the Profile menu; empty until `profiles.list` answers.
     private(set) var hermesProfiles: [String] = []
-    /// Each Profile's model as `profiles.list` names it, for the Profile menu (#1679); a Profile
-    /// without one is absent.
     private(set) var hermesProfileModels: [String: String] = [:]
-    /// The Hermes list has read the host's rows on its current connection, so its Profile is the
-    /// host's. Closing or dropping the connection clears it until the next read.
     private var hasReadHermes = false
-    /// A Hermes session started now reaches the host: the list has read it and isn't showing the
-    /// offline cache. A Shortcut's new chat waits for it (#1180).
     var isHermesLive: Bool { hasReadHermes && !isViewingCachedData }
-    /// Why the last session rename failed, shown in the rename sheet (#1048).
     private(set) var renameErrorMessage: String?
-    /// More of the Profile's sessions wait on the host.
     private(set) var hasMoreSessions = false
     private(set) var isLoadingMoreSessions = false
     private(set) var hasMoreScheduledSessions = false
     private(set) var isLoadingMoreScheduledSessions = false
     private(set) var hermesScheduledTotal = 0
     var isHermes: Bool { hermes != nil }
-    /// Read marks this phone wrote and shows ahead of the host's, by session id.
     private var hermesUnreadMarks: [String: HermesUnreadMark] = [:]
-    /// Each session's latest read-mark write, which its next one waits for.
     @ObservationIgnored private var hermesUnreadWrites: [String: Task<Bool, Never>] = [:]
     @ObservationIgnored private var hermesWire: (any BotTransport)?
-    /// `hermesWire` while its `connect()` is under way. Every read on it then fails with `.stale`,
-    /// so a refresh, a Profile switch or a change waits for the open that connects it, which reads next.
     @ObservationIgnored private var hermesConnectingWire: (any BotTransport)?
-    /// False while a chat covers the list: `sessions.changed` is ignored and live states rest.
     @ObservationIgnored private var hermesIsListening = false
     @ObservationIgnored private var hermesPages = HermesProfilePages()
     @ObservationIgnored private var hermesScheduledPages = HermesProfilePages()
-    /// Bumped by each list read, so only the newest one applies.
     @ObservationIgnored private var hermesReadSerial = 0
-    /// Bumped by each project-lane read: a create, rename or delete reads the lanes under the
-    /// list read's serial, so an older lane read could otherwise answer last and apply.
     @ObservationIgnored private var hermesProjectsSerial = 0
     @ObservationIgnored private var hermesStatusSerial = 0
-    /// Bumped by each `subagent.roster` read and by each clear, so only the newest read applies.
     @ObservationIgnored private var hermesRosterSerial = 0
     @ObservationIgnored private var hermesRosterTask: Task<Void, Never>?
     @ObservationIgnored private var hermesReloadTask: Task<Void, Never>?
@@ -230,47 +162,22 @@ final class SessionListViewModel {
     @ObservationIgnored private var hermesDebounceTask: Task<Void, Never>?
     @ObservationIgnored private var hermesStatusTask: Task<Void, Never>?
     @ObservationIgnored private var hermesArchivedCountTask: Task<Void, Never>?
-    /// The reconnect after a lost socket, on backoff while online and held while offline.
     @ObservationIgnored private let hermesReconnect: BotReconnectSchedule?
-    /// False once the host answered `session.active_list` "method not found".
     @ObservationIgnored private var hermesReadsStatus = true
-    /// False once the host answered `approval.pending` "method not found" (#1679).
     @ObservationIgnored private var hermesReadsApprovals = true
-    /// False once the host answered `subagent.roster` "method not found" (#1730).
     @ObservationIgnored private var hermesReadsRoster = true
-    /// A live-state read failed while a row was busy, so re-reads go on until one succeeds.
     @ObservationIgnored private var hermesRetriesStatus = false
-    /// Sessions a chat opened from this list has just closed.
     @ObservationIgnored private var hermesReturnedFrom: Set<String> = []
-    /// The project lane that claims each listed session, by session id, from the last
-    /// `projects.tree` (#1052).
     @ObservationIgnored private var hermesProjectOwners: [String: String] = [:]
-    /// The Profile's lanes were read once, so a read shows "Loading projects..." only before that.
     @ObservationIgnored private var hermesProjectsRead = false
-    /// Why the open project sheet's create or rename failed, shown in that sheet (#1052).
     private(set) var projectSheetErrorMessage: String?
-    /// The host's matches for the active search on a Hermes list (#1053), in its order, as it
-    /// answered but for the deletes, archives, restores and renames this phone made since, each
-    /// with the Profile searched.
     @ObservationIgnored private var hermesSearchResults: [(profile: String, row: HermesSessionRow)] = []
-    /// Bumped by each write the host confirmed, so a search out meanwhile, whose answer may
-    /// predate it, asks again rather than undo it on the matches.
     @ObservationIgnored private var hermesSearchWrites = 0
-    /// `hermesSearchResults` as rows built from the results' own fields; a loaded row shows in
-    /// its place.
     private var hermesSearchRows: [SessionSummary] = []
-    /// Each content match's snippet, its `>>>`/`<<<` marks and all, by row identity.
     private var hermesSearchSnippets: [String: String] = [:]
-    /// A Hermes search that ran before the list's socket was attached, as one a list opened
-    /// searching starts or one run while it showed cached rows, or one whose matches went stale
-    /// when the socket closed or the user pulled to refresh; the list's next connect or refresh
-    /// runs it.
     @ObservationIgnored private var hermesSearchAwaitsConnect = false
-    /// The offline cache the list's pages are written to and read back from while it connects
-    /// or its host can't be reached (#1054), from the screen's `openHermes(modelContext:)`.
     @ObservationIgnored private var hermesCache: ModelContext?
 
-    /// `hermes` makes this a Hermes server's list; nothing then reaches the webui API.
     init(server: URL, client: APIClient? = nil, unreadStore: SessionUnreadStore = SessionUnreadStore(),
          hermes: HermesSessionListSource? = nil) {
         self.server = server
@@ -279,38 +186,24 @@ final class SessionListViewModel {
         hermesProfile = hermes?.profile
         hermesReconnect = hermes.map { BotReconnectSchedule(delays: $0.reconnectDelays, isNetworkAvailable: $0.isNetworkAvailable) }
         hermesShowsAllProfiles = hermes.map { HermesProfilePreference.showsAllProfiles(for: server, in: $0.preferences) } ?? false
-        // A Hermes list loads as soon as it appears, so it starts on the skeleton.
         isLoading = hermes != nil
         seenMessageTimes = unreadStore.load(for: server)
         let resolvedClient = client ?? APIClient(baseURL: server)
         self.client = resolvedClient
         self.sessionMutator = SessionMutator(client: resolvedClient)
 
-        // Sweep exports leaked by a previous app run (view dismissed while a
-        // download was in flight, so the share sheet — and its on-dismiss
-        // cleanup — never appeared). `State(initialValue:)` re-runs this init
-        // on every parent redraw, so the sweep must be once-per-process (the
-        // lazy static below), or it would delete a file an active share sheet
-        // is presenting. The first-ever init always precedes the first export,
-        // so the single sweep can never race an in-flight export.
         _ = Self.sweepLeakedExportsOnce
     }
 
-    /// Root temp directory holding one UUID subdirectory per export
-    /// (see `export(_:format:)`).
     nonisolated static var exportsRootDirectory: URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("session-exports", isDirectory: true)
     }
 
-    /// Lazy static ⇒ runs exactly once per process, on first access.
     nonisolated private static let sweepLeakedExportsOnce: Void = {
         try? FileManager.default.removeItem(at: exportsRootDirectory)
     }()
 
-    /// The rows the list shows for this search, project filter, automated visibility and Hermes
-    /// status filter (`draftRows` are the Profile and key of each chat with an unsent draft):
-    /// local matches sorted, then loaded remote content matches.
     func visibleSessions(
         searchText: String,
         selectedProjectID: String?,
@@ -328,9 +221,6 @@ final class SessionListViewModel {
         )
     }
 
-    /// The visible rows that are still streaming, for the list's active-row
-    /// monitor. Filters to streaming rows first (usually zero to two), so a
-    /// body pass does not filter and sort every session to find them.
     func visibleActiveSessions(
         searchText: String,
         selectedProjectID: String?,
@@ -346,9 +236,6 @@ final class SessionListViewModel {
         )
     }
 
-    /// Visibility is decided per row, so running this over a subset of
-    /// `sessions` yields exactly the visible rows of that subset. A Hermes search
-    /// also brings the host's matches the loaded pages lack (#1053).
     private func visibleSessions(
         among candidates: [SessionSummary],
         searchText rawSearchText: String,
@@ -358,7 +245,6 @@ final class SessionListViewModel {
         draftRows: Set<ChatDraftStore.DraftRow> = []
     ) -> [SessionSummary] {
         let query = Self.normalizedSearchQuery(rawSearchText)
-        // Every word must appear somewhere in the row, in any order and field.
         let searchTerms = query.split(whereSeparator: \.isWhitespace)
         let baseSessions = candidates.filter { automatedVisibility.shows($0) }
         let projectFilteredSessions = baseSessions.filter { session in
@@ -396,8 +282,6 @@ final class SessionListViewModel {
         return sortedLocalMatches + Self.sortedSessions(remoteMatches)
     }
 
-    /// Whether `session` is in the status the Hermes list is narrowed to. Working is any live
-    /// state, Approval and Input included; a draft is keyed by the row's lineage root, as its chat is.
     private func matches(_ session: SessionSummary, _ status: HermesSessionStatusFilter,
                          _ draftRows: Set<ChatDraftStore.DraftRow>) -> Bool {
         switch status {
@@ -411,9 +295,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// The visible rows grouped as the list shows them. A Hermes list showing the host's rows
-    /// lifts the ones waiting for input into `needsYou` (#1393), by the same states their labels
-    /// show, last known ones included (#1374); a search or the cache keeps list order.
     func scheduledSessionGroups(
         searchText: String,
         selectedProjectID: String?,
@@ -439,8 +320,6 @@ final class SessionListViewModel {
 
     @discardableResult
     func load(modelContext: ModelContext? = nil, animation: Animation? = nil) async -> Bool {
-        // Overlapping requests for the same return share its mark. A later
-        // return starts a new window, even if the prior load is still in flight.
         let revision = returnRevision
         let firstReturnedIDs = returnedFromSessionIDs
         let inFlightIDs = firstReturnLoad?.revision == revision ? firstReturnLoad?.sessionIDs ?? [] : []
@@ -500,8 +379,6 @@ final class SessionListViewModel {
                         sessions = cachedSessions
                         isViewingCachedData = true
                         errorMessage = nil
-                        // Cached rows carry no live server state, so nothing can
-                        // still be waiting on the user here.
                         clearAttentionStates()
                     } else {
                         isViewingCachedData = false
@@ -541,8 +418,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Adopts Settings' confirmed switch synchronously, before New Chat can run.
-    /// Earlier profile reads must not replace this newer server-confirmed selection.
     func adoptDefaultProfileSelection(_ selection: DefaultProfileSelection) {
         activeProfileGeneration += 1
         let profile = profileOptions.first { $0.normalizedName == selection.name }
@@ -585,8 +460,6 @@ final class SessionListViewModel {
             }
 
             let resolvedName = Self.nonEmpty(response.active) ?? profileName
-            // The switch response has no `single_profile_mode` field; carry the
-            // last known value forward so the switcher visibility doesn't flap.
             let profileResponse = ProfilesResponse(
                 profiles: response.profiles ?? profileOptions,
                 active: resolvedName,
@@ -614,8 +487,6 @@ final class SessionListViewModel {
         debounceNanoseconds: UInt64 = 350_000_000
     ) async {
         let query = Self.normalizedSearchQuery(rawQuery)
-        // A Hermes list keeps showing its matches while the same search runs again, as when a
-        // chat opened from them closes, until the host's new answer replaces them.
         let repeatsHermesSearch = hermes != nil && activeRemoteSearchQuery == query
         activeRemoteSearchQuery = query
         remoteContentSearchSessionIDs = []
@@ -625,7 +496,6 @@ final class SessionListViewModel {
 
         guard !query.isEmpty, !isViewingCachedData else {
             isSearchingRemoteSessions = false
-            // A Hermes list showing cached rows asks the host once a read replaces them.
             if hermes != nil, !query.isEmpty { hermesSearchAwaitsConnect = true }
             return
         }
@@ -664,14 +534,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// The excerpt to show under a row, paired with the query that produced it.
-    /// nil when the row did not match on content, when the search was cleared,
-    /// or when the server is older than `match_preview`.
-    ///
-    /// `searchText` is the query of the *screen* asking, not the view model's:
-    /// screens with their own search field (Scheduled sessions) share this view
-    /// model, and they must not inherit the sidebar's last excerpts. Same guard
-    /// `visibleSessions(searchText:selectedProjectID:)` applies to remote rows.
     func searchExcerpt(for session: SessionSummary, searchText: String) -> SessionSearchExcerpt? {
         let query = Self.normalizedSearchQuery(searchText)
         if session.hermes != nil {
@@ -732,7 +594,6 @@ final class SessionListViewModel {
         return await refreshAttentionStates()
     }
 
-    /// The attention state a row should show, or nil while nothing is pending.
     func attentionState(for session: SessionSummary) -> SessionRowAttentionState? {
         guard let sessionID = Self.nonEmpty(session.sessionId) else { return nil }
         if let state = attentionStatesBySessionID[sessionID] { return state }
@@ -742,9 +603,6 @@ final class SessionListViewModel {
         return working ? .working : nil
     }
 
-    /// A settled row is unread only when its server timestamp moved past the
-    /// last timestamp this device showed. No phone clock enters the comparison.
-    /// A Hermes row is unread when the host says so, or this phone just marked it.
     func isUnread(_ session: SessionSummary) -> Bool {
         if let hermes = session.hermes {
             return session.sessionId.flatMap { hermesUnreadMarks[$0]?.unread } ?? hermes.unread
@@ -758,8 +616,6 @@ final class SessionListViewModel {
         return timestamp > seen
     }
 
-    /// Not on a Bot Chat a Hermes search lists (#1053): the Bots inbox keeps its own read mark.
-    /// Nor on a cached Hermes row, whose mark is the host's to change.
     func canToggleUnread(_ session: SessionSummary) -> Bool {
         if let hermes = session.hermes {
             return !isViewingCachedData && !hermes.isBotChat && Self.nonEmpty(session.sessionId) != nil
@@ -770,9 +626,6 @@ final class SessionListViewModel {
             && session.hasPendingUserMessage != true
     }
 
-    /// Every chat entry point selects a destination, so this one stamp covers
-    /// rows, deep links, push, App Intents and Live Activity navigation.
-    /// A Hermes row is marked read on the host, so Desktop agrees.
     func beginViewing(_ session: SessionSummary) {
         if session.hermes != nil {
             setHermesUnread(false, session)
@@ -782,8 +635,6 @@ final class SessionListViewModel {
         markSeen(session)
     }
 
-    /// The next list load after a chat closes stamps its freshest server
-    /// timestamp if it succeeds, including a reply completed during that visit.
     func noteReturn(from session: SessionSummary) {
         guard let sessionID = Self.nonEmpty(session.sessionId) else { return }
         if viewingSessionID == sessionID { viewingSessionID = nil }
@@ -791,9 +642,6 @@ final class SessionListViewModel {
         returnRevision &+= 1
     }
 
-    /// The unread rows Mark All as Read covers: the listed Profile (every one while All Profiles
-    /// shows) in the selected lane, as the list shows them. Search and the status filter don't
-    /// change it, and a row whose mark isn't this list's to write is left out.
     func unreadRowsInScope(selectedProjectID: String?,
                            automatedVisibility: AutomatedSessionVisibility = .showAll) -> [SessionSummary] {
         sessions.filter { session in
@@ -802,14 +650,9 @@ final class SessionListViewModel {
         }
     }
 
-    /// True while `markAllHermesRead` has writes out; another one starts nothing.
     private(set) var isMarkingAllRead = false
 
-    /// Marks each unread row of `rows` read on the host through the same write as a single row's
-    /// Mark as Read, four at a time, and returns how many the host took. A refused write shows its
-    /// row unread again.
     func markAllHermesRead(rows: [SessionSummary]) async -> Int {
-        // Rows past the first four still read unread until their turn, so a repeat would write them twice.
         guard !isMarkingAllRead else { return 0 }
         isMarkingAllRead = true
         defer { isMarkingAllRead = false }
@@ -888,11 +731,6 @@ final class SessionListViewModel {
         return timestamp
     }
 
-    /// One approval probe and one clarification probe per streaming row, on the
-    /// tick the caller already runs. Sessions without an active stream are never
-    /// probed, and there is no separate polling loop or timer. A row's two
-    /// probes go out together, so N streaming rows cost about N round trips per
-    /// tick instead of 2N.
     private func refreshAttentionStates() async -> ActiveSessionStateRefreshResult {
         let streamingSessions = sessions.filter { SessionRowView.isActiveStreaming($0) }
         guard !streamingSessions.isEmpty else {
@@ -908,12 +746,6 @@ final class SessionListViewModel {
             async let pendingApproval = client.approvalPending(sessionID: sessionID)
             async let pendingClarification = client.clarifyPending(sessionID: sessionID)
 
-            // A failed probe is not evidence that nothing is pending, so it
-            // keeps what the last successful tick knew rather than letting the
-            // row fall back to "Working". The rule is deliberately simple: a
-            // previous `.approval` masks any clarification, so it carries no
-            // clarify knowledge, and a clarify probe that fails behind it
-            // resolves to nothing pending.
             let previous = attentionStatesBySessionID[sessionID]
             var hasPendingApproval = false
             var hasPendingClarification = false
@@ -970,8 +802,6 @@ final class SessionListViewModel {
         attentionStatesBySessionID = [:]
     }
 
-    /// Attention state only means something for a row the server still reports
-    /// as streaming, so a reload that ends a stream drops that row's entry.
     private func pruneAttentionStates() {
         guard !attentionStatesBySessionID.isEmpty else { return }
 
@@ -1041,9 +871,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Imports external sessions before navigation, matching hermes-webui's
-    /// `_openSidebarSession`. A newer tap invalidates any older response so a
-    /// slow import cannot replace the user's current destination.
     func sessionForOpening(
         _ session: SessionSummary,
         modelContext: ModelContext? = nil
@@ -1095,8 +922,6 @@ final class SessionListViewModel {
                 return nil
             }
 
-            // WebUI treats import as a refresh: if it fails, an already imported
-            // session may still be available through the canonical detail route.
             do {
                 let response = try await client.session(
                     id: sessionID,
@@ -1205,9 +1030,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Undoes an archive from the list: restores the session, then reloads so
-    /// its row returns to its old place (the server keeps `updated_at`). A second
-    /// call while one is in flight for the same session sends nothing.
     func unarchive(
         _ session: SessionSummary,
         modelContext: ModelContext? = nil,
@@ -1251,8 +1073,6 @@ final class SessionListViewModel {
         return mutatingSessionIDs.contains(sessionId)
     }
 
-    /// Renames a session from the rename sheet; a failure's reason stays in the sheet as
-    /// `renameErrorMessage`.
     func rename(_ session: SessionSummary, to rawTitle: String, modelContext: ModelContext? = nil) async -> Bool {
         renameErrorMessage = nil
         guard !isViewingCachedData else {
@@ -1353,11 +1173,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Downloads the session transcript (`GET /api/session/export`, or a Hermes host's
-    /// `GET /api/sessions/{id}/export`, JSON only, #1048) and writes it to a unique temp
-    /// directory so the share sheet can offer it as a file with a real filename. Returns the
-    /// file URL, or nil after surfacing the failure through the standard action-error alert.
-    /// The caller owns cleanup of the returned file's parent directory after sharing.
     func export(_ session: SessionSummary, format: SessionExportFormat) async -> URL? {
         guard !isViewingCachedData else {
             actionErrorMessage = String(localized: "Reconnect to the server to export a session.")
@@ -1369,9 +1184,6 @@ final class SessionListViewModel {
             return nil
         }
 
-        // Reuses the per-session mutation gate: it disables the row's other
-        // actions while the download runs (the "progress state") and blocks a
-        // double-tap from firing two exports.
         guard beginSessionMutation(sessionId) else { return nil }
         defer { endSessionMutation(sessionId) }
 
@@ -1485,11 +1297,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Creates a new project without moving any session into it.
-    ///
-    /// Mirrors ``createProject(named:color:moving:modelContext:)`` but skips the
-    /// `sessionMutator.move(...)` step, so the Projects sidebar's standalone
-    /// "Add project" button can make an empty, unassigned project.
     func createEmptyProject(
         named rawName: String,
         color: String,
@@ -1557,8 +1364,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Renames a project from the rename sheet; a failure's reason stays in the sheet as
-    /// `projectSheetErrorMessage`.
     func rename(_ project: ProjectSummary, named rawName: String, color: String?) async -> Bool {
         projectSheetErrorMessage = nil
         lastError = nil
@@ -1601,10 +1406,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Creates a session in the explicit App Intent profile or the sidebar's selected
-    /// profile. The server supplies that profile's model and last workspace. With
-    /// neither profile known, preserve the cookie-scoped workspace lookup. In-app New
-    /// Chat passes the project filter the user tapped under as `projectID` (#875).
     func createSession(
         modelContext: ModelContext? = nil,
         profile: String? = nil,
@@ -1671,9 +1472,6 @@ final class SessionListViewModel {
         actionErrorMessage = nil
     }
 
-    /// Drops any empty Untitled placeholders still held in memory. Used when
-    /// returning from the pending new-chat flow so stale rows cannot flash during
-    /// the navigation pop animation.
     func removeEmptySidebarPlaceholders() {
         let filtered = sessions.filter(\.shouldAppearInSessionList)
         guard filtered.count != sessions.count else { return }
@@ -1712,12 +1510,9 @@ final class SessionListViewModel {
         session.lastMessageAt ?? session.updatedAt ?? session.createdAt ?? 0
     }
 
-    /// Lowercased fields joined by spaces. Search terms hold no spaces, so a
-    /// term found here always sits inside a single field.
     private static func searchableText(for session: SessionSummary) -> String {
         [
             session.title,
-            // An untitled Hermes row shows its first prompt, so that is what its words are.
             session.hermes?.preview,
             session.workspace,
             session.model,
@@ -1729,8 +1524,6 @@ final class SessionListViewModel {
         .joined(separator: " ")
     }
 
-    /// `archivedCount` is applied inside the same transaction as the rows so the
-    /// bottom Archived entry inserts/removes with the list mutation animation.
     private func applySessions(
         _ newSessions: [SessionSummary],
         archivedCount newArchivedCount: Int?,
@@ -1750,8 +1543,6 @@ final class SessionListViewModel {
         pruneAttentionStates()
     }
 
-    /// Content-match rows narrowed to sessions the list can actually show, in
-    /// server order, plus each row's excerpt when the server sent one.
     private func contentMatches(
         from sessions: [SessionSummary]
     ) -> (sessionIDs: [String], excerpts: [String: String]) {
@@ -1813,19 +1604,10 @@ final class SessionListViewModel {
         activeProfileGeneration += 1
         profileOptions = response.profiles ?? profileOptions
 
-        // Tolerant: only a present field moves the flag, so an older server
-        // (or the carried-forward switch-response value) keeps today's behavior.
         if let singleProfileMode = response.singleProfileMode {
             isSingleProfileMode = singleProfileMode
         }
 
-        // Keep the App Intents profile cache fresh so the "New Chat in <Profile>" picker
-        // (#339) stays populated when the Shortcuts app resolves it in the background, where
-        // a live, authenticated fetch may not be possible, then nudge the system to (re-)index
-        // the parameterized App Shortcut (iOS only indexes it once its suggested values exist).
-        // A nil `profiles` (field absent/undecoded) is left untouched — tolerant decoding — but
-        // an explicit empty list is forwarded so `save([])` can clear a stale picker if the
-        // server ever reports none.
         if let profiles = response.profiles {
             let changed = ProfileEntityCache.shared.save(profiles)
             ProfileEntityProvider.refreshAppShortcuts(changed: changed)
@@ -1841,28 +1623,15 @@ final class SessionListViewModel {
         activeProfileProvider = Self.nonEmpty(profile?.provider)
     }
 
-    // MARK: - Hermes (#1046)
-
-    /// The Hermes list holds a client on the socket: it is open, or a chat covers it.
     var isHermesConnected: Bool { hermesWire != nil }
 
-    /// Shows the Hermes Profile's list and keeps it current while it is on screen: connects
-    /// to the shared socket, names the Profile so the host watches its store, reads the list
-    /// and its live states, and reloads on `sessions.changed`. A list a chat covered keeps its
-    /// socket and only reads again. Also the pull-to-refresh and foreground path. Each page
-    /// read goes to `modelContext`, the offline cache (#1054), which an empty list shows,
-    /// read-only, while it connects, and the host's first read replaces; it stays as the offline
-    /// state when the host can't be reached. The list keeps it for the reads it makes on its own.
     func openHermes(modelContext: ModelContext? = nil) async {
         guard let hermes else { return }
         if let modelContext { hermesCache = modelContext }
         hermesIsListening = true
         let followed = followSavedHermesProfile()
         if let wire = hermesWire {
-            // Still connecting: that open reads the rows, and the search, once it has.
             guard wire !== hermesConnectingWire else { return }
-            // A list of every Profile reads today's names before its pages, and names a new one
-            // on the socket.
             let listed = hermesProfiles
             if hermesShowsAllProfiles { await readHermesProfiles(wire) }
             if followed || hermesProfiles != listed { _ = await watchHermesProfile(wire) }
@@ -1903,16 +1672,12 @@ final class SessionListViewModel {
         } catch {
             if hermesConnectingWire === wire { hermesConnectingWire = nil }
             guard hermesWire === wire else { return }
-            // The screen left while connecting: the next open starts a fresh client.
             if Task.isCancelled { wire.close(); hermesWire = nil; isLoading = false; return }
-            // A reconnect keeps the live rows and their last known states over the cached copy (#1374).
             if !isHermesReconnecting { showCachedHermesSessions(after: error) }
             dropHermes(error)
         }
     }
 
-    /// A chat now covers the list: events wait until it returns. The socket stays, so a read
-    /// mark written as the chat opened still reaches the host.
     func pauseHermes() {
         hermesIsListening = false
         hermesDebounceTask?.cancel(); hermesDebounceTask = nil
@@ -1920,17 +1685,12 @@ final class SessionListViewModel {
         hermesRosterTask?.cancel(); hermesRosterTask = nil
     }
 
-    /// The list left the screen for good, or the app went to the background: it stops
-    /// reconnecting, and states that were only the last known ones go, since nothing re-reads
-    /// them meanwhile.
     func closeHermes() {
         teardownHermes()
         setHermesReconnecting(false)
         if attentionStatesAreStale { setHermesStates([:]) }
     }
 
-    /// Ends the socket and everything waiting on it. A lost socket starts with it, so the
-    /// reconnect keeps the last known states and its reconnecting state.
     private func teardownHermes() {
         pauseHermes()
         hermesReconnect?.cancel()
@@ -1941,19 +1701,14 @@ final class SessionListViewModel {
         hermesWire?.close(); hermesWire = nil; hermesConnectingWire = nil
         hasReadHermes = false
         clearHermesBackgroundWork()
-        // Matches past the loaded pages change only when the host is searched again.
         if activeRemoteSearchQuery?.isEmpty == false { hermesSearchAwaitsConnect = true }
     }
 
-    /// Pull to refresh: the list reads again, and so does the active search, whose matches
-    /// past the loaded pages (one another device deleted, say) change only when it runs again.
     func refreshHermes(modelContext: ModelContext? = nil) async {
         if activeRemoteSearchQuery?.isEmpty == false { hermesSearchAwaitsConnect = true }
         await openHermes(modelContext: modelContext)
     }
 
-    /// Shows `profile`'s sessions, and remembers it as the server's pick, which the composer's
-    /// Profile chip and the next New Session share (#1015). It is never written to the host.
     func selectHermesProfile(_ profile: String) async {
         guard let hermes, profile != hermesProfile || hermesShowsAllProfiles else { return }
         HermesProfilePreference.save(profile, for: server, in: hermes.preferences)
@@ -1962,8 +1717,6 @@ final class SessionListViewModel {
         await showHermesProfile(profile)
     }
 
-    /// Shows every Profile's sessions, merged, and remembers that for the server (#709). The
-    /// pick stays the Profile New Session opens in.
     func showAllHermesProfiles() async {
         guard let hermes, !hermesShowsAllProfiles, let profile = hermesProfile else { return }
         HermesProfilePreference.saveShowsAllProfiles(true, for: server, in: hermes.preferences)
@@ -1971,16 +1724,11 @@ final class SessionListViewModel {
         await showHermesProfile(profile)
     }
 
-    /// The Profiles the list reads: every one the host lists while it shows them all, else the
-    /// picked one.
     private var hermesListedProfiles: [String] {
         guard let hermesProfile else { return [] }
         return hermesShowsAllProfiles && !hermesProfiles.isEmpty ? hermesProfiles : [hermesProfile]
     }
 
-    /// Reads the next page, one at a time: of every listed Profile with more, so a merged list
-    /// shows the rows it held back. A list read that begins meanwhile replaces it and reads that
-    /// page itself, so the flag stays up until that read ends.
     func loadMoreHermesSessions() async {
         guard hasMoreSessions, !isLoadingMoreSessions, let wire = hermesWire, wire !== hermesConnectingWire else { return }
         let serial = hermesReadSerial
@@ -2000,9 +1748,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Reads the next page of scheduled sessions, as `loadMoreHermesSessions` does the ordinary
-    /// ones, and caches it with them. A list read that begins meanwhile reads that page itself
-    /// and lets go of the flag however it ends.
     func loadMoreHermesScheduledSessions() async {
         guard hasMoreScheduledSessions, !isLoadingMoreScheduledSessions, let wire = hermesWire,
               wire !== hermesConnectingWire else { return }
@@ -2019,7 +1764,6 @@ final class SessionListViewModel {
             applyHermesScheduled(pages)
             showHermesPages(hermesPages, animation: nil)
             cacheHermesRows(hermesPages)
-            // The page answers an earlier refusal, which shows over the rows.
             if errorMessage != nil || sessionLoadError != nil { errorMessage = nil; sessionLoadError = nil }
         } catch {
             guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled else { return }
@@ -2033,16 +1777,11 @@ final class SessionListViewModel {
         hermesScheduledTotal = pages.totalCount
     }
 
-    /// A chat opened from this list closed on `key`. The next list read marks it read again
-    /// when the host says it is unread: a reply that finished while it was open was seen.
     func noteHermesReturn(from key: String) {
         hermesReturnedFrom.insert(key)
         if hermesIsListening { requestHermesReload() }
     }
 
-    /// Reads as many pages of each listed Profile as the list holds, plus the page a "Load more"
-    /// it replaces was reading, and applies them only if no newer read began; then the Profile's
-    /// project lanes, which a list of every Profile has none of.
     private func reloadHermes() async {
         guard let wire = hermesWire, hermesProfile != nil else { return }
         hermesReadSerial += 1
@@ -2056,15 +1795,11 @@ final class SessionListViewModel {
             }
         }
         do {
-            // Independent page chains share the connection latency. Keep each chain ordered
-            // and cap the refresh at two concurrent requests, even across many Profiles.
             async let ordinary = readHermesPages(wire, previous: hermesPages, loadingMore: isLoadingMoreSessions,
                                                 scheduled: false, profiles: hermesListedProfiles, serial: serial)
             async let cron = readHermesPages(wire, previous: hermesScheduledPages, loadingMore: isLoadingMoreScheduledSessions,
                                             scheduled: true, profiles: hermesListedProfiles, serial: serial)
             var (pages, scheduled) = try await (ordinary, cron)
-            // A Load more can finish while the other chain is waiting. Extend this
-            // refresh to that depth before applying, so it never takes those rows away.
             while hermesListedProfiles.contains(where: { profile in
                 (pages[profile].hasMore && pages[profile].nextOffset < hermesPages[profile].nextOffset)
                     || (scheduled[profile].hasMore && scheduled[profile].nextOffset < hermesScheduledPages[profile].nextOffset)
@@ -2079,10 +1814,7 @@ final class SessionListViewModel {
             applyHermesScheduled(scheduled)
             applyHermes(pages, readSerial: serial)
             setHermesReconnecting(false)
-            // Only the rows prove the host is back: a socket whose reads fail keeps its backoff.
             hermesReconnect?.succeeded()
-            // The rows are in, and the lanes, read next, never hold them back. A "Load more"
-            // that starts meanwhile owns the paging flag, so this read lets go of it once.
             holdsPaging = false
             isLoading = false
             if isLoadingMoreSessions { isLoadingMoreSessions = false }
@@ -2098,11 +1830,9 @@ final class SessionListViewModel {
             await runAwaitedHermesSearch()
         } catch {
             guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled else { return }
-            // The client left the socket without a word (a call its screen cancelled): reconnect.
             if error as? BotFailure == .stale { return dropHermes(error) }
             if error as? BotFailure == .rejected(404) {
                 if hermesShowsAllProfiles {
-                    // One of the Profiles went: list the rest.
                     let listed = hermesProfiles
                     await readHermesProfiles(wire)
                     if hermesWire === wire, hermesProfiles != listed { return requestHermesReload() }
@@ -2110,14 +1840,12 @@ final class SessionListViewModel {
                     return
                 }
             }
-            // A read on a socket that just came back recovers as a lost socket does (#1374).
             if isHermesReconnecting { return dropHermes(error) }
             if showCachedHermesSessions(after: error) { return }
             showHermesFailure(error)
         }
     }
 
-    /// Reads one ordered page chain; a replaced refresh never starts another request.
     private func readHermesPages(
         _ wire: any BotTransport, previous: HermesProfilePages, loadingMore: Bool,
         scheduled: Bool, profiles: [String], serial: Int, starting: HermesProfilePages = HermesProfilePages()
@@ -2147,13 +1875,10 @@ final class SessionListViewModel {
     private func applyHermes(_ pages: HermesProfilePages, readSerial: Int) {
         hermesPages = pages
         if hasMoreSessions != pages.hasMore { hasMoreSessions = pages.hasMore }
-        // A mark the host had already taken when this read began is the host's own now.
         let marks = hermesUnreadMarks.filter { $0.value.settledBefore.map { $0 > readSerial } ?? true }
         if marks.count != hermesUnreadMarks.count { hermesUnreadMarks = marks }
         let rows = hermesRows(pages) + hermesRows(hermesScheduledPages)
-        // Ahead of the marks below, which a cached list never writes.
         if isViewingCachedData { isViewingCachedData = false }
-        // By the host's own mark: one this phone wrote as the chat opened came before the reply.
         for row in rows where row.sessionId.map(hermesReturnedFrom.contains) == true && row.hermes?.unread == true {
             setHermesUnread(false, row)
         }
@@ -2165,8 +1890,6 @@ final class SessionListViewModel {
         if let hermes, let hermesProfile { HermesProfilePreference.saveLastListed(hermesProfile, for: server, in: hermes.preferences) }
     }
 
-    /// Writes each listed Profile's rows read so far to its offline cache, every row it read,
-    /// shown or held back, and says when they run from its list's first page to its end.
     private func cacheHermesRows(_ pages: HermesProfilePages) {
         guard let hermesCache else { return }
         do {
@@ -2180,9 +1903,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// A list read that failed because the host can't be reached shows the cached rows as the
-    /// offline state. False when it can't: another failure, or nothing cached; rows shown
-    /// provisionally then go, so the failure shows as it would on an empty list.
     @discardableResult
     private func showCachedHermesSessions(after error: Error) -> Bool {
         if CacheFallbackPolicy.shouldUseCache(for: error), showCachedHermesSessions(provisional: false) { return true }
@@ -2190,15 +1910,9 @@ final class SessionListViewModel {
         return false
     }
 
-    /// Shows the Profile's cached rows, or every Profile's while it lists them all, read-only
-    /// (`isViewingCachedData`) until a read succeeds: `provisional` while the host has yet to
-    /// answer, else as the offline state. Search then reads only them, so the host's matches go,
-    /// and the active search asks the host again once a read succeeds. False with nothing cached.
     @discardableResult
     private func showCachedHermesSessions(provisional: Bool) -> Bool {
         guard let hermes, let hermesCache else { return false }
-        // A list that never reached the host to settle its Profile reads the server's pick, else
-        // the Profile it last read, which it shows without taking: the host still settles that.
         let picked = hermesProfile ?? hermes.preferences.string(forKey: HermesProfilePreference.key(for: server))
         let profile = picked ?? HermesProfilePreference.lastListed(for: server, in: hermes.preferences)
         guard hermesShowsAllProfiles || profile != nil else { return false }
@@ -2211,7 +1925,6 @@ final class SessionListViewModel {
             return false
         }
         guard !cached.isEmpty else { return false }
-        // The pick is the Profile the rows open in and New Session uses; the host checks it on connect.
         if hermesProfile == nil { hermesProfile = picked }
         if sessions != cached { sessions = cached }
         hasMoreSessions = false
@@ -2225,7 +1938,6 @@ final class SessionListViewModel {
         return true
     }
 
-    /// Drops a session this phone deleted or archived from its Profile's offline cache.
     private func forgetCachedHermesSession(_ session: SessionSummary) {
         guard let hermesCache, let root = session.hermes?.lineageRoot, let profile = Self.nonEmpty(session.profile) else { return }
         do {
@@ -2235,7 +1947,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// The rows `pages` show, each in its Profile and the project lane that claims it.
     private func hermesRows(_ pages: HermesProfilePages) -> [SessionSummary] {
         pages.rows.map { $0.row.summary(in: $0.profile, project: hermesProjectOwners[$0.row.id]) }
     }
@@ -2247,11 +1958,6 @@ final class SessionListViewModel {
         errorMessage = BotConnectionAdvice.message(for: error, address: hermes.connection.address)
     }
 
-    /// Shows the host's mark as `unread` at once and writes it once the session's earlier write
-    /// has landed, so the host takes them in the order they were made; a refused or lost write
-    /// shows the host's again. A later write to the same session replaces this one's outcome.
-    /// Nothing while the rows are cached: the socket may be up before the host's rows are in.
-    /// Returns the write, which says whether the host took it; nil when nothing was written.
     @discardableResult
     private func setHermesUnread(_ unread: Bool, _ session: SessionSummary) -> Task<Bool, Never>? {
         guard !isViewingCachedData, let wire = hermesWire, let key = Self.nonEmpty(session.sessionId),
@@ -2271,9 +1977,6 @@ final class SessionListViewModel {
         return write
     }
 
-    /// Names each listed Profile on the socket, the read the host needs before it watches that
-    /// Profile's store; it keeps watching every one named. True when the host no longer has the
-    /// picked Profile; any other failure only costs live updates.
     private func watchHermesProfile(_ wire: any BotTransport) async -> Bool {
         var removed = false
         for profile in hermesListedProfiles {
@@ -2284,9 +1987,6 @@ final class SessionListViewModel {
         return removed
     }
 
-    /// A list opened without a Profile, or showing every Profile while its pick went from the host,
-    /// takes the server's pick while the host lists it, else the Profile the host's dashboard runs
-    /// (`HermesProfilePreference`, which drops a stale pick).
     private func resolveHermesProfile(_ wire: any BotTransport) async {
         guard let hermes else { return }
         let current = (try? await wire.currentProfile()) ?? "default"
@@ -2294,9 +1994,6 @@ final class SessionListViewModel {
         hermesProfile = HermesProfilePreference.resolve(for: server, listed: hermesProfiles, current: current, in: hermes.preferences)
     }
 
-    /// The listed Profile is gone from the host: the list moves to the server's pick or, once
-    /// that is gone too, the Profile the host's dashboard runs (`HermesProfilePreference`).
-    /// False when there is nowhere else to go.
     private func moveOffRemovedHermesProfile(_ wire: any BotTransport) async -> Bool {
         guard let hermes, let removed = hermesProfile else { return false }
         await readHermesProfiles(wire)
@@ -2323,20 +2020,16 @@ final class SessionListViewModel {
         clearHermesBackgroundWork()
         guard let wire = hermesWire else { return await openHermes() }
         isLoading = true
-        // The open that is connecting watches and reads the Profile set above.
         guard wire !== hermesConnectingWire else { return }
         if hermesShowsAllProfiles && hermesProfiles.isEmpty { await readHermesProfiles(wire) }
         _ = await watchHermesProfile(wire)
         await reloadHermes()
     }
 
-    /// Follows a Profile picked elsewhere since the list last read, such as on the composer's
-    /// chip. True when the list moved.
     private func followSavedHermesProfile() -> Bool {
         guard let hermes, let saved = hermes.preferences.string(forKey: HermesProfilePreference.key(for: server)),
               saved != hermesProfile, hermesProfiles.contains(saved) else { return false }
         hermesProfile = saved
-        // Every Profile is listed already; the pick only names the one New Session opens in.
         guard !hermesShowsAllProfiles else { return false }
         hermesPages = HermesProfilePages()
         applyHermesScheduled(HermesProfilePages())
@@ -2351,9 +2044,6 @@ final class SessionListViewModel {
         return true
     }
 
-    /// The host's Profiles, read now on the list's socket, for a Shortcut's text that names one
-    /// (#1402): `hermesProfiles` keeps its last read while a chat pauses the list. Nil when the
-    /// list has no socket or the host didn't answer.
     func readHostProfiles() async -> [String]? {
         guard let wire = hermesWire else { return nil }
         return await readHermesProfiles(wire)
@@ -2371,17 +2061,12 @@ final class SessionListViewModel {
             return (name, model)
         }, uniquingKeysWith: { first, _ in first })
         if models != hermesProfileModels { hermesProfileModels = models }
-        // A list of every Profile names only those the host still has, so a pick removed elsewhere
-        // shows up here rather than as a refused watch.
         if hermesShowsAllProfiles, let pick = hermesProfile, !names.isEmpty, !names.contains(pick) {
             await resolveHermesProfile(wire)
         }
         return names
     }
 
-    /// The device's network path changed (#1372): a reconnect waiting on its backoff runs now if
-    /// the network is back, or holds until it is. A list a chat covers stays down.
-    /// Offline, the live states are only the last known ones, whatever the socket says (#1374).
     func networkPathDidChange() {
         if hermes?.isNetworkAvailable() == false, !attentionStatesBySessionID.isEmpty {
             setHermesStates(attentionStatesBySessionID, stale: true)
@@ -2389,17 +2074,9 @@ final class SessionListViewModel {
         hermesReconnect?.networkPathDidChange()
     }
 
-    /// The user tapped "Reconnecting…" (#1374): the waiting reconnect runs now, past its backoff,
-    /// the way a network return runs it. Offline, or with no reconnect waiting, nothing happens.
     func reconnectNow() { hermesReconnect?.networkPathDidChange() }
 
-    /// A lost socket: the rows and their last known states stay, and the list reconnects on the
-    /// inbox's backoff while it is on screen and the device is online; `isHermesReconnecting`
-    /// says so. A refusal the user has to act on (`BotConnectionAdvice.isRetryable`) clears the
-    /// states and stops there, kept as the list's error, which shows over the rows; pull to
-    /// refresh tries again.
     private func dropHermes(_ error: Error) {
-        // Rows shown while connecting stay only as the offline state.
         if isCachedCopyProvisional { showCachedHermesSessions(after: error) }
         let listening = hermesIsListening
         teardownHermes()
@@ -2412,7 +2089,6 @@ final class SessionListViewModel {
         if sessions.isEmpty {
             showHermesFailure(error)
         } else {
-            // The reconnecting line speaks for the rows instead of an earlier read's failure.
             if errorMessage != nil || sessionLoadError != nil { errorMessage = nil; sessionLoadError = nil }
             setHermesReconnecting(true)
         }
@@ -2423,7 +2099,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Coalesces a burst of `sessions.changed` into one read after a quiet `changeDebounce`.
     private func noteHermesChange() {
         guard let hermes else { return }
         hermesDebounceTask?.cancel()
@@ -2434,7 +2109,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// One list read in flight and at most one more after it, however many ask meanwhile.
     private func requestHermesReload() {
         hermesReloadWanted = true
         guard hermesReloadTask == nil, let wire = hermesWire, wire !== hermesConnectingWire else { return }
@@ -2448,10 +2122,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// One fresh `session.active_list` on the live socket: whether every session on the host is
-    /// `idle`. An unknown or missing status counts as busy. Nil when the list isn't live, the read
-    /// fails, or the reply has no `sessions`. The rating prompt asks it, since the list's own
-    /// states pause while a chat covers it.
     func hermesHostIsIdle() async -> Bool? {
         guard isHermesLive, let wire = hermesWire,
               let reply = try? await wire.call(.sessionActiveList),
@@ -2459,7 +2129,6 @@ final class SessionListViewModel {
         return sessions.allSatisfy { $0["status"].text == "idle" }
     }
 
-    /// Replaces any live-state read in flight with one read, now or after `delay`.
     private func startHermesStatusRead(_ wire: any BotTransport, after delay: Duration? = nil) {
         hermesStatusTask?.cancel(); hermesStatusTask = nil
         guard hermesReadsStatus, hermesIsListening else { return }
@@ -2470,10 +2139,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// One `session.active_list`, mapped onto the listed rows by session key, then its waiting
-    /// rows told apart by `hermesPendingApprovals`. A failed read keeps the states as the last
-    /// known ones; a host without the method shows none. While a row is busy, or a read failed while
-    /// one was, it reads again after `statusPollInterval`; once all are idle it stops.
     private func readHermesStatuses(_ wire: any BotTransport) async {
         guard let hermes else { return }
         hermesStatusSerial += 1
@@ -2486,8 +2151,6 @@ final class SessionListViewModel {
             let items = reply["sessions"].list ?? []
             var states = SessionRowAttentionState.hermesStates(items).filter { listed.contains($0.key) }
             let waiting = hermesReadsApprovals ? Self.hermesWaitingRuntimes(items, states: states) : []
-            // The states show at once; a waiting row that last showed Approval keeps it until its
-            // runtimes answer.
             for (key, _) in waiting where attentionStatesBySessionID[key] == .approval { states[key] = .approval }
             setHermesStates(states)
             hermesRetriesStatus = false
@@ -2512,8 +2175,6 @@ final class SessionListViewModel {
         else { startHermesStatusRead(wire, after: hermes.statusPollInterval) }
     }
 
-    /// Replaces any roster read in flight with one `subagent.roster` per listed Profile, all at once
-    /// (#1730). Only a list read starts it, never the busy re-read or a timer.
     private func startHermesRosterRead(_ wire: any BotTransport) {
         hermesRosterTask?.cancel(); hermesRosterTask = nil
         guard hermesReadsRoster, hermesIsListening else { return }
@@ -2522,9 +2183,6 @@ final class SessionListViewModel {
         hermesRosterTask = Task { [weak self] in await self?.readHermesRoster(wire, profiles: profiles, serial: serial) }
     }
 
-    /// Keeps every stored id the roster lists with live children or background processes. Any
-    /// failed read clears the marks, so the rows show the live states alone; a host without the
-    /// method is never asked again on this socket.
     private func readHermesRoster(_ wire: any BotTransport, profiles: [String], serial: Int) async {
         let replies = await withTaskGroup(of: Result<BotJSON, Error>.self) { group in
             for profile in profiles {
@@ -2554,7 +2212,6 @@ final class SessionListViewModel {
         setHermesBackgroundWork(working)
     }
 
-    /// Drops the roster's marks and any read still out, which would describe another socket or Profile.
     private func clearHermesBackgroundWork() {
         hermesRosterTask?.cancel(); hermesRosterTask = nil
         hermesRosterSerial += 1
@@ -2565,8 +2222,6 @@ final class SessionListViewModel {
         if ids != hermesBackgroundWork { hermesBackgroundWork = ids }
     }
 
-    /// The waiting runtimes behind each Input row of one `session.active_list` reply, by session
-    /// key, for `hermesPendingApprovals`.
     private static func hermesWaitingRuntimes(_ items: [BotJSON], states: [String: SessionRowAttentionState])
         -> [(key: String, runtime: String)] {
         items.compactMap { item in
@@ -2577,12 +2232,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Whether each waiting row holds an unresolved approval (#1679): one `approval.pending` per
-    /// runtime, by its runtime id, all at once; a row with several is pending when any is. A row
-    /// with no pending answer and a failed read is absent, so it keeps what it showed, as webui's
-    /// probe does.
-    /// `unsupported` when the host answered "method not found", for the caller to apply only if
-    /// its read is still current.
     private func hermesPendingApprovals(_ waiting: [(key: String, runtime: String)], wire: any BotTransport) async
         -> (pending: [String: Bool], unsupported: Bool) {
         await withTaskGroup(of: (key: String, pending: Bool?, unsupported: Bool).self) { group in
@@ -2608,7 +2257,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Writes only a real change, so an unchanged re-read never invalidates the rows.
     private func setHermesStates(_ states: [String: SessionRowAttentionState], stale: Bool = false) {
         if states != attentionStatesBySessionID { attentionStatesBySessionID = states }
         if stale != attentionStatesAreStale { attentionStatesAreStale = stale }
@@ -2618,11 +2266,6 @@ final class SessionListViewModel {
         if reconnecting != isHermesReconnecting { isHermesReconnecting = reconnecting }
     }
 
-    // MARK: Hermes search (#1053)
-
-    /// One search of each listed Profile for `query`, applied unless a newer search, a Profile
-    /// switch or a new client replaced it meanwhile. A write the host confirmed while it was out
-    /// may postdate its answer, so it asks again. False when it was replaced.
     private func searchHermes(_ query: String) async throws -> Bool {
         let profiles = hermesListedProfiles
         guard let wire = hermesWire, !profiles.isEmpty else { throw BotFailure.stale }
@@ -2646,16 +2289,12 @@ final class SessionListViewModel {
         }
     }
 
-    /// Shows `results` as the search's matches, each in its Profile and the project lane that
-    /// now claims it, so the lanes read after the search apply to it too.
     private func showHermesSearch(_ results: [(profile: String, row: HermesSessionRow)]) {
         hermesSearchResults = results
         let rows = results.map { $0.row.summary(in: $0.profile, project: hermesProjectOwners[$0.row.id]) }
         if rows != hermesSearchRows { hermesSearchRows = rows }
     }
 
-    /// Shows a write the host confirmed on the search's matches, which only a new search reads
-    /// again: a delete (`nil`) drops the match, and a pin, archive, restore or rename shows on it.
     private func applyToHermesSearch(_ change: HermesSessionChange?, key: String) {
         hermesSearchWrites += 1
         guard let index = hermesSearchResults.firstIndex(where: { $0.row.id == key }) else { return }
@@ -2670,17 +2309,12 @@ final class SessionListViewModel {
         showHermesSearch(results)
     }
 
-    /// Runs the search that found the list's socket not yet attached, or went stale, now that
-    /// the list has read again.
     private func runAwaitedHermesSearch() async {
         guard hermesSearchAwaitsConnect, let query = activeRemoteSearchQuery else { return }
         hermesSearchAwaitsConnect = false
         await searchSessions(query: query, debounceNanoseconds: 0)
     }
 
-    /// The host's matches the local filter missed, in the host's order, so a pasted id's
-    /// session leads. Each merges with the list by identity, its compression lineage's root: a
-    /// loaded row shows as listed, pin and read mark included, and any other from the result.
     private func hermesSearchMatches(excluding shown: [SessionSummary], selectedProjectID: String?) -> [SessionSummary] {
         guard !hermesSearchRows.isEmpty else { return [] }
         var seen = Set(shown.map(\.id))
@@ -2692,7 +2326,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Writes only a real change, so clearing an empty search never invalidates the rows.
     private func clearHermesSearchMatches() {
         hermesSearchResults = []
         hermesSearchAwaitsConnect = false
@@ -2700,13 +2333,10 @@ final class SessionListViewModel {
         if !hermesSearchSnippets.isEmpty { hermesSearchSnippets = [:] }
     }
 
-    // MARK: Hermes row actions (#1048)
-
     func clearRenameError() {
         renameErrorMessage = nil
     }
 
-    /// The list's client, the session's key and its Profile, or nil after saying why not.
     private func hermesTarget(_ session: SessionSummary) -> (wire: any BotTransport, key: String, profile: String)? {
         guard let key = Self.nonEmpty(session.sessionId) else {
             actionErrorMessage = String(localized: "The server did not provide a session ID.")
@@ -2719,12 +2349,6 @@ final class SessionListViewModel {
         return (wire, key, profile)
     }
 
-    /// Pins, archives or restores a row: shows the change at once, writes it, and puts the row
-    /// back if the host refuses, unless the list moved to another Profile meanwhile. A list read
-    /// already out predates the change, so it is dropped, and the list reads again once the host
-    /// has answered. When the list's client closed first (`.stale`: the app left, or a screen
-    /// was pushed), the write may have landed, so the row stays as shown, unannounced, and the
-    /// list's next read shows the host's.
     private func changeHermesSession(_ session: SessionSummary, _ change: HermesSessionChange,
                                      animation: Animation?) async -> Bool {
         guard let target = hermesTarget(session), beginSessionMutation(target.key) else { return false }
@@ -2755,8 +2379,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Deletes a row through `HermesSessionDeletion`, once the host confirms; a busy or held
-    /// session stays, and the list says why.
     private func deleteHermesSession(_ session: SessionSummary, animation: Animation?) async -> Bool {
         guard let target = hermesTarget(session), beginSessionMutation(target.key) else { return false }
         let (wire, key, profile) = target
@@ -2782,13 +2404,8 @@ final class SessionListViewModel {
         }
     }
 
-    /// Renames a row from the rename sheet. The host cleans the title, and its refusal (a title
-    /// in use, too long, or a Bot Chat's) stays in the sheet as `renameErrorMessage`. A rename
-    /// whose answer came after the list's client closed (`.stale`) may have landed, so the sheet
-    /// stays without a message.
     private func renameHermesSession(_ session: SessionSummary, to title: String) async -> Bool {
         guard let target = hermesTarget(session) else {
-            // The sheet is up, so the reason goes there rather than to the list's toast.
             renameErrorMessage = actionErrorMessage
             actionErrorMessage = nil
             return false
@@ -2813,8 +2430,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Duplicates a row through `HermesSessionDuplication` and returns the copy as a row to open,
-    /// titled after the row as it shows; the list reads again. Nil after saying why.
     private func duplicateHermesSession(_ session: SessionSummary) async -> SessionSummary? {
         guard let target = hermesTarget(session), beginSessionMutation(target.key) else { return nil }
         let (wire, key, profile) = target
@@ -2834,7 +2449,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// The host's JSON export, named after the row's title. The host has no HTML export.
     private func exportHermesSession(_ session: SessionSummary, key: String,
                                      format: SessionExportFormat) async throws -> SessionExportFile {
         guard format == .json, let wire = hermesWire,
@@ -2845,7 +2459,6 @@ final class SessionListViewModel {
         ))
     }
 
-    /// Shows `pages` without reading the host: a change this phone made.
     private func showHermesPages(_ pages: HermesProfilePages, scheduled: Bool = false, animation: Animation?) {
         if scheduled { applyHermesScheduled(pages) } else { hermesPages = pages }
         let rows = hermesRows(hermesPages) + hermesRows(hermesScheduledPages)
@@ -2857,33 +2470,22 @@ final class SessionListViewModel {
         actionErrorMessage = hermesActionFailure(error)
     }
 
-    /// Why a row action failed: the host's own reason, what to check when it can't be reached,
-    /// or the connection's state.
     private func hermesActionFailure(_ error: Error) -> String {
         if let refusal = error as? HermesSessionRefusal { return refusal.message }
         if error is URLError, let hermes { return BotConnectionAdvice.message(for: error, address: hermes.connection.address) }
         return error.localizedDescription
     }
 
-    // MARK: Hermes projects (#1052)
-
-    /// Whether the lane `projectID` shows fewer of its sessions than the host named for it, so
-    /// later pages hold the rest.
     func hermesLaneIsShort(_ projectID: String) -> Bool {
         guard let claimed = projects.first(where: { $0.projectId == projectID })?.hermes?.claimedCount else { return false }
         return sessions.lazy.filter { $0.projectId == projectID }.count < claimed
     }
 
-    /// The host folder New Session starts in for the selected lane `lane`, as webui's New Chat
-    /// does (#1671); nil, the Profile's default folder, with no lane or while All Profiles shows,
-    /// whose list keeps the last Profile's lanes without showing them.
     func hermesNewSessionFolder(lane: String?) -> String? {
         guard let lane, !hermesShowsAllProfiles else { return nil }
         return projects.first { $0.projectId == lane }?.hermes?.folder
     }
 
-    /// Reads pages until the lane `projectID` holds every session the host named for it, or the
-    /// list ends. A failed or replaced read stops, and "Load more" tries again.
     func fillHermesLane(_ projectID: String) async {
         guard let profile = hermesProfile else { return }
         while hermesLaneIsShort(projectID), hasMoreSessions, !isLoadingMoreSessions {
@@ -2893,8 +2495,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// The host's folders that complete `word` in the create sheet's folder field; none when it
-    /// can't be completed or the host doesn't answer.
     func completeHermesFolder(_ word: String) async -> HermesFolderCompletion.Suggestions {
         guard HermesFolderCompletion.completes(word), let wire = hermesWire, let profile = hermesProfile,
               let reply = try? await wire.call(.completeFolder(word: word, profile: profile)) else { return .init() }
@@ -2905,9 +2505,6 @@ final class SessionListViewModel {
         projectSheetErrorMessage = nil
     }
 
-    /// Creates a project on one host folder, its primary. Sessions working in that folder join
-    /// it, so the lanes are read again. The host's refusal, such as a folder another project
-    /// already has, stays in the sheet. Returns the folder it was saved on; nil when it wasn't.
     func createHermesProject(named rawName: String, color: String, folder rawFolder: String) async -> String? {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         var folder = rawFolder.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2948,9 +2545,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Removes the project only: its sessions stay in the list, now in whichever lane claims
-    /// their folders. The reply's `active_id` is Desktop's pick and can still name the deleted
-    /// project, so it is never read.
     private func deleteHermesProject(_ id: String) async -> Bool {
         guard let wire = hermesWire, let profile = hermesProfile else {
             showHermesActionFailure(BotFailure.transport)
@@ -2969,10 +2563,6 @@ final class SessionListViewModel {
         }
     }
 
-    /// Move to Project: the host sets the session's working folder to `folder`, where Hermes
-    /// works from then on; its files stay where they are. A busy session moves too, mid-turn.
-    /// The list reads again, so the row shows in the lane that claims its new folder. Returns
-    /// the folder it left, which Undo moves it back to; nil when it didn't move or had none.
     func moveHermesSession(_ session: SessionSummary, toFolder folder: String) async -> String? {
         guard let target = hermesTarget(session), beginSessionMutation(target.key) else { return nil }
         let (wire, key, profile) = target
@@ -2993,16 +2583,12 @@ final class SessionListViewModel {
             actionErrorMessage = String(localized: "Hermes can't find the folder \(folder), so the session didn't move.")
             return nil
         } catch {
-            // A reply lost with the list's client (`.stale`) may have moved it: the next read shows.
             requestHermesReload()
             if !Task.isCancelled, error as? BotFailure != .stale { showHermesActionFailure(error) }
             return nil
         }
     }
 
-    /// Reads the Profile's project lanes and shows each listed row in the lane that claims it.
-    /// Only the latest lane read, under a list read still current, applies; a failed one keeps
-    /// the last lanes, which only filter the list.
     private func readHermesProjects(_ wire: any BotTransport, readSerial serial: Int) async {
         guard let profile = hermesProfile else { return }
         hermesProjectsSerial += 1
@@ -3022,11 +2608,6 @@ final class SessionListViewModel {
         showHermesSearch(hermesSearchResults)
     }
 
-    /// The listed Profile's archived session count, for its Archived row (#1679). It includes
-    /// room sessions the Archived screen hides, so it can run slightly high. A failed read keeps
-    /// the last count, nil until one answers. It runs on its own, replacing any read in flight,
-    /// so a slow count never holds the next list read back. Only a list read still current
-    /// replaces it: one a Profile switch or teardown left behind starts nothing.
     private func startHermesArchivedCountRead(_ wire: any BotTransport, readSerial serial: Int) {
         guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled, !hermesShowsAllProfiles else { return }
         hermesArchivedCountTask?.cancel()
@@ -3081,8 +2662,6 @@ final class SessionListViewModel {
 
 }
 
-/// A read mark this phone wrote to a Hermes session (#1046). `settledBefore` is the first list
-/// read to begin after the host took it; nil while the write is out.
 private struct HermesUnreadMark: Equatable {
     let id = UUID()
     let unread: Bool

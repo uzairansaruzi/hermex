@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// One agenda row: a status rail, the job's name, and a single meta line whose
-/// content is chosen by the group the row sits in. Model, provider, profile,
-/// skills, deliver and the prompt live on Task Detail — a list that repeats
-/// them reads as a wall. The one exception is `profile`, set where a list mixes
-/// every Profile's Tasks (a Hermes host, #1040), so two Tasks of one name can be
-/// told apart.
 struct CronJobRowView: View {
     let job: CronJob
     let group: TaskAgendaGroup
@@ -52,7 +46,6 @@ struct CronJobRowView: View {
             .lineLimit(nameLineLimit)
     }
 
-    /// Beside the name, or under it at accessibility sizes where both need the width.
     private func profileLabel(_ profile: String) -> some View {
         Text(verbatim: profile)
             .font(AppFont.caption())
@@ -65,8 +58,6 @@ struct CronJobRowView: View {
         guard let profile else { return parts }
         return parts + [String(localized: "Profile"), profile]
     }
-
-    // MARK: - Meta line
 
     private var metaText: String {
         switch group {
@@ -85,8 +76,6 @@ struct CronJobRowView: View {
         }
     }
 
-    /// The humanised schedule, or the server's own string when the expression
-    /// is not one we recognise — never a guess.
     private var scheduleSentence: String {
         job.scheduleDescription?.sentence ?? job.scheduleText ?? String(localized: "Not available")
     }
@@ -95,8 +84,6 @@ struct CronJobRowView: View {
         job.scheduleDescription?.recurrence ?? job.scheduleText ?? String(localized: "Not available")
     }
 
-    /// Today and tomorrow need only a clock time; the group header already
-    /// says which day.
     private func nextRunText(_ date: Date) -> String {
         if calendar.isDateInToday(date) || calendar.isDateInTomorrow(date) {
             return date.formatted(date: .omitted, time: .shortened)
@@ -113,8 +100,6 @@ struct CronJobRowView: View {
         let seconds = Int(elapsed.truncatingRemainder(dividingBy: 60))
         return "\(minutes)m \(seconds)s"
     }
-
-    // MARK: - Presentation
 
     private var tint: Color {
         switch group {

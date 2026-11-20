@@ -1,12 +1,6 @@
 import UIKit
 
-/// VoiceOver for the drawn rows. The canvas is an accessibility container whose
-/// elements are created on demand for the visible (non-collapsed) rows, so a 5,000-line
-/// diff never materialises 5,000 objects. Labels read line number, change type, and
-/// text; headers expose collapse and viewed as actions.
 extension ReviewDiffCanvasView {
-    // MARK: - Accessibility
-
     override var isAccessibilityElement: Bool {
         get { false }
         set {}
@@ -36,9 +30,6 @@ extension ReviewDiffCanvasView {
         }
         return lower < indices.count && indices[lower] == element.rowIndex ? lower : NSNotFound
     }
-
-    // VoiceOver can hold an element from before a rows rebuild, so every accessor
-    // treats an out-of-range index as an empty row instead of trapping.
 
     func accessibilityLabel(forRowAt rowIndex: Int) -> String {
         guard rows.indices.contains(rowIndex) else { return "" }
@@ -126,8 +117,6 @@ extension ReviewDiffCanvasView {
         return UIAccessibility.convertToScreenCoordinates(frame, in: self)
     }
 
-    /// Scrolls a focused row into view unless it is already drawn on screen, which
-    /// includes the pinned sticky header.
     func revealRowForAccessibility(_ rowIndex: Int) {
         guard let frame = drawnFrame(forRowAt: rowIndex) else { return }
         if frame.minY < 0 || frame.maxY > bounds.height {
@@ -136,8 +125,6 @@ extension ReviewDiffCanvasView {
     }
 }
 
-/// One VoiceOver element per visible row, created on demand. Every property reads
-/// the canvas so collapse, viewed, and selection state are never stale.
 final class ReviewDiffRowAccessibilityElement: UIAccessibilityElement {
     let rowIndex: Int
     private weak var canvas: ReviewDiffCanvasView?

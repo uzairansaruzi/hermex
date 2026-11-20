@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Tasks on a Hermes host (#1040): `HermesCronClient` against a scripted host whose replies
-/// are the shapes `scripts/local-hermes` answered at the pin (0.21.5, ca678285).
 @MainActor final class HermesCronClientTests: XCTestCase {
     func testTheListIsEveryProfilesJobsFromABareArray() async throws {
         let client = HermesCronFixture.client { request in
@@ -78,8 +76,6 @@ import XCTest
         ]), "No toast setting, and the Profile only in the query")
     }
 
-    /// A Task that removed itself after its last run, or was deleted on Desktop, is the host's
-    /// explained 404; a proxy's 502 and Cloudflare's 530 name what is down in front of Hermes.
     func testAFailureReadsAsTheHostOrTheHopThatAnswered() async throws {
         let replies: [(id: String, reply: HermesHostFixture.Reply, expected: String)] = [
             ("gone", .json(404, .object(["detail": .string("Job not found")])), "The server rejected the request: Job not found"),
@@ -148,8 +144,6 @@ import XCTest
         XCTAssertEqual(sent.map { HermesCronFixture.body($0) }, [.null, .null, .null], "Pause and resume send no body")
     }
 
-    /// A tunnel's 524 and a request that times out or drops reach the screens as the hop's
-    /// failures, which Run Now follows the run through; a refusal carries the host's reason.
     func testATriggerAHopGaveUpOnFailsAsTheHop() async {
         let client = HermesCronFixture.client { request in
             switch request.url?.path {
@@ -183,8 +177,6 @@ import XCTest
                                   "refused: Job is already running or was claimed by another scheduler"])
     }
 
-    /// The editor's delivery and skill lists are the Task's Profile's; a disabled skill
-    /// is left out.
     func testTheEditorsDeliveryTargetsAndSkillsFollowTheProfile() async throws {
         let client = HermesCronFixture.client { request in
             switch request.url?.path {
@@ -214,9 +206,6 @@ import XCTest
         XCTAssertEqual(reads.map { $0.url?.query }, ["profile=research", "profile=research"])
     }
 
-    /// Choices made for the old Profile that the newly picked one doesn't offer are dropped;
-    /// choices made since the pick, such as a custom skill typed while its list loaded,
-    /// stay, and a list that didn't load checks nothing.
     func testAPickedProfileKeepsOnlyTheChoicesItOffers() {
         let earlier = CronJobEditorDraft(deliver: "telegram,discord:123", skillsText: "arxiv, web-search")
         var draft = earlier
@@ -236,8 +225,6 @@ import XCTest
         XCTAssertEqual(retargeted.deliver, "telegram", "A target chosen since the pick stays")
     }
 }
-
-// MARK: - The Tasks screens' view models on a Hermes host
 
 extension CronManagementViewModelTests {
     @MainActor
@@ -261,7 +248,6 @@ extension CronManagementViewModelTests {
         XCTAssertEqual(HermesHostFixture.requests.compactMap(\.url?.path).filter { $0.hasPrefix("/api/cron") }, ["/api/cron/jobs"])
     }
 
-    /// Three missed 60 s ticks: past 180 s, and only for a Task that would fire.
     @MainActor
     func testHermesSchedulerNoticeStartsPastThreeMissedTicks() async throws {
         let rows: [(BotJSON, enabled: Bool, expected: Double?)] = [
@@ -283,8 +269,6 @@ extension CronManagementViewModelTests {
         }
     }
 
-    /// A 424 saved the Task without returning it: the list reads it back and keeps the
-    /// host's warning for the user.
     @MainActor
     func testHermesCreateTheSchedulerCouldNotRegisterIsSavedWithItsWarning() async throws {
         let client = HermesCronFixture.client { request in
@@ -306,7 +290,6 @@ extension CronManagementViewModelTests {
         XCTAssertEqual(viewModel.jobs.map(\.jobId), ["new1"])
     }
 
-    /// The editor's Profile can't move a Task: the update routes by the job's own.
     @MainActor
     func testHermesEditKeepsTheTasksProfile() async throws {
         let client = HermesCronFixture.client { request in
@@ -359,8 +342,6 @@ extension CronManagementViewModelTests {
         XCTAssertEqual(HermesHostFixture.requests.last?.url?.query, "profile=default")
     }
 
-    /// The detail's Refresh reads the job from the list, which carries its running state,
-    /// beside its runs (#1042).
     @MainActor
     func testHermesTaskDetailReadsTheJobFromTheList() async throws {
         let client = HermesCronFixture.client { request in
@@ -382,8 +363,6 @@ extension CronManagementViewModelTests {
         XCTAssertEqual(forwarded.latestExecutionStatus, "running")
     }
 
-    /// The opening list read was sent before a Pause that finished while it was out, so its
-    /// answer is older than the Pause's and must not put the running Task back.
     @MainActor
     func testHermesTaskDetailKeepsAPauseThatFinishedDuringItsListRead() async throws {
         let client = HermesCronFixture.client { request in
@@ -414,14 +393,11 @@ extension CronManagementViewModelTests {
     }
 }
 
-/// Run Now on a Hermes host (#1041): the trigger runs the Task before it replies, so the
-/// screens follow the run on the list, read on a scripted clock, until the host's outcome.
 @MainActor final class HermesRunNowTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let clock = RunNowClock()
 
 
-    /// The host ran the Task before replying: the reply is the outcome, and nothing is read.
     func testATriggerReplyIsTheOutcome() async throws {
         let client = HermesCronFixture.client { request in
             request.url?.path == "/api/cron/jobs/a1/trigger" ? .json(200, HermesCronFixture.job("a1", profile: "research", [
@@ -444,8 +420,6 @@ extension CronManagementViewModelTests {
                        ["POST /api/cron/jobs/a1/trigger?profile=research"], "One trigger, in the Task's Profile")
     }
 
-    /// A 524, a timeout or a dropped connection is a hop giving up on the request while the
-    /// host goes on: no error, "Running" once the list shows the claim, and the list's outcome.
     func testARunTheTunnelGaveUpOnEndsInTheHostsOutcome() async throws {
         let failures: [(String, Error)] = [
             ("524", BotFailure.rejected(524)),
@@ -481,8 +455,6 @@ extension CronManagementViewModelTests {
         }
     }
 
-    /// A 409 "already running" is read at once: the list shows the claim, so the Task is
-    /// running and no error shows.
     func testAlreadyRunningShowsTheTaskRunning() async throws {
         let host = RunNowHost(lists: [[Self.running], [Self.finished]])
         let viewModel = TaskDetailViewModel(job: try Self.job(), runningElapsed: nil, server: server, client: host,
@@ -503,8 +475,6 @@ extension CronManagementViewModelTests {
         XCTAssertEqual(viewModel.job.lastStatus, "error")
     }
 
-    /// A refusal the list doesn't explain, such as a paused Task its provider can't force,
-    /// shows the host's reason and ends Run Now.
     func testARefusalTheListDoesNotExplainShowsTheHostsReason() async throws {
         let host = RunNowHost(lists: [[HermesCronFixture.job("a1", profile: "research")]])
         let viewModel = TaskDetailViewModel(job: try Self.job(), runningElapsed: nil, server: server, client: host,
@@ -522,8 +492,6 @@ extension CronManagementViewModelTests {
         XCTAssertEqual(host.listReads, 1)
     }
 
-    /// Run Now asks first only where it also resumes the Task, and is hidden where the host
-    /// refuses it. Confirming runs the paused Task, which the host leaves resumed.
     func testAPausedTaskAsksFirstAndEndsResumed() async throws {
         let paused = try Self.job(["enabled": .bool(false), "state": .string("paused")])
         let completed = try Self.job(["enabled": .bool(false), "state": .string("completed")])
@@ -545,7 +513,6 @@ extension CronManagementViewModelTests {
         XCTAssertEqual(host.listReads, 0)
     }
 
-    /// Leaving the screen ends the reads, sends nothing more, and shows no error.
     func testLeavingTheScreenStopsTheReadsAndNeverResendsTheTrigger() async throws {
         let host = RunNowHost(lists: [[Self.running]])
         let viewModel = TaskDetailViewModel(job: try Self.job(), runningElapsed: nil, server: server, client: host,
@@ -567,8 +534,6 @@ extension CronManagementViewModelTests {
         host.answerTrigger(0, .failure(BotFailure.rejected(524)))
     }
 
-    /// The reply to a run the screen stopped following arrives during a later run, and only
-    /// the later run's reply is its outcome.
     func testAStaleReplyNeverStandsInForALaterRun() async throws {
         let host = RunNowHost(lists: [])
         let viewModel = TaskDetailViewModel(job: try Self.job(), runningElapsed: nil, server: server, client: host,
@@ -592,8 +557,6 @@ extension CronManagementViewModelTests {
         XCTAssertEqual(host.triggers.count, 2)
     }
 
-    /// A row's Run Now goes through the same machine: the row moves to "Now" once the host
-    /// shows the run, and out with the host's outcome.
     func testARowsRunNowShowsTheRunOnTheList() async throws {
         let host = RunNowHost(lists: [[HermesCronFixture.job("a1", profile: "research")], [Self.running], [Self.finished]])
         let viewModel = TasksViewModel(server: server, client: host, sleep: clock.sleep)
@@ -619,7 +582,6 @@ extension CronManagementViewModelTests {
         host.answerTrigger(0, .failure(BotFailure.rejected(524)))
     }
 
-    /// Leaving the Tasks screen stops a row's Run Now without an error alert on return.
     func testLeavingTheTasksScreenEndsARowsRunNowWithoutAnError() async throws {
         let host = RunNowHost(lists: [[HermesCronFixture.job("a1", profile: "research")]])
         let viewModel = TasksViewModel(server: server, client: host, sleep: clock.sleep)
@@ -636,8 +598,6 @@ extension CronManagementViewModelTests {
         host.answerTrigger(0, .failure(BotFailure.rejected(524)))
     }
 
-    /// A row's Run Now read that was out while the list changed, by another row's Delete or
-    /// by a refresh, can't put back what it replaced; the next read shows the list again.
     func testARowsRunNowReadNeverUndoesAChangeMadeWhileItWasOut() async throws {
         let idle = HermesCronFixture.job("a1", profile: "research")
         let active = HermesCronFixture.job("b2", profile: "research")
@@ -670,8 +630,6 @@ extension CronManagementViewModelTests {
         }
     }
 
-    /// A host the phone can no longer reach after the tunnel gave up on the trigger ends Run
-    /// Now on the third failed read, with why, rather than waiting on with nothing to show.
     func testReadsThatKeepFailingEndRunNowWithWhy() async throws {
         let host = RunNowHost(lists: [])
         let viewModel = TaskDetailViewModel(job: try Self.job(), runningElapsed: nil, server: server, client: host,
@@ -698,13 +656,9 @@ extension CronManagementViewModelTests {
         XCTAssertEqual(host.triggers, ["a1?profile=research"])
     }
 
-    // MARK: - Fixtures
-
-    /// The job claimed by a run in progress.
     private static let running = HermesCronFixture.job("a1", profile: "research", [
         "fire_claim": .object(["by": .string("host:1")]), "latest_execution": .object(["status": .string("running")])
     ])
-    /// The job once its run has finished, with an outcome only the host knows.
     private static let finishedFields: [String: BotJSON] = [
         "last_run_at": .string("2026-10-05T23:34:44.738586-04:00"), "last_status": .string("error"),
         "last_error": .string("boom")
@@ -718,15 +672,11 @@ extension CronManagementViewModelTests {
     }
 }
 
-/// The Run Now machine's clock: each wait holds until `advance()`, and
-/// `waitUntilSleeping(_:)` returns once that many waits have begun, so a test steps the
-/// list reads one at a time without a timer.
 @MainActor final class RunNowClock {
     private(set) var begun = 0
     private var sleepers: [Int: CheckedContinuation<Void, Error>] = [:]
     private var watchers: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
-    /// What the view models wait on.
     var sleep: @MainActor @Sendable (Duration) async throws -> Void { { try await self.hold($0) } }
 
     private func hold(_ duration: Duration) async throws {
@@ -757,14 +707,10 @@ extension CronManagementViewModelTests {
     }
 }
 
-/// A Hermes host for the Run Now machine: each trigger waits for the test's answer, and each
-/// list read returns the next of `lists`, the last one again once they run out, or fails to
-/// connect when there are none. A delete succeeds.
 @MainActor final class RunNowHost: CronDataClient {
     nonisolated var cronFeatures: CronFeatures { .hermes }
     private(set) var triggers: [String] = []
     private(set) var listReads = 0
-    /// Runs once, inside the next list read, before it answers.
     var duringListRead: (@MainActor () async -> Void)?
     private let lists: [[BotJSON]]
     private var answers: [Int: CheckedContinuation<CronMutationResponse, Error>] = [:]
@@ -819,7 +765,6 @@ extension CronManagementViewModelTests {
     func cronSkills(profile _: String?) async throws -> [SkillSummary] { throw BotFailure.unsupported }
 }
 
-/// A scripted Hermes host's cron replies, built from the pinned shapes.
 @MainActor enum HermesCronFixture {
     static func client(_ script: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> HermesCronClient {
         let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
@@ -827,7 +772,6 @@ extension CronManagementViewModelTests {
         return HermesCronClient(http: HermesConnection(connection: record, configuration: HermesHostFixture.configuration(script)))
     }
 
-    /// One job as `GET /api/cron/jobs` lists it at the pin, with `overrides` on top.
     static func job(_ id: String, profile: String, _ overrides: [String: BotJSON] = [:]) -> BotJSON {
         var fields = (try? JSONDecoder().decode(BotJSON.self, from: Data(#"""
         {"name": "Morning digest", "prompt": "Summarize the news", "skills": [], "skill": null, "model": null,
@@ -851,7 +795,6 @@ extension CronManagementViewModelTests {
         return try decoder.decode([CronJob].self, from: JSONEncoder().encode(jobs))
     }
 
-    /// A sent request's JSON body, or `.null` when it has none.
     static func body(_ request: URLRequest) -> BotJSON {
         var data = request.httpBody ?? Data()
         if data.isEmpty, let stream = request.httpBodyStream {

@@ -1,24 +1,16 @@
 import XCTest
 @testable import HermesMobile
 
-/// Real hermes-agent responses, recorded at the `HERMES_AGENT_TESTED_SHA` pin by
-/// `scripts/capture-hermes-fixtures`. Hand-built payloads check our idea of the API;
-/// these check the host's, so a renamed or dropped field fails here instead of
-/// quietly blanking a screen. Read via `#filePath`, so they skip off-tree like the pin test.
 @MainActor final class HermesAgentFixtureTests: XCTestCase {
-    /// Every event type the canned turn emitted at the pin. A type missing here is new
-    /// upstream: decide whether a Hermes chat (`HermesChatTurnCoordinator.apply`) should
-    /// consume it, then add it.
     private static let knownTurnEvents: Set<String> = [
-        "session.info", "message.start", "message.delta", "message.complete", // turn state
-        "thinking.delta", "reasoning.available", // read on purpose by nothing: only `reasoning.delta` is reasoning
-        "session.title" // the chat's title
+        "session.info", "message.start", "message.delta", "message.complete",
+        "thinking.delta", "reasoning.available",
+        "session.title"
     ]
-    /// The event types the local tool and approval turn adds to `knownTurnEvents`.
     private static let knownToolEvents: Set<String> = [
-        "tool.start", "tool.complete", // tool rows
-        "request.cancel", // withdraws the answered approval card
-        "message.interim", "session.usage" // interim replies and the context ring
+        "tool.start", "tool.complete",
+        "request.cancel",
+        "message.interim", "session.usage"
     ]
 
     private static let tests = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -45,8 +37,6 @@ import XCTest
                        "Re-run scripts/capture-hermes-fixtures after advancing the pin")
     }
 
-    /// The captured status goes through the real `BotClient.connect`. Password login
-    /// is the next request, so reaching it (and its scripted 404) means the auth gate passed.
     func testCapturedStatusPassesTheClientAuthGate() async throws {
         let status = try fixture("status")
         FixtureStatusProtocol.status = try JSONEncoder().encode(status)
@@ -74,13 +64,10 @@ import XCTest
         XCTAssertFalse(rows.isEmpty)
         let profiles = rows.compactMap(BotProfile.init)
         XCTAssertEqual(profiles.count, rows.count)
-        // `BotProfile` requires only `name`, so these catch a renamed `canonical_session`
-        // or `ui_meta_revisions`, which would otherwise decode to an empty inbox row.
         let bot = try XCTUnwrap(profiles.first { $0.id == "hermex-fixtures" })
         XCTAssertNotNil(bot.preview)
         XCTAssertNotNil(bot.lastActive)
         XCTAssertNotNil(bot.lookRevision)
-        // The inbox names and hides a bot from `display_name` and Desktop's look.
         XCTAssertNotNil(bot.displayName)
         XCTAssertNotNil(bot.title)
         let row = try XCTUnwrap(rows.first { $0["name"].text == "hermex-fixtures" })
@@ -88,8 +75,6 @@ import XCTest
         XCTAssertEqual(bot.hidden, hidden)
     }
 
-    /// The captured resume and turn, served through the scripted wire, attach a bot's chat:
-    /// the replay reconciles and the resume reply is this attach's, idle.
     func testCapturedResumeAndReplayAttachTheBotsChat() async throws {
         let snapshot = try fixture("session-resume")
         let frames = try XCTUnwrap(fixture("turn-frames").list)
@@ -111,12 +96,6 @@ import XCTest
         XCTAssertEqual(snapshot["running"].flag, false)
     }
 
-    // MARK: Canonical gateway (#1601), from `scripts/capture-hermes-fixtures --local --gateway`
-
-    /// The recorded Webapp names its install only once signed in (#1606), so sign-in reads its
-    /// status again and checks the saved install before anything loads: another install is
-    /// refused, and a first sign-in keeps the one it found. A browser sign-in's refresh token the
-    /// Webapp didn't issue is refused as expired, which asks for one sign-in.
     func testAWebappsInstallIsCheckedOnceSignedInAndAForeignRefreshTokenExpires() async throws {
         let signedOut = try fixture("canonical-status-signed-out")["reply"]
         let signedIn = try fixture("canonical-status-signed-in")["reply"]
@@ -162,10 +141,6 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/auth/native/refresh"), 1, "refused once, never retried")
     }
 
-    /// The recorded canonical snapshot and replay attach a session over a canonical socket: the
-    /// snapshot is this attach's though it has no `session_key`, and the replay goes under the
-    /// session's own epoch, not `gateway.ready`'s. A reattach the host answers with its recorded
-    /// epoch mismatch or replay gap (`snapshot_required`, no events) rebuilds from the snapshot.
     func testCanonicalSnapshotAndReplayAttachUnderTheSessionsEpoch() async throws {
         let ready = try fixture("canonical-ready")["reply"]
         let snapshot = try fixture("canonical-resume-running")["reply"]
@@ -201,9 +176,6 @@ import XCTest
         }
     }
 
-    /// The recorded canonical session settings (#1604) keep the shapes `HermesChatSettingsTests`
-    /// drives the chat with: the host refuses `config.set model` and a scoped Fast, and
-    /// acknowledges reasoning, personality and approval mode.
     func testCanonicalSettingsFixtureKeepsReplyShapes() throws {
         let settings = try fixture("canonical-settings")["reply"]
         XCTAssertEqual(settings["config_set_model"]["error"]["data"]["reason"].text, "use_session_mutation_model")
@@ -237,11 +209,7 @@ import XCTest
         XCTAssertEqual(Set(types).subtracting(Self.knownTurnEvents), [], "A new upstream event type")
     }
 
-    /// The tool and approval turn `scripts/capture-hermes-fixtures --local` records from
-    /// `scripts/local-hermes`: its `approval` request becomes the card a Hermes chat shows, and
-    /// its events settle one turn whose one terminal call completed.
     func testToolApprovalTurnDecodesAndSettles() throws {
-        // `fixture` skips off-tree, so prove the tree is here before a missing file can fail.
         _ = try fixture("manifest")
         let file = Self.directory.appendingPathComponent("turn-tool-approval-frames.json")
         guard let data = try? Data(contentsOf: file) else {
@@ -277,7 +245,6 @@ import XCTest
     }
 }
 
-/// Serves the captured `/api/status` and refuses everything after it with a 404.
 private final class FixtureStatusProtocol: URLProtocol {
     static var status: Data?
     override class func canInit(with request: URLRequest) -> Bool { true }

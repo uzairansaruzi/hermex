@@ -1,20 +1,13 @@
 import SwiftUI
 
-/// Shared geometry for Sessions and the text-only Bot composer.
 enum ChatComposerMetrics {
     static let cardCornerRadius: CGFloat = 26
     static let actionSize: CGFloat = 44
     static let pillInset: CGFloat = 5
-    /// The tallest a `/` or `@` suggestion panel grows on a roomy screen.
     static let panelMaximumHeight: CGFloat = 280
 }
 
 extension View {
-    /// Sizes a `/` or `@` suggestion panel to its rows, but lets it shrink to
-    /// the room left above the composer, so a short viewport (iPhone Duo,
-    /// landscape, large text) keeps the text card and Send above the keyboard.
-    /// The panel scrolls, so a short one still reaches every row. The stack
-    /// that holds it gives it `.layoutPriority(-1)` so the composer sizes first.
     func composerPanelHeight(_ height: CGFloat) -> some View {
         frame(minHeight: 0, maxHeight: min(ChatComposerMetrics.panelMaximumHeight, height))
     }
@@ -68,18 +61,11 @@ struct ChatComposerActionAppearance {
     }
 }
 
-/// A row the send-choice card can list. Bots list `BotPromptMode`; Sessions
-/// list `StreamingSendBehavior`.
 protocol SendChoice: Hashable {
     var title: String { get }
     var systemImage: String { get }
 }
 
-/// The send-choice card: the "+" picker's chrome (scrim, material panel, the
-/// same present and dismiss motion) holding what a send can do to a running
-/// turn. It sits bottom-trailing, by the Send button that opened it, and a
-/// pick submits at once. Bot Chat opens it when a send lands on a working bot;
-/// the Sessions composer opens it on a long-press of Send mid-run.
 struct SendChoiceCard<Choice: SendChoice>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -145,8 +131,6 @@ struct SendChoiceCard<Choice: SendChoice>: View {
 
     private func dismiss() { finish(onDismiss) }
 
-    /// Fades the card out, then hands control back; a pick and a dismissal
-    /// leave the same way.
     private func finish(_ completion: @escaping () -> Void) {
         guard !isDismissing else { return }
         isDismissing = true

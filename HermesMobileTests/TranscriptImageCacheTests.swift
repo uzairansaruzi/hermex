@@ -2,8 +2,6 @@ import UIKit
 import XCTest
 @testable import HermesMobile
 
-/// The shared transcript thumbnail cache (#867): one load per key, a clear on
-/// memory warning, decoded-byte cost, and the 512 px cap on what it stores.
 final class TranscriptImageCacheTests: XCTestCase {
     func testConcurrentRequestsForOneKeyCallTheLoaderOnce() async {
         let cache = TranscriptImageCache(notificationCenter: NotificationCenter())
@@ -11,8 +9,6 @@ final class TranscriptImageCacheTests: XCTestCase {
         let firstLoadStarted = expectation(description: "first load started")
         let (gate, openGate) = AsyncStream<Void>.makeStream()
         let data = Self.pngData(width: 64, height: 64)
-        // The first load holds until the gate opens, so the second request
-        // arrives while it is still in flight.
         let load: () async -> Data? = {
             if await recorder.recordCall() == 1 {
                 firstLoadStarted.fulfill()
@@ -49,8 +45,6 @@ final class TranscriptImageCacheTests: XCTestCase {
         let callsBeforeWarning = await recorder.callCount
         XCTAssertEqual(callsBeforeWarning, 1, "a cached image is served without loading")
 
-        // The observer runs synchronously on the posting thread, so the cache
-        // is already empty when `post` returns.
         center.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
         let reloaded = await cache.image(forKey: "row", load: load)
 
@@ -59,8 +53,6 @@ final class TranscriptImageCacheTests: XCTestCase {
         XCTAssertEqual(reloaded?.cgImage?.width, 64)
     }
 
-    /// Stands in for the full-size bytes `transcriptMediaThumbnailData` falls
-    /// back to when downsampling fails.
     func testOversizedImageIsStoredAspectFitWithin512Pixels() async throws {
         let cache = TranscriptImageCache(notificationCenter: NotificationCenter())
         let data = Self.pngData(width: 2_048, height: 1_024)
@@ -73,8 +65,6 @@ final class TranscriptImageCacheTests: XCTestCase {
         XCTAssertEqual(cgImage.height, 256)
     }
 
-    /// Formats `preparingForDisplay()` can refuse (16-bit gray PNG, CMYK JPEG)
-    /// still show: undecoded, and already within the 512 px cap.
     func testSmallImagesInUnusualFormatsStillShow() throws {
         let gray16 = try Self.encodedData(
             width: 64, height: 48, bitsPerComponent: 16,
@@ -109,7 +99,6 @@ final class TranscriptImageCacheTests: XCTestCase {
         XCTAssertEqual(callCount, 2, "a failed load is retried, not cached")
     }
 
-    /// Opaque 8-bit sRGB PNG bytes at exactly `width` × `height` pixels.
     private static func pngData(width: Int, height: Int) -> Data {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
@@ -121,7 +110,6 @@ final class TranscriptImageCacheTests: XCTestCase {
         }
     }
 
-    /// A filled `width` × `height` image drawn in `colorSpace` and encoded as `type`.
     private static func encodedData(
         width: Int, height: Int, bitsPerComponent: Int, colorSpace: CGColorSpace, type: String
     ) throws -> Data {
@@ -141,7 +129,6 @@ final class TranscriptImageCacheTests: XCTestCase {
     }
 }
 
-/// Counts how many times a test's loader runs.
 private actor LoadRecorder {
     private(set) var callCount = 0
 

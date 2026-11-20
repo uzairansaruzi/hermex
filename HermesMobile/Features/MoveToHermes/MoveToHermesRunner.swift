@@ -1,59 +1,31 @@
 import Foundation
 
-/// A Move to Hermes's report (#1216): where each webui chat stands and what became of its
-/// metadata and draft, by what the move could confirm.
-///
-/// Being in Hermes and having been copied by this move are separate facts. Only an import reply
-/// naming a chat confirms a copy. A chat found in Hermes after a send that never got a reply is
-/// `presentUnconfirmed`: the earlier send may have landed, or something else put it there.
 struct MoveToHermesReport: Codable, Equatable, Sendable {
-    /// The user chose Finish with What's Done while work was left.
     var finishedEarly = false
-    /// This run started over a lost or damaged journal, so earlier results are unknown.
     var recovered = false
-    /// The webui listed only one Profile, so the others weren't scanned.
     var partialScan = false
-    /// Hermes's import reply named these as imported.
     var copied: [String] = []
-    /// In Hermes before this move sent them anything, or in another Profile than it sent them to.
     var alreadyThere: [String] = []
-    /// In the Profile this move sent them to, after a send with no reply.
     var presentUnconfirmed: [String] = []
-    /// Sent with no reply and not found since: they may or may not be in Hermes.
     var sentUnconfirmed: [String] = []
-    /// Missing from Hermes at the last check and not copied: their export failed or was never tried.
     var notCopied: [String] = []
-    /// Over the host's import limits. Never trimmed.
     var oversized: [String] = []
-    /// Refused by the host, with its reason.
     var rejected: [String: String] = [:]
-    /// Couldn't be checked, or two Hermes Profiles hold them. Not copied by this move.
     var unchecked: [String] = []
-    /// Missing from Hermes, in a webui Profile kept there or left unmapped.
     var keptOnWebui: [String] = []
     var pairing: MoveToHermesPairing?
     var changesApplied = 0
-    /// Never sent: the move finished first, or the session was gone.
     var changesNotApplied: [MoveToHermesReconcile.Operation] = []
-    /// Sent with no reply, and Hermes doesn't show the value. Never sent again.
     var changesUnconfirmed: [MoveToHermesReconcile.Operation] = []
-    /// Hermes's value changed after planning, so it was left as it is.
     var changesLeftAlone: [MoveToHermesReconcile.Operation] = []
     var foldersMissing: [MoveToHermesReconcile.Operation] = []
     var changesRejected: [MoveToHermesReconcile.Operation] = []
-    /// Chats in Hermes whose row couldn't be read, so nothing was filled for them.
     var notReconciled: [String] = []
     var draftsMoved = 0
-    /// A different draft is in Hermes; both stay untouched.
     var draftConflicts: [String] = []
-    /// Drafts that stay on this iPhone under the webui server: their Hermes key couldn't be
-    /// verified, the session is gone, or the move finished before moving them.
     var draftsKept: [String] = []
-    /// The webui titles of the chats listed above, so the report reads without the journal.
     var titles: [String: String] = [:]
 
-    /// The counts the move record keeps for removal copy. Remaining counts only chats confirmed
-    /// missing from Hermes; chats that couldn't be checked or confirmed count as unchecked.
     func summary(at date: Date) -> MovedWebuiReport {
         MovedWebuiReport(remaining: partialScan ? nil : notCopied.count + oversized.count + rejected.count + keptOnWebui.count,
                          unchecked: unchecked.count + sentUnconfirmed.count, oversized: oversized.count,
@@ -61,10 +33,7 @@ struct MoveToHermesReport: Codable, Equatable, Sendable {
     }
 }
 
-/// A Move's progress, folded from its frozen Review and its log (#1216). Recomputed whenever the
-/// runner needs it, so the log is the only state.
 struct MoveToHermesProgress {
-    /// A metadata write's field, which stays the same when a title is retried with a suffix.
     struct ChangeKey: Hashable {
         let id: String
         let profile: String
@@ -84,20 +53,13 @@ struct MoveToHermesProgress {
     let review: MoveToHermesReview
     private(set) var pairing: MoveToHermesPairing?
     private(set) var copy: [String: WebuiSessionTransfer.Outcome] = [:]
-    /// The Profile each chat's latest import was sent to.
     private(set) var sentTo: [String: String] = [:]
-    /// Sent with no outcome logged yet: in flight, or the reply or its line was lost.
     private(set) var awaiting: Set<String> = []
-    /// A send whose result was never known: `.uncertain`, or its outcome line lost before a
-    /// later attempt settled the chat.
     private(set) var unconfirmedSend: Set<String> = []
-    /// The copy attempt each awaiting chat was last sent in.
     private var sentIn: [String: UUID] = [:]
     private(set) var plans: [String: MoveToHermesReconcile.Planned] = [:]
-    /// Writes logged as sent with no outcome: settled by reading, never resent.
     private(set) var inFlight: [ChangeKey: MoveToHermesReconcile.Operation] = [:]
     private(set) var changes: [ChangeKey: MoveToHermesReconcile.Outcome] = [:]
-    /// The write each outcome is for, which is the suffixed title after a collision retry.
     private(set) var changed: [ChangeKey: MoveToHermesReconcile.Operation] = [:]
     private(set) var drafts: [String: MoveToHermesDraftResult] = [:]
     private(set) var finished: MoveToHermesReport?
@@ -120,7 +82,6 @@ struct MoveToHermesProgress {
             }
         case .copied(let outcomes, let attempt):
             for (id, outcome) in outcomes {
-                // Still awaiting a send from another attempt: that attempt's outcome was lost.
                 if awaiting.remove(id) != nil, sentIn.removeValue(forKey: id) != attempt { unconfirmedSend.insert(id) }
                 if case .uncertain = outcome { unconfirmedSend.insert(id) }
                 copy[id] = outcome
@@ -140,11 +101,8 @@ struct MoveToHermesProgress {
         }
     }
 
-    /// Whether an import may have reached Hermes without the move knowing.
     private func unconfirmed(_ id: String) -> Bool { unconfirmedSend.contains(id) || awaiting.contains(id) }
 
-    /// The chats still to copy, each to its mapped Profile. A chat sent before goes to the same
-    /// Profile under the same id: the host skips an id it already has, so this resends imports only.
     var copyItems: [WebuiSessionTransfer.Item] {
         review.entries.compactMap { entry in
             guard entry.location == .missing, let destination = review.destination(of: entry.chat) else { return nil }
@@ -158,10 +116,6 @@ struct MoveToHermesProgress {
         }
     }
 
-    /// The chats reconcile fills (`MoveToHermesReconcile.targets`) from mapped Profiles only. A
-    /// chat found after an unconfirmed send counts as one Hermes already had: on the first move
-    /// it gets empty titles and folders and its draft, never a pin; Copy Missing Chats Again
-    /// leaves it alone.
     var targets: [MoveToHermesReconcile.Target] {
         let mapped = review.entries.filter { review.destination(of: $0.chat) != nil }
         var outcomes = copy
@@ -176,7 +130,6 @@ struct MoveToHermesProgress {
             .sorted { $0.target.chat.id < $1.target.chat.id }
     }
 
-    /// Planned writes never sent, or not sent last time.
     var operationsToApply: [MoveToHermesReconcile.Operation] {
         planned.flatMap(\.operations).filter { operation in
             let key = ChangeKey(operation)
@@ -192,16 +145,11 @@ struct MoveToHermesProgress {
         planned.filter { drafts[$0.target.chat.id] == nil || drafts[$0.target.chat.id] == .failed }
     }
 
-    /// Whether Resume has anything left to try. A pairing check that didn't answer is tried
-    /// again on Resume but never holds the move open.
     var hasWorkLeft: Bool {
         !copyItems.isEmpty || !unplannedTargets.isEmpty || !inFlight.isEmpty
             || !operationsToApply.isEmpty || !plansNeedingDrafts.isEmpty
     }
 
-    /// The report as things stand. Work left becomes what it is at a stop: a send with no reply
-    /// is unconfirmed, a write never sent is not applied, a draft not moved stays on the webui.
-    /// `draftsWaiting` are the planned chats that still have a webui draft.
     func report(finishedEarly: Bool, draftsWaiting: Set<String>) -> MoveToHermesReport {
         var report = MoveToHermesReport(finishedEarly: finishedEarly, recovered: review.recovering,
                                         partialScan: review.onlyProfile != nil, pairing: pairing)
@@ -277,14 +225,8 @@ struct MoveToHermesProgress {
     }
 }
 
-/// The Hermes host a Move writes to: a client on a connection of the move's own, never the
-/// shared one (`HermesConnections.shared` keeps one connection, and asking it for the
-/// destination would close the active server's). `connections` makes it beside that one
-/// (`ownConnection`), so a browser sign-in's rotated refresh tokens are saved as the
-/// destination's own connection saves them (#1265).
 @MainActor struct MoveToHermesDestination {
     let transport: any BotTransport
-    /// Signs in and reads the host's push pairing, which can create the host's keys.
     let readPairing: () async throws -> PushPairing
     let close: () -> Void
 
@@ -303,50 +245,24 @@ struct MoveToHermesProgress {
     }
 }
 
-/// Runs one Move to Hermes after the user confirms it, and resumes it after any interruption
-/// (#1216). The guided sheet (#1218) owns it and the task each call runs in; cancelling that
-/// task pauses the move.
-///
-/// `start` writes the frozen Review to the journal, then commits (`AuthManager.commitMove`).
-/// Cancelling or failing before the commit leaves nothing behind. Each pass after it runs:
-/// 1. The push pairing carry (`MovePushPairing.carry`), only ever after the commit.
-/// 2. The copy (`WebuiSessionTransfer`), one source Profile at a time. Each import is logged
-///    and flushed before it goes out; one whose result is unknown is sent again next pass.
-/// 3. Reconcile (`MoveToHermesReconcile`): plans are logged before any write, each write is
-///    logged before it goes out, and one logged with no result is only ever settled by reading.
-/// 4. Draft moves.
-///
-/// A pass with work left pauses for Resume; Finish with What's Done ends it early. Finishing
-/// logs the report, then marks the move record complete with its counts, and keeps the journal
-/// until the user taps Done (`acknowledge`). A failed write anywhere stops sending and pauses.
 @MainActor @Observable final class MoveToHermesRunner {
     enum Step: Equatable {
         case pairing, copying, reconciling, movingDrafts, finishing
     }
 
     enum Pause: Equatable {
-        /// The task was cancelled: the sheet closed or the app stopped it.
         case cancelled
-        /// A pass ended with work Resume can try again.
         case workLeft
-        /// The destination is signed out or didn't connect.
         case destinationUnavailable
-        /// The destination was removed, and its move with it.
         case destinationRemoved
-        /// The journal or the move record couldn't be saved; nothing more was sent.
         case saveFailed
-        /// The journal can't be trusted. Copy Missing Chats Again from a fresh scan starts over.
         case damaged
-        /// The journal can't be read now, such as before the first unlock. Try again later.
         case unreadable
-        /// The move isn't complete and its journal is gone. Start over from a fresh scan.
         case needsRescan
     }
 
     enum StartFailure: Error, Equatable {
-        /// This move already has a journal: resume or finish it first.
         case moveInProgress
-        /// The journal couldn't be written, so nothing was committed.
         case journal
         case commit(AuthManager.MoveCommitError)
     }
@@ -356,25 +272,20 @@ struct MoveToHermesProgress {
         case running(Step)
         case paused(Pause)
         case finished(MoveToHermesReport)
-        /// Nothing was committed or changed.
         case notStarted(StartFailure)
     }
 
-    /// What Review hands the runner when the user confirms Move.
     struct Review {
         let source: ServerAccount
-        /// The destination's sign-in, saved by the commit when the server is new.
         let connection: BotConnection
         let profiles: [MovedWebuiProfile]
         let hermesProfiles: [String]
         let scan: MoveToHermesScan.Result
     }
 
-    /// What the runner reaches outside itself; tests replace every part.
     struct Environment {
         var root = MoveToHermesJournal.defaultRoot
         var destination: @MainActor (BotConnection) -> MoveToHermesDestination = { MoveToHermesDestination.live($0) }
-        /// The webui copy's URL session setup; tests add their protocol class.
         var webuiConfiguration: URLSessionConfiguration = .ephemeral
         var cookies: @MainActor (URL) -> [HTTPCookie] = { HTTPCookieStorage.shared.cookies(for: $0) ?? [] }
         var registrar: @MainActor () -> (any PushPairingCopying)? = { PushRegistrar.shared }
@@ -386,7 +297,6 @@ struct MoveToHermesProgress {
     let sourceServerID: String
     let destinationID: String
     private(set) var state: State = .idle
-    /// Chats settled out of those this pass is copying.
     private(set) var copyProgress: (settled: Int, total: Int)?
 
     @ObservationIgnored private let auth: AuthManager
@@ -400,7 +310,6 @@ struct MoveToHermesProgress {
         self.environment = environment
     }
 
-    /// The id `commitMove` gives the Hermes server at `connection`'s address.
     static func destinationID(for connection: BotConnection) -> String {
         ((try? BotConnection.address(connection.address.absoluteString)) ?? connection.address).absoluteString
     }
@@ -409,16 +318,11 @@ struct MoveToHermesProgress {
         MoveToHermesJournal.folder(source: sourceServerID, destination: destinationID, in: environment.root)
     }
 
-    /// The move's record while its destination holds it and isn't being removed.
     private var record: MovedWebuiServer? {
         guard !auth.removingServerIDs.contains(destinationID), let held = auth.moveRecord(forSource: sourceServerID), held.destination.id == destinationID else { return nil }
         return held.record
     }
 
-    // MARK: Entry points
-
-    /// Freezes `review`, commits, then runs the first pass. A move this webui server already
-    /// made to this destination runs as Copy Missing Chats Again, with the record's mapping.
     func start(_ review: Review) async {
         guard MoveToHermesJournal.claim(folder) else { return state = .notStarted(.moveInProgress) }
         defer { MoveToHermesJournal.release(folder) }
@@ -456,8 +360,6 @@ struct MoveToHermesProgress {
         await runPass()
     }
 
-    /// Picks the move up from its journal: another pass, or only the record update when its
-    /// report is already saved.
     func resume() async {
         guard MoveToHermesJournal.claim(folder) else { return }
         defer { MoveToHermesJournal.release(folder) }
@@ -465,8 +367,6 @@ struct MoveToHermesProgress {
         await runPass()
     }
 
-    /// Finish with What's Done: ends a paused move now, with what is left reported as it stands.
-    /// Sends nothing.
     func finishEarly() async {
         guard MoveToHermesJournal.claim(folder) else { return }
         defer { MoveToHermesJournal.release(folder) }
@@ -474,7 +374,6 @@ struct MoveToHermesProgress {
         await finish(journal, early: true)
     }
 
-    /// Done: deletes the journal once the report is saved in both places.
     func acknowledge() {
         guard case .finished = state, !MoveToHermesJournal.isClaimed(folder) else { return }
         (journal ?? loadJournal())?.discard()
@@ -482,25 +381,17 @@ struct MoveToHermesProgress {
         state = .idle
     }
 
-    /// Where a move stands, for the guided sheet's paused details and the banners (#1218).
     struct Snapshot: Equatable {
-        /// The report as things stand, or the saved final report.
         let report: MoveToHermesReport
-        /// Every webui chat the scan listed.
         let total: Int
-        /// Chats Resume would copy, writes it would send and drafts it would move.
         let copyLeft: Int
         let changesLeft: Int
         let draftsLeft: Int
-        /// Chats in Hermes whose titles, pins, folders and drafts aren't planned yet.
         let unplanned: Int
 
-        /// Chats in Hermes, whether this move copied them or not.
         var inHermes: Int { report.copied.count + report.alreadyThere.count + report.presentUnconfirmed.count }
     }
 
-    /// Reads the move's journal without changing `state`; nil when it can't be read, or while
-    /// another runner holds it (opening cuts a torn last line, which could be that runner's).
     func snapshot() async -> Snapshot? {
         let opened: MoveToHermesJournal
         if let journal {
@@ -519,7 +410,6 @@ struct MoveToHermesProgress {
                         unplanned: progress.unplannedTargets.count)
     }
 
-    /// The journal, read from disk unless this runner holds it, or nil with `state` saying why.
     private func loadJournal() -> MoveToHermesJournal? {
         if let journal { return journal }
         switch MoveToHermesJournal.open(folder, willWrite: environment.willWrite) {
@@ -533,8 +423,6 @@ struct MoveToHermesProgress {
         }
         return nil
     }
-
-    // MARK: Pass
 
     private enum Stop: Error {
         case saveFailed
@@ -571,7 +459,6 @@ struct MoveToHermesProgress {
         }
         let progress = MoveToHermesProgress(review: journal.review, events: journal.events)
         if Task.isCancelled || progress.hasWorkLeft {
-            // Best effort: removal copy reads these counts, and a later pass saves them again.
             let report = progress.report(finishedEarly: false, draftsWaiting: await draftsWaiting(progress))
             try? auth.updateMoveRecord(forSource: sourceServerID) { $0.report = report.summary(at: environment.now()) }
             state = .paused(Task.isCancelled ? .cancelled : .workLeft)
@@ -580,8 +467,6 @@ struct MoveToHermesProgress {
         }
     }
 
-    /// Logs `event` and flushes it before anything it names is sent, while the move's record
-    /// still exists: after the destination is removed, nothing more is written or sent.
     private func logIntent(_ event: MoveToHermesEvent, in journal: MoveToHermesJournal) throws {
         guard record != nil else { throw Stop.destinationRemoved }
         do { try journal.append(event, durable: true) } catch { throw Stop.saveFailed }
@@ -591,7 +476,6 @@ struct MoveToHermesProgress {
         do { try journal.append(event, durable: false) } catch { throw Stop.saveFailed }
     }
 
-    /// The first step after the commit; tried again on Resume while the host hasn't answered.
     private func carryPairing(_ journal: MoveToHermesJournal, to destinationURL: URL,
                               destination: MoveToHermesDestination) async throws {
         let progress = MoveToHermesProgress(review: journal.review, events: journal.events)
@@ -611,7 +495,6 @@ struct MoveToHermesProgress {
         try log(.pairing(result), in: journal)
     }
 
-    /// Copies what is left, one source Profile at a time, while the webui server is configured.
     private func copy(_ journal: MoveToHermesJournal, on hermes: any BotTransport) async throws {
         let items = MoveToHermesProgress(review: journal.review, events: journal.events).copyItems
         guard !items.isEmpty, !Task.isCancelled,
@@ -641,7 +524,6 @@ struct MoveToHermesProgress {
         }
     }
 
-    /// Plans the targets not planned yet, settles writes left in flight, then applies the rest.
     private func reconcile(_ journal: MoveToHermesJournal, on hermes: any BotTransport) async throws {
         var progress = MoveToHermesProgress(review: journal.review, events: journal.events)
         let unplanned = progress.unplannedTargets
@@ -670,7 +552,6 @@ struct MoveToHermesProgress {
             sent[MoveToHermesProgress.ChangeKey(operation)] = operation
         }
         for operation in operations {
-            // Logged as the write last sent, so a suffixed title retry reports the title it tried.
             if let outcome = outcomes[operation] {
                 try log(.changed(sent[MoveToHermesProgress.ChangeKey(operation)] ?? operation, outcome), in: journal)
             }
@@ -684,12 +565,8 @@ struct MoveToHermesProgress {
         guard !plans.isEmpty, !Task.isCancelled, let webui = URL(string: sourceServerID) else { return }
         state = .running(.movingDrafts)
         let store = environment.drafts()
-        // One chat at a time, each result logged before the next, so a quit loses at most one
-        // chat's result: its draft has moved, and Resume finds nothing left to move.
         for plan in plans {
             guard !Task.isCancelled else { return }
-            // Asked again just before the transfer: a destination removal discards its drafts
-            // before its entry goes, so a draft moved after that point would be lost with it.
             let outcomes = await MoveToHermesReconcile.moveDrafts([plan], webui: webui, hermes: hermes, connectionID: connectionID,
                                                                  store: store, on: transport,
                                                                  canTransfer: { [self] in record != nil && !Task.isCancelled })
@@ -698,8 +575,6 @@ struct MoveToHermesProgress {
         }
     }
 
-    /// The planned chats whose webui draft is still on this iPhone, for a report made before
-    /// every draft step finished.
     private func draftsWaiting(_ progress: MoveToHermesProgress) async -> Set<String> {
         guard let webui = URL(string: sourceServerID) else { return [] }
         var waiting = Set<String>()
@@ -710,11 +585,6 @@ struct MoveToHermesProgress {
         return waiting
     }
 
-    // MARK: Finish
-
-    /// Logs the report, flushed, before the move record is marked complete, and keeps the
-    /// journal for Done. A report already logged is reused, so a retry after a failed record
-    /// save reports the same thing.
     private func finish(_ journal: MoveToHermesJournal, early: Bool) async {
         state = .running(.finishing)
         let report: MoveToHermesReport

@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Chat animation curves. Reduce Motion always snaps (`nil`); do not substitute a shorter ease.
 enum ChatMotion {
     static func press(duration: Double, reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .smooth(duration: duration, extraBounce: 0)
@@ -18,8 +17,6 @@ enum ChatMotion {
         reduceMotion ? nil : .smooth(duration: 0.22, extraBounce: 0)
     }
 
-    /// The system keyboard's own curve, for what has to move with it. These spring values are the
-    /// widely used match for its private animation curve.
     static func keyboard(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .interpolatingSpring(mass: 3, stiffness: 1000, damping: 500)
     }
@@ -28,9 +25,6 @@ enum ChatMotion {
         reduceMotion ? nil : .easeOut(duration: 0.20)
     }
 
-    /// Expanding or collapsing the clarification card above the composer. The
-    /// card slides its own height past the bar's bottom edge on one ease-out
-    /// clock, sized like the keyboard's; Reduce Motion snaps.
     static func clarificationToggle(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeOut(duration: 0.22)
     }
@@ -43,12 +37,6 @@ enum ChatMotion {
         reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
     }
 
-    /// Entrance for a transcript row born moments ago: user rows fade up,
-    /// assistant rows fade. The animation rides on the transition itself, so
-    /// the row animates without wrapping the message append in `withAnimation`
-    /// and without animating layout (the bottom anchor still snaps). Removal
-    /// stays instant so an optimistic rollback never lingers. Reduce Motion
-    /// disables the entrance entirely.
     static func freshRowTransition(isUserRow: Bool, reduceMotion: Bool) -> AnyTransition {
         guard !reduceMotion else { return .identity }
         let insertion: AnyTransition = isUserRow ? .opacity.combined(with: .offset(y: 8)) : .opacity

@@ -1,23 +1,15 @@
 import UIKit
 
-/// Scroll host for `ReviewDiffCanvasView`. The canvas is exactly one viewport tall and
-/// rides along with the content offset, so scrolling repaints rows instead of laying
-/// out views. Also owns pull-to-refresh, scroll-to-file, and the scroll anchor that
-/// keeps the file under the reader still when rows above it change height.
 final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
     private let scrollView = UIScrollView()
     private let canvas: ReviewDiffCanvasView
     private let refreshControl = UIRefreshControl()
     private var pendingScroll: ReviewDiffScrollTarget.Anchor?
     private var pendingScrollAnimated = false
-    /// A file jump that short content clamped (files above still loading). New rows
-    /// land it again until it reaches the top, the reader scrolls, or jumps elsewhere.
     private var heldFileID: String?
     private var reportedVisibleRowRange: ClosedRange<Int>?
 
     var onPullToRefresh: (() -> Void)?
-    /// Rows intersecting the viewport changed; the host uses it to highlight only
-    /// what is on screen.
     var onVisibleRowRangeChange: ((ClosedRange<Int>?) -> Void)?
     var onToggleFile: ((String) -> Void)? {
         get { canvas.onToggleFile }
@@ -42,8 +34,6 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         get { canvas.selectedRowIDs }
         set { canvas.selectedRowIDs = newValue }
     }
-    /// Toggling wrap changes row heights above the viewport, so the row at the top
-    /// is kept where it is drawn.
     var wrapsLines: Bool {
         get { canvas.wrapsLines }
         set {
@@ -53,7 +43,6 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
             restore(anchor)
         }
     }
-    /// Resizing changes row heights above the viewport too, so the same row stays put.
     var customCodeSize: CGFloat? {
         get { canvas.customCodeSize }
         set {
@@ -72,10 +61,8 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
             restore(anchor)
         }
     }
-    /// Current scroll position; tests read it.
     var verticalOffset: CGFloat { scrollView.contentOffset.y }
 
-    /// Vertical extent of a row in content coordinates.
     func frame(forRowID rowID: String) -> (minY: CGFloat, height: CGFloat)? {
         rows.firstIndex { $0.id == rowID }.flatMap { canvas.layout.frame(forRowAt: $0) }
     }
@@ -120,10 +107,6 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         updateContentMetrics()
     }
 
-    // MARK: - Inputs
-
-    /// Replaces the rows, keeping the file at the top of the viewport where it was,
-    /// or the held file jump.
     func setRows(_ rows: [ReviewDiffRow]) {
         let anchor = currentAnchor()
         canvas.setRows(rows)
@@ -135,9 +118,6 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         }
     }
 
-    /// Collapsing one file keeps its header where it is drawn (pinned at the top when
-    /// sticky), so the reader is not thrown to a different file. Default folds of files
-    /// above the viewport, one or several at once, keep the file at the top where it was.
     func setCollapsedFileIDs(_ collapsedFileIDs: Set<String>) {
         let changed = canvas.collapsedFileIDs.symmetricDifference(collapsedFileIDs)
         guard !changed.isEmpty else { return }
@@ -149,8 +129,6 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         restore(anchor)
     }
 
-    /// A file header lands at the top; a row lands 30 % down the viewport so the
-    /// reader sees what leads into it. Applied once the layout can place it.
     func scroll(to anchor: ReviewDiffScrollTarget.Anchor, animated: Bool) {
         heldFileID = nil
         pendingScroll = anchor
@@ -162,8 +140,6 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         scroll(to: .fileHeader(fileID), animated: animated)
     }
 
-    /// The host owns the spinner: it stays until the reload finishes, not until the
-    /// gesture ends.
     func setRefreshing(_ refreshing: Bool) {
         if refreshing {
             if !refreshControl.isRefreshing { refreshControl.beginRefreshing() }
@@ -176,11 +152,8 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         onPullToRefresh?()
     }
 
-    // MARK: - Scroll anchoring
-
     private struct Anchor {
         let fileID: String
-        /// Header top relative to the viewport top; negative while scrolled into the file.
         let screenY: CGFloat
     }
 
@@ -234,7 +207,6 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         }
     }
 
-    /// Returns the offset after clamping to the content.
     @discardableResult
     private func setVerticalOffset(_ target: CGFloat, animated: Bool) -> CGFloat {
         let maxOffset = max(scrollView.contentSize.height - scrollView.bounds.height, 0)
@@ -251,8 +223,6 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         scrollView.scrollRectToVisible(CGRect(x: 0, y: frame.minY, width: 1, height: frame.height), animated: false)
         updateViewportFrame()
     }
-
-    // MARK: - Viewport
 
     private func updateContentMetrics() {
         scrollView.contentSize = CGSize(width: bounds.width, height: max(bounds.height, canvas.contentHeight))
@@ -288,7 +258,6 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         heldFileID = nil
     }
 
-    /// A status-bar tap is the reader leaving the jump, as a drag is.
     func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
         heldFileID = nil
         return true

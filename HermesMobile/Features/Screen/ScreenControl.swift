@@ -2,10 +2,7 @@ import CryptoKit
 import Foundation
 import UserNotifications
 
-/// Who holds a screen, as `display.status`, `.lease.*` and the `display.lease` event report it.
-/// The holder's id never leaves the host, only a hash its holder can match against its own.
 struct ScreenLease: Equatable {
-    /// Which side controls the screen. An unknown holder reads as the agent's.
     enum Holder: Equatable { case agent, human }
 
     let holder: Holder
@@ -16,7 +13,6 @@ struct ScreenLease: Equatable {
         viewerHash = json["viewer_hash"].text
     }
 
-    /// Whether `viewerID` is the one holding it: the first 12 hex characters of its SHA-256.
     func isHeld(by viewerID: String) -> Bool {
         holder == .human && viewerHash == Self.hash(viewerID)
     }
@@ -26,19 +22,10 @@ struct ScreenLease: Equatable {
     }
 }
 
-/// A takeover this iPhone made and hasn't handed back. Saved before the acquire goes out, because
-/// a phone that suspends before the reply could otherwise hold a lease with no record of its id.
-/// So `viewerIDs` names every id that may hold it: one once things settle, two while a return moves
-/// it to a new socket's id. Each is a capability on the host, so this lives in the Keychain.
-/// `lastInput` is saved when the app leaves the foreground and at takeover, so a killed app's
-/// deadline errs early.
 struct ScreenHold: Codable, Equatable {
     var viewerIDs: [String]
-    /// The host has answered for it. An unconfirmed hold the host doesn't show never landed, so
-    /// it goes quietly rather than reporting that someone else took over.
     var isConfirmed: Bool
     var lastInput: Date
-    /// Which kind of screen it's on, so a hand-back from Bots home goes the right way.
     var source: ScreenSource
 
     func holder(of lease: ScreenLease) -> String? {
@@ -46,9 +33,6 @@ struct ScreenHold: Codable, Equatable {
     }
 }
 
-/// The holds on each configured server, by Profile, in one Keychain item per server, so a hold
-/// never shows under another server and server removal drops them together. `revision` lets the
-/// Bots home follow a hand-back that finishes after its Screen has closed.
 @MainActor @Observable final class ScreenHoldStore {
     static let shared = ScreenHoldStore(keychain: KeychainStore())
 
@@ -81,8 +65,6 @@ struct ScreenHold: Codable, Equatable {
         revision += 1
     }
 
-    /// Forgets the hold only if it still names `viewerIDs`. A reply about an old hold must not
-    /// erase one retaken since, by a quick switch away and back.
     func forget(viewerIDs: [String], server: URL, profile: String) {
         guard hold(server: server, profile: profile)?.viewerIDs == viewerIDs else { return }
         save(nil, server: server, profile: profile)
@@ -94,8 +76,6 @@ struct ScreenHold: Codable, Equatable {
     }
 }
 
-/// How long a takeover lasts with no phone input. The plugin enforces this on the host for Mac and
-/// Windows; a stock host's leases never expire, so on Linux the app does it when it next runs.
 enum ScreenIdlePolicy {
     static let prompt: Duration = .seconds(14 * 60)
     static let limit: Duration = .seconds(15 * 60)
@@ -105,15 +85,9 @@ enum ScreenIdlePolicy {
     }
 }
 
-/// Hands back holds from outside a Screen view: Bots home's banner, the Bot Screen switch, a server
-/// switch or sign-out, and a takeover that expired while the app was away. Each runs on a
-/// connection of its own, so replacing the server's shared connection can't cut it off.
 @MainActor enum ScreenHolds {
-    /// The most any of these waits for a host, so a sign-out never hangs on one that's gone.
     private static let deadline: Duration = .seconds(4)
 
-    /// Releases every hold on `server`, and forgets each the host answers for. One it can't reach
-    /// stays saved, so the banner offers it again and `reconcile` sees it next time.
     static func handBackAll(server: URL, store: ScreenHoldStore = .shared) async {
         let holds = store.holds(server: server)
         guard !holds.isEmpty, let connection = try? BotConnectionStore().load(server: server) else { return }
@@ -124,7 +98,6 @@ enum ScreenIdlePolicy {
         }
     }
 
-    /// Releases one hold from Bots home's banner.
     static func handBack(profile: String, server: URL, connection: BotConnection, store: ScreenHoldStore = .shared) async {
         guard let hold = store.hold(server: server, profile: profile) else { return }
         await withOwnClient(connection, server: server) { client in
@@ -132,9 +105,6 @@ enum ScreenIdlePolicy {
         }
     }
 
-    /// Checks each saved hold against the host when Bots home opens: a hold the host no longer
-    /// shows is forgotten, and one past its deadline hands back, which covers an app killed while
-    /// holding. A host it can't reach changes nothing.
     static func reconcile(server: URL, connection: BotConnection, store: ScreenHoldStore = .shared, now: Date = Date()) async {
         guard !store.holds(server: server).isEmpty else { return }
         await withOwnClient(connection, server: server) { client in
@@ -184,10 +154,6 @@ enum ScreenIdlePolicy {
     }
 }
 
-/// The local notice that a takeover ran out while the app was in the background. It says so and
-/// asks nothing: control goes back when the app next runs. Sent only if notifications are already
-/// allowed, so a Screen never raises the permission prompt. Tests use `.off` to stay away from
-/// the real notification center, which may stall a CI simulator for minutes on first use (#1580).
 enum ScreenIdleNotification {
     case system
     case off

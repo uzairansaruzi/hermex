@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// A Hermes server's Default Model page (#1670): it starts on the Sessions side's Profile and
-/// writes that Profile's model only once the host applies it.
 @MainActor final class HermesDefaultModelTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private var preferences: UserDefaults!
@@ -131,18 +129,13 @@ import XCTest
     }
 }
 
-/// A host with Profiles `default`, `work` and `research`, each pinning `<name>-model`, which asks
-/// to confirm the model `guarded`.
 @MainActor private final class DefaultModelWire: BotTransport {
     var replayEpoch: String? = "epoch"
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     private(set) var configures: [[String: BotJSON]] = []
-    /// When set, the next `connect()` (method "connect") or call of `method` runs `reached` and
-    /// waits for `release()`.
     var hold: (method: String, reached: () -> Void)?
     private var held: CheckedContinuation<Void, Never>?
-    /// When set, both model lists fail.
     var failsModelOptions = false
 
     func connect() async throws { await wait(at: "connect") }

@@ -2,8 +2,6 @@ import SwiftUI
 
 struct SessionRenameSheet: View {
     let isSaving: Bool
-    /// Why the server refused the last title, shown under the field so the sheet stays open
-    /// with it; a Hermes host's own message (#1048).
     let errorMessage: String?
     let onCancel: () -> Void
     let onSave: (String) -> Void

@@ -21,8 +21,6 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
         XCTAssertTrue(segments.activeMarkdown.contains("Still streaming"))
     }
 
-    /// A longer or different fence can hold ``` lines (Markdown about Markdown); only the
-    /// matching closing run ends it, so a chunk never seals inside the outer fence.
     func testNestedFenceSealsOnlyAfterItsOwnClosingRun() {
         let prose = String(repeating: "Line of prose.\n", count: 400)
         for (open, close) in [("````markdown", "````"), ("~~~markdown", "~~~")] {
@@ -44,8 +42,6 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
         XCTAssertTrue(segments.activeMarkdown.contains("More text"))
     }
 
-    /// The seal threshold counts UTF-8 bytes: 2,600 characters of Japanese
-    /// prose are about 7,300 bytes, so they seal at the heading.
     func testStableChunkThresholdCountsUTF8Bytes() {
         let prose = String(repeating: "日本語の文章です。\n", count: 260)
         XCTAssertLessThan(prose.count, StreamingMarkdownBlockSplitter.stableChunkTargetUTF8Count)
@@ -57,8 +53,6 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
         XCTAssertEqual(segments.activeMarkdown, "More text")
     }
 
-    /// Fence lines are recognised after trimming surrounding whitespace, so
-    /// blank lines inside an indented fence never seal it half-open.
     func testIndentedFenceWithTrailingWhitespaceKeepsItsBody() {
         let fence = "   ```swift \t\n" + String(repeating: "let x = 1\n\n", count: 700) + "\t```\t\n"
         let text = fence + "tail"
@@ -71,8 +65,6 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
 }
 
 final class MarkdownPreviewChunkerTests: XCTestCase {
-    /// About 60 KB of sections, each a heading, a paragraph, and a fenced code
-    /// block, shaped like a long CHANGELOG. Shared with the file preview view model test.
     static func largeDocument() -> String {
         (1...120).map { index in
             """
@@ -220,9 +212,6 @@ final class StreamingReasoningTextStateTests: XCTestCase {
     }
 }
 
-/// Width resolution for chat markdown table cells (issue #233). The layout
-/// itself needs a render pass to verify; this covers the pure clamp that
-/// decides the wrap width the cell height is measured at.
 final class TableCellWidthCapTests: XCTestCase {
     private let minWidth: CGFloat = 96
     private let maxWidth: CGFloat = 260
@@ -242,7 +231,6 @@ final class TableCellWidthCapTests: XCTestCase {
     }
 }
 
-/// The mounted live reasoning view retains its UIKit state as SwiftUI replaces wrapper values.
 @MainActor final class ReasoningRenderingTests: XCTestCase {
     func testLiveReasoningShowsAppendsAndReplacements() async throws {
         let suite = "ReasoningRenderingTests." + UUID().uuidString

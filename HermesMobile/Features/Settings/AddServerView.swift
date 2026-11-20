@@ -1,34 +1,20 @@
 import AuthenticationServices
 import SwiftUI
 
-/// Add Server: the one sheet that adds a server (#1540), from first launch (`entry: .onboarding`,
-/// which also signs a webui server in again with its address filled in), Settings, the avatar's
-/// long-press switcher on every home (#283, #899), and Move to Hermes's "Sign In to Hermes"
-/// (#1266, with `moveSource`). The address comes first: Continue reads what answers there
-/// (`OnboardingViewModel`, #900), and only then does the sign-in show: a Hermes dashboard's
-/// username and password, its browser sign-in, or a pick of the two (#1539); a webui's password
-/// once it asks for one. Headers, Cloudflare Access and the new server's name, initials and color
-/// wait under Connection Options. Adding never disturbs the active server on failure (#17), and
-/// Move to Hermes adds without switching.
 struct AddServerView: View {
     @Bindable var authManager: AuthManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
-    /// Told the address of the server it added, before the sheet closes.
     private let onAdded: (URL) -> Void
-    /// Onboarding opened the sheet to sign a saved webui server in again.
     private let isSigningInAgain: Bool
     @State private var form: OnboardingViewModel
-    /// The Add in flight; closing the sheet cancels it before a Hermes server is added.
     @State private var operation: Task<Void, Never>?
     @State private var isConfirmingReplace = false
     @State private var displayName = ""
     @State private var initials = ""
     @State private var colorHex = HeaderLogoColor.defaultHex
 
-    /// `savedServer` is onboarding's webui server signing in again; its address, headers and the
-    /// error that signed it out come back with it.
     init(authManager: AuthManager, entry: OnboardingViewModel.Entry = .addServer, savedServer: URL? = nil,
          moveSource: OnboardingViewModel.MoveSource? = nil, onAdded: @escaping (URL) -> Void = { _ in }) {
         self.authManager = authManager
@@ -38,8 +24,6 @@ struct AddServerView: View {
             entry: entry,
             moveSource: moveSource,
             savedServer: savedServer,
-            // Headers survive a session-expiry sign-out, so onboarding fills them in again (empty on
-            // first run or after a full sign-out). Settings never sees the active server's.
             savedHeaders: entry == .onboarding ? authManager.currentCustomHeaders : [],
             initialErrorMessage: savedServer == nil ? nil : authManager.lastErrorMessage
         ))
@@ -53,15 +37,12 @@ struct AddServerView: View {
         return isSigningInAgain ? String(localized: "Sign In") : String(localized: "Add Server")
     }
 
-    /// Continue until something answered at the address (or a webui's password is already
-    /// asked for), then what the tap signs in with.
     private var submitTitle: String {
         if form.showsHermesSignIn, form.signInMethod == .browser { return String(localized: "Sign In with Browser") }
         if form.detectedKind == nil, !form.showsPasswordField { return String(localized: "Continue") }
         return String(localized: "Connect")
     }
 
-    /// The sign-in section, once there is something to sign in with.
     private var showsSignIn: Bool {
         form.offersSignInChoice || form.browserHeaderRejection != nil || form.showsPasswordField
     }
@@ -132,8 +113,6 @@ struct AddServerView: View {
             onSubmit: submit
         )
 
-        // The trailing mark keeps a URL ending in a neutral character, such as an
-        // IPv6 literal's "]", in one left-to-right run inside right-to-left text.
         if let preview = form.addressPreview {
             Text("Will connect to \(preview.absoluteString + "\u{200E}")")
                 .font(AppFont.caption())
@@ -142,7 +121,6 @@ struct AddServerView: View {
         }
     }
 
-    /// The one line under the address: checking, the error with its Details, or what answered.
     @ViewBuilder
     private var statusLine: some View {
         if form.isWorking {
@@ -169,7 +147,6 @@ struct AddServerView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("hermes-open-dashboard-warning")
         } else if form.showsHermesSignIn {
-            // A product name and its release: nothing to translate.
             Label {
                 Text(verbatim: ["Hermes", form.hermesVersion].compactMap { $0 }.joined(separator: " "))
             } icon: {
@@ -221,8 +198,6 @@ struct AddServerView: View {
         }
     }
 
-    /// One row per webui server whose Hermes connection uses exactly this address, or the
-    /// note that the fields came from one.
     @ViewBuilder
     private var savedSignInRows: some View {
         if let reused = form.reusedSignIn {
@@ -259,8 +234,6 @@ struct AddServerView: View {
         }
     }
 
-    /// Move to Hermes's "Use <webui server>'s Headers" (#1266): one tap fills the move source's
-    /// headers in, visibly, before Continue reads the host behind them.
     @ViewBuilder
     private func moveSourceHeaders(_ source: OnboardingViewModel.MoveSource) -> some View {
         if form.offersMoveSourceHeaders {
@@ -293,8 +266,6 @@ struct AddServerView: View {
             : String(localized: "If the same Cloudflare Access protects both hosts, \(source.name)’s service token works here too."))
     }
 
-    /// How many options differ from their default: each header sent, and a chosen name,
-    /// initials or color.
     private var changedOptionCount: Int {
         form.customHeaders.filter { !$0.sanitizedName.isEmpty && !$0.sanitizedValue.isEmpty }.count
             + (displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1)
@@ -332,8 +303,6 @@ struct AddServerView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Continue, then Connect or Sign In with Browser, pinned under the form so it stays in
-    /// reach at every text size.
     private var submitButton: some View {
         Button(action: submit) {
             Text(submitTitle)
@@ -356,12 +325,8 @@ struct AddServerView: View {
         guard canSubmit, !form.isConnectionLocked else { return }
         let savedServers = Set(authManager.servers.map(\.id))
         operation = Task {
-            // A URL means the server is saved, so its chosen identity applies even when the
-            // sheet closed meanwhile.
             guard let url = await form.connect(authManager: authManager, replacingWebuiServer: replacingWebuiServer,
                                                browser: .init(webAuthenticationSession)) else { return }
-            // A server saved before, such as a replaced webui server or one signing in again,
-            // keeps its name, initials and color unless new ones were chosen.
             let choseIdentity = !displayName.isEmpty || !initials.isEmpty || colorHex != HeaderLogoColor.defaultHex
             if !savedServers.contains(url.absoluteString) || choseIdentity { applyIdentity(to: url) }
             if !Task.isCancelled { onAdded(url) }
@@ -369,8 +334,6 @@ struct AddServerView: View {
         }
     }
 
-    /// Overrides the new server's seeded identity (the registry seeds it from the
-    /// previous active server's global defaults) with the add-flow's chosen values.
     private func applyIdentity(to url: URL) {
         guard let account = authManager.servers.first(where: { $0.id == url.absoluteString }) else { return }
 
@@ -391,9 +354,6 @@ struct AddServerView: View {
     }
 }
 
-/// Connection Options (#1540): everything Add Server can leave at its default. Cloudflare
-/// Access's service token, other connection headers, and the new server's name, initials and
-/// color. Header rows without a value are never sent or saved.
 private struct ConnectionOptionsPage: View {
     @Bindable var form: OnboardingViewModel
     @Binding var displayName: String
@@ -448,13 +408,10 @@ private struct ConnectionOptionsPage: View {
     }
 }
 
-/// Reusable per-server identity editor (display name, initials, Header Logo Color),
-/// used by the add-server flow and the server page (#17).
 struct ServerIdentityEditor: View {
     @Binding var displayName: String
     @Binding var initials: String
     @Binding var colorHex: String
-    /// Host-derived fallback used for the avatar preview when fields are empty.
     let fallbackName: String
 
     private var previewInitials: String {
@@ -507,7 +464,6 @@ struct ServerIdentityEditor: View {
     }
 }
 
-// The add-server form keeps its card layout; Settings' own pages are lists (#1252).
 private struct SettingsCard<Content: View>: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast

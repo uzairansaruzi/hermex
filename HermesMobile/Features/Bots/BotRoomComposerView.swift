@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The Bot editor and mention panel, with only the controls rooms support.
 struct BotRoomComposerView: View {
     @Bindable var reader: BotRoomReader
     var threadID: String? = nil
@@ -39,7 +38,6 @@ struct BotRoomComposerView: View {
                         text: Binding(get: { reader.draft(in: threadID) }, set: { reader.setDraft($0, in: threadID) }), selection: $selection, isFocused: $focused,
                         inputHeight: $inputHeight, measuredHeight: $measuredHeight,
                         isDisabled: !reader.mayEditDraft(in: threadID), isCollapsed: !focused,
-                        // Send only: a room has no send choices, and its Stop halts every bot in it.
                         keyboardCommands: ComposerKeyboardCommands(send: reader.maySend(in: threadID)
                             ? .init(title: String(localized: "Send Message"), perform: send) : nil),
                         verticalPadding: 12, chipSkills: [], chipFilePaths: [], quotes: [],
@@ -86,8 +84,6 @@ struct BotRoomComposerView: View {
     private func send() { Task { await reader.send(threadID: threadID) } }
 }
 
-/// Room handles are server routing keys. Friendly names only help searching;
-/// unlike a bot's chat, room sends must never append an identification annotation.
 enum BotRoomMentions {
     static func completions(room: BotGroupRoom, query: String) -> [BotMentions.Completion] {
         let members = room.members.compactMap { member -> BotMentions.Completion? in
@@ -109,8 +105,6 @@ enum BotRoomMentions {
 struct BotRoomActionCard: View {
     let reader: BotRoomReader
     let action: BotRoomAction
-    /// The action whose Discard is being confirmed, kept apart from `action`: the room's cards are
-    /// keyed by position, so a poll can hand this card another task while the sheet is open.
     @State private var confirmingDiscard: BotRoomAction?
     var body: some View {
         if let approval = action.approval {
@@ -127,7 +121,6 @@ struct BotRoomActionCard: View {
                 if action.isRetry {
                     Button("Retry") { Task { await reader.act(action) } }.disabled(!reader.mayAct(action))
                 } else if action.isDiscard {
-                    // A canonical host lost this task's reply in a restart (#1605); discarding is permanent.
                     Text("Hermes restarted while this bot was replying, so its reply is lost.")
                         .font(AppFont.callout())
                     Button("Discard", role: .destructive) { confirmingDiscard = action }
@@ -155,27 +148,16 @@ struct BotRoomActionCard: View {
     }
 }
 
-/// The one thing worth a pill above a room's composer, highest priority first. A
-/// request outranks an error because it has somewhere to go; an error outranks
-/// recovery because the user can read it. `ChatView` borrows `.updateSignIn` (#942).
 enum BotComposerPill: Equatable {
-    /// A blocking request with a card in the transcript to jump to.
     case request(String)
-    /// A blocking request the phone cannot show; the line is the whole message.
     case notice(String)
     case error(String)
     case reconnect
-    /// Reconnect's slot after the host refused the saved password: reconnecting
-    /// would only send it again, so the button opens the sign-in form instead.
     case updateSignIn
     case retrySend
 
     var errorText: String? { if case .error(let text) = self { return text }; return nil }
 
-    /// Rooms' host exposes no turn start time, so routine working/connecting states
-    /// stay quiet; requests and recovery remain reachable. `needsSignIn` holds Update
-    /// sign-in in place even while a background leaves the room idle, because the room
-    /// never signs in again with a rejected password.
     static func room(link: BotRoomReader.Link, blocked: Bool, hasActions: Bool,
                      mayRetry: Bool, needsSignIn: Bool = false, errorText: String?) -> BotComposerPill? {
         if let errorText { return .error(errorText) }
@@ -190,8 +172,6 @@ enum BotComposerPill: Equatable {
     }
 }
 
-/// One centered capsule with material and no motion of its own. Request, Reconnect,
-/// Update sign-in and Retry send are buttons; an error is tappable to dismiss.
 struct BotComposerPillView: View {
     let pill: BotComposerPill
     var onReconnect: () -> Void = {}

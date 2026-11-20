@@ -1,23 +1,14 @@
 import SwiftUI
 
-/// When a tool group's newest row fades in. Only a live group animates, as a
-/// new call replaces its newest row; history, reloads, and the rows a
-/// reattached stream replays draw in place, and Reduce Motion turns it off.
-/// A group that appears whole (its first call) draws in place too, because
-/// SwiftUI runs a transition only on the view it inserts, not its children.
 enum ToolActivityEntrance {
     static func animatesNewestRow(isLive: Bool, isReplaying: Bool, reduceMotion: Bool) -> Bool {
         isLive && !isReplaying && !reduceMotion
     }
 }
 
-/// A turn's tool calls as a dense log. The last call stays visible while earlier
-/// calls sit behind a toggle that names what they did ("Changed 2 files and ran
-/// 4 commands", with a triangle when one failed), during and after streaming.
 struct ToolActivityGroupView: View {
     let group: ToolCallGroup
     var isLive = false
-    /// True while a reattached stream replays calls the transcript missed.
     var isReplaying = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -26,8 +17,6 @@ struct ToolActivityGroupView: View {
     @AppStorage(ChatTranscriptDisplaySettings.thinkingAndToolCardsKey) private var thinkingAndToolCards = ThinkingAndToolCards.collapsed
     @State private var userToggledExpansion: Bool?
 
-    /// Whether previous rows are shown. Follows "Expand Tools by Default"
-    /// until the user taps the toggle.
     private var isExpanded: Bool {
         ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
@@ -55,8 +44,6 @@ struct ToolActivityGroupView: View {
                     }
                 }
 
-                // Row identity is the call's stable id, so a start → complete
-                // update of the same call keeps the row and never replays this.
                 ToolCallLogRowView(entry: lastEntry)
                     .transition(newestRowTransition)
                     .id(lastEntry.id)
@@ -66,7 +53,6 @@ struct ToolActivityGroupView: View {
         }
     }
 
-    /// The message rows' one-shot entrance: a 0.22 s fade on insertion only.
     private var newestRowTransition: AnyTransition {
         guard ToolActivityEntrance.animatesNewestRow(
             isLive: isLive,
@@ -85,9 +71,6 @@ struct ToolActivityGroupView: View {
         }
     }
 
-    /// Collapsed, the title summarizes the hidden rows and a static triangle in
-    /// the rows' status column flags a hidden failure; expanded, the rows show
-    /// their own marks and the title is "Show fewer tool calls".
     private func previousRowsToggle(hiddenEntries: [ToolCallLogEntry]) -> some View {
         let summary = isExpanded ? nil : ToolCallGroupSummary(entries: hiddenEntries)
         let title = if isExpanded {
@@ -124,7 +107,6 @@ struct ToolActivityGroupView: View {
         .accessibilityLabel(summary?.accessibilityLabel(title: title) ?? title)
     }
 
-    /// The summary wraps at accessibility sizes instead of truncating.
     private var wrapsTitle: Bool {
         dynamicTypeSize.isAccessibilitySize
     }

@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// A Profile's `.env` keys on a Hermes host (#1318): `HermesEnvironmentClient` against a scripted
-/// host whose replies are the shapes a 0.21.5 host (pin ca678285) answered.
 @MainActor final class HermesEnvironmentClientTests: XCTestCase {
     func testTheListLeavesOutChannelKeysAndShowsOnlyTheHostsMask() async throws {
         let client = Self.client { request in
@@ -50,7 +48,6 @@ import XCTest
         return HermesEnvironmentClient(http: HermesConnection(connection: record, configuration: HermesHostFixture.configuration(script)))
     }
 
-    /// One `GET /api/env` row as the host lists it, set when it has a mask.
     private static func row(category: String, label: String = "", redacted: String?,
                             extra: [String: BotJSON] = [:]) -> BotJSON {
         .object([

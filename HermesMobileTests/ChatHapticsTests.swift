@@ -36,9 +36,6 @@ final class ChatHapticsTests: XCTestCase {
         XCTAssertTrue(throttle.shouldPulse(at: 10.51), "reset makes the next token pulse again")
     }
 
-    /// The pulse trigger bumps on the first live token, stays quiet inside the
-    /// throttle window, and re-arms when the next connection starts so a fast
-    /// follow-up reply still ticks on its first token.
     @MainActor
     func testStreamingPulseTriggerReArmsPerConnection() {
         let viewModel = ChatViewModel(

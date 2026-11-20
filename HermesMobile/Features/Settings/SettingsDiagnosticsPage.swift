@@ -1,10 +1,6 @@
 import SwiftUI
 
-/// About's view of `DiagnosticsStore`: About reads the count from it and Diagnostics lists and
-/// deletes through it. Disk work runs off the main actor; a load publishes only while it is the
-/// latest one and its view is still there.
 @MainActor @Observable final class DiagnosticsModel {
-    /// Nil until the first load finishes.
     private(set) var entries: [DiagnosticsStore.Entry]?
 
     @ObservationIgnored private let store: DiagnosticsStore
@@ -23,9 +19,6 @@ import SwiftUI
         self.entries = entries
     }
 
-    /// Loads, then reloads each time the store keeps a new report, until the calling task is
-    /// cancelled. About and Diagnostics run it from `.task`, so a report MetricKit delivers while
-    /// either is on screen shows up without leaving the page.
     func observe() async {
         let saves = NotificationCenter.default.notifications(named: DiagnosticsStore.didSaveNotification, object: store)
         await load()
@@ -47,8 +40,6 @@ import SwiftUI
     }
 }
 
-/// The kept MetricKit reports, newest first (#1397). A report opens its exact copied JSON; swipe
-/// deletes one, Delete All every one.
 struct SettingsDiagnosticsPage: View {
     let model: DiagnosticsModel
 
@@ -145,7 +136,6 @@ private struct DiagnosticRowLabel: View {
     }
 }
 
-/// One report's stored JSON, selectable, exactly as Copy puts it on the pasteboard.
 private struct DiagnosticReportPage: View {
     let title: String
     let text: String
@@ -204,9 +194,7 @@ private extension DiagnosticReport.Kind {
 }
 
 private extension DiagnosticReport {
-    /// "Oct 28 – Oct 29 · Build 412": the payload's window, then the build it came from.
     var windowDescription: String {
-        // Ordered again: a range built from a file whose dates were swapped would trap.
         let window = (min(windowStart, windowEnd)..<max(windowStart, windowEnd))
             .formatted(.interval.month(.abbreviated).day())
         guard let appBuildVersion else { return window }

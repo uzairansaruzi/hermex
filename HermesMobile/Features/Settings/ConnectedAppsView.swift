@@ -1,10 +1,6 @@
 import AuthenticationServices
 import SwiftUI
 
-/// A Hermes server's Connected Apps page (#1629), opened from its Settings page: the apps one
-/// Profile's Nous account can connect, the connected ones on top and the rest by category. An
-/// app signs in on Nous Portal in a browser sheet, and one that has an account opens to its
-/// accounts, each with its own Disconnect.
 struct ConnectedAppsView: View {
     @State private var model: ConnectedAppsModel
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
@@ -27,7 +23,6 @@ struct ConnectedAppsView: View {
         .settingsPage(String(localized: "Connected Apps"))
         .listSectionSpacing(.compact)
         .searchable(text: $model.query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search apps"))
-        // As on Plugins: the list stays still when search closes, and scrolling reaches what's under the keyboard.
         .searchPresentationToolbarBehavior(.avoidHidingContent)
         .ignoresSafeArea(.keyboard)
         .scrollDismissesKeyboard(.immediately)
@@ -109,7 +104,6 @@ struct ConnectedAppsView: View {
         }
     }
 
-    /// One app's row. An app with an account that isn't just waiting opens its accounts page.
     @ViewBuilder
     private func row(_ app: HermesConnectedApp) -> some View {
         let row = ConnectedAppRow(app: app, isBusy: model.busyApp == app.id, isLocked: model.busyApp != nil,
@@ -126,9 +120,6 @@ struct ConnectedAppsView: View {
         }
     }
 
-    /// Shows a Nous Portal sign-in and returns when the sheet closes, by the portal's return or
-    /// by the user. Not ephemeral, so the sign-ins already in Safari carry over. How it ended is
-    /// not the answer: the host's accounts are, and the model reads them next.
     private func browse(_ link: URL) async {
         _ = try? await webAuthenticationSession.authenticate(
             using: link, callback: .customScheme(HermesConnectedAppsClient.returnScheme),
@@ -136,13 +127,9 @@ struct ConnectedAppsView: View {
     }
 }
 
-/// One app in the list: its logo, name and what it does or what state it is in, and the one
-/// action that state offers.
 private struct ConnectedAppRow: View {
     let app: HermesConnectedApp
-    /// This app's action is in flight.
     let isBusy: Bool
-    /// Some app's action is in flight, so no other may start.
     let isLocked: Bool
     let connect: () -> Void
     let cancel: () -> Void
@@ -174,7 +161,6 @@ private struct ConnectedAppRow: View {
         .opacity(app.state == .turnedOff ? 0.5 : 1)
     }
 
-    /// The line under the name: the state when there is one to report, else what the app does.
     private var note: Text? {
         switch app.state {
         case .waiting: Text("Waiting for sign-in")
@@ -224,8 +210,6 @@ private struct ConnectedAppRow: View {
     }
 }
 
-/// An app's logo on a white tile, so a dark mark stays visible on a dark theme. The logos ship
-/// in the asset catalog by catalog slug; an app added to the catalog since shows its initial.
 struct ConnectedAppLogo: View {
     let app: HermesConnectedApp
     let side: CGFloat
@@ -252,8 +236,6 @@ struct ConnectedAppLogo: View {
     }
 }
 
-/// One app's accounts (#1629): each with its state and its own Disconnect, which says what the
-/// host loses and nothing about the app's side. The page closes when the last account goes.
 private struct ConnectedAppDetailView: View {
     let appID: String
     let name: String

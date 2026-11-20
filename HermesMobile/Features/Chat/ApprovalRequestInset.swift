@@ -1,14 +1,11 @@
 import SwiftUI
 import UIKit
 
-/// What an approval card shows. A webui server's approval always offers all four
-/// choices; a Hermes session's offers only the ones its host computed (#1011).
 struct ApprovalRequestContent: Equatable {
     let description: String?
     let command: String?
     let scopeLine: AttributedString?
     let pendingCount: Int
-    /// In the host's order: `once` first, `deny` last.
     let choices: [ApprovalChoice]
 }
 
@@ -20,7 +17,6 @@ extension ApprovalPromptState {
 }
 
 extension BotApprovalRequest {
-    /// This approval in a Hermes session's card, one of `pendingCount` open approvals.
     func requestContent(pendingCount: Int) -> ApprovalRequestContent {
         ApprovalRequestContent(description: consequence, command: command, scopeLine: scopeLine,
                                pendingCount: max(pendingCount, 1),
@@ -28,15 +24,8 @@ extension BotApprovalRequest {
     }
 }
 
-/// A pending approval pinned above the composer, in the clarification's slot (#1584), so
-/// the transcript stays readable while the agent waits. The warning-accented bar is the
-/// permanent footprint: its height feeds the transcript's bottom inset. The expanded card
-/// rises over it through the bar's clip window, scrolls once it is taller than the space
-/// above the composer, and falls back to the bar when not even a line of it fits. A new
-/// approval arrives expanded; ChatView gives each one its own identity.
 struct ApprovalRequestInset: View {
     let content: ApprovalRequestContent
-    /// Height between the chat's top safe edge and this inset's bottom edge.
     let maximumExpandedHeight: CGFloat
     let isResponding: Bool
     let isStopping: Bool
@@ -47,7 +36,6 @@ struct ApprovalRequestInset: View {
     let onSkipAll: () -> Void
     let onStop: () -> Void
     let onDismissKeyboard: () -> Void
-    /// The bar's height, the only part of this view that takes layout space.
     let onFootprintChange: (CGFloat) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -66,7 +54,6 @@ struct ApprovalRequestInset: View {
             onStop: onStop,
             kind: .approval(pendingCount: content.pendingCount)
         )
-        // Hidden under the card, so its tinted edge never shows around the card's corners.
         .opacity(isExpanded ? 0 : 1)
         .accessibilityHidden(isExpanded)
         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -89,17 +76,14 @@ struct ApprovalRequestInset: View {
         .onAppear(perform: announceRequest)
     }
 
-    /// One line of what is being approved: the command's first line, else its description.
     static func barSummary(for content: ApprovalRequestContent) -> String {
         [content.command, content.description]
             .map { ClarificationRequestBar.summary(for: $0 ?? "") }
             .first { !$0.isEmpty } ?? ""
     }
 
-    /// Room for at least the card's header and a line of it.
     private var canFit: Bool { maximumExpandedHeight >= minimumCardHeight }
 
-    /// The card, scrolling once it is taller than the space left. Hidden until measured.
     private var card: some View {
         let shape = RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
         return ScrollView {
@@ -133,7 +117,6 @@ struct ApprovalRequestInset: View {
         }
     }
 
-    /// The card no longer takes over the screen, so VoiceOver hears that one arrived.
     private func announceRequest() {
         guard UIAccessibility.isVoiceOverRunning else { return }
         let announcement = String(localized: "Approval needed: \(Self.barSummary(for: content))")
@@ -141,8 +124,6 @@ struct ApprovalRequestInset: View {
     }
 }
 
-/// An approval's card: what will run, what each choice covers, the offered choices as
-/// one-tap buttons, and Skip all. `ApprovalRequestInset` gives it its place and surface.
 struct ApprovalRequestCard: View {
     let content: ApprovalRequestContent
     let isResponding: Bool
@@ -150,7 +131,6 @@ struct ApprovalRequestCard: View {
     let onChoice: (ApprovalChoice) -> Void
     let onSkipAll: () -> Void
     var summary: ApprovalSummaryPresentation? = nil
-    /// The header's collapse control; nil leaves it out.
     var onCollapse: (() -> Void)? = nil
     @AppStorage(ApprovalSummaries.enabledKey) private var explainsApprovals = ApprovalSummaries.enabledByDefault
     @ScaledMetric(relativeTo: .body) private var collapseButtonSize: CGFloat = 28
@@ -215,7 +195,6 @@ struct ApprovalRequestCard: View {
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                // Raised, since the card itself now sits on the surface color.
                 .background(Color(uiColor: .appRaised), in: RoundedRectangle(cornerRadius: 8))
             }
 
@@ -266,8 +245,6 @@ struct ApprovalRequestCard: View {
         }
     }
 
-    /// Two per row in the offered order, so all four read as the familiar 2×2 and a withheld
-    /// choice never moves Allow once or Deny out of reach.
     private var rows: [[ApprovalChoice]] {
         stride(from: 0, to: content.choices.count, by: 2).map {
             Array(content.choices[$0..<min($0 + 2, content.choices.count)])

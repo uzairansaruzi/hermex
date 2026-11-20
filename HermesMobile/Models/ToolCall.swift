@@ -2,7 +2,6 @@ import Foundation
 
 struct ToolCall: Identifiable, Equatable {
     let id: String
-    /// Keeps disclosure state attached while a later event replaces a generated server ID.
     let presentationID: String
     var name: String?
     var preview: String?
@@ -49,8 +48,6 @@ struct PersistedToolCall: Decodable, Equatable {
     let tid: String?
     let assistantMsgIdx: Int?
     let args: [String: JSONValue]?
-    /// The server's verdict for the call, when the transcript carries one.
-    /// `nil` on older transcripts; the settled log then falls back to the result text.
     let isError: Bool?
     let duration: Double?
 
@@ -620,8 +617,6 @@ struct ToolCallGroup: Identifiable, Equatable {
     ) -> Int? {
         let fallbackIsGenerated = isGeneratedToolID(fallbackToolCall.id)
 
-        // Stable transcript IDs are authoritative; generated live IDs are only
-        // reconciliation hints while the completed transcript catches up.
         if !fallbackIsGenerated,
            let stableIDIndex = toolCalls.firstIndex(where: { toolCall in
                !isGeneratedToolID(toolCall.id) && toolCall.id == fallbackToolCall.id
@@ -629,8 +624,6 @@ struct ToolCallGroup: Identifiable, Equatable {
             return stableIDIndex
         }
 
-        // Fingerprints preserve the saved-transcript dedupe rule when one side
-        // has a generated fallback ID and both sides still carry matching args.
         let fallbackFingerprint = toolCallFingerprint(fallbackToolCall)
         if let fingerprintIndex = toolCalls.firstIndex(where: { toolCall in
             (fallbackIsGenerated || isGeneratedToolID(toolCall.id))
@@ -658,8 +651,6 @@ struct ToolCallGroup: Identifiable, Equatable {
 
         for (index, toolCall) in toolCalls.enumerated() {
             guard toolCallNameKey(toolCall) == fallbackNameKey else { continue }
-            // Name order is a last resort for live fallback events whose args
-            // can be missing/truncated; never collapse two stable transcript IDs.
             guard fallbackIsGenerated || isGeneratedToolID(toolCall.id) else { continue }
 
             currentOrdinal += 1

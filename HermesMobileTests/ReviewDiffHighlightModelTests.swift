@@ -4,8 +4,6 @@ import XCTest
 
 @MainActor
 final class ReviewDiffHighlightModelTests: XCTestCase {
-    /// Answers every request at once with one run per line whose location is the
-    /// request's index, so a test can tell which side coloured a row.
     private actor Recorder {
         private(set) var calls: [[String]] = []
         private(set) var languages: [String] = []
@@ -18,8 +16,6 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
         }
     }
 
-    /// Holds each request until the test answers it, to race refresh, dismissal and
-    /// progressive loading against an answer in flight.
     private struct ScriptedCall: Sendable {
         let lines: [String]
         let isDark: Bool
@@ -38,8 +34,6 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
         return (model, calls.makeAsyncIterator())
     }
 
-    /// The model's next request, awaited only while it has one in flight, so a model
-    /// that stopped asking fails the test instead of hanging it.
     private func nextCall(
         _ model: ReviewDiffHighlightModel,
         _ calls: inout AsyncStream<ScriptedCall>.Iterator
@@ -49,7 +43,6 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
         return call
     }
 
-    /// Answers the request in flight and waits for the model to take the answer.
     private func respond(to call: ScriptedCall, in model: ReviewDiffHighlightModel, color: UIColor = .black) async {
         let task = model.highlightTask
         call.respond(color: color)
@@ -104,7 +97,6 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
         XCTAssertNil(model.tokensByRowID["a.swift:line:0:3"], "The no-newline marker is not code.")
     }
 
-    /// A rename's deletions came from the old path, so they take that file's grammar.
     func testRenamedFileReadsDeletionsInTheOldPathsLanguage() async {
         let recorder = Recorder()
         let model = recordingModel(recorder)
@@ -132,10 +124,8 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
         }
         model.setRows(file("a.swift", (0..<500).map { ("let v\($0) = \($0)", .addition) }))
 
-        // Rows 0...340 with overscan: 339 line rows after the header and hunk.
         model.visibleRowRangeChanged(0...300)
         await drain(model)
-        // The window moves to 60...440; only the 100 rows past the last one are new.
         model.visibleRowRangeChanged(100...400)
         await drain(model)
 
@@ -150,7 +140,6 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
         model.visibleRowRangeChanged(0...2)
         let stale = try await nextCall(model, &calls)
 
-        // Same row ids, different text: what a refresh after another edit looks like.
         model.reset()
         model.setRows(file("a.swift", [("let new = 2", .addition)]))
         await respond(to: stale, in: model)
@@ -191,8 +180,6 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
         XCTAssertNil(model.highlightTask)
     }
 
-    /// Progressive loading inserts a file above the one being coloured; the answer
-    /// must land on its own rows, not on whatever now sits at their old indices.
     func testAnswerLandsOnItsRowsAfterRowsAboveThemArrive() async throws {
         var (model, calls) = scriptedModel()
         let swiftFile = file("b.swift", [("let b = 2", .addition)])
@@ -216,7 +203,6 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
         XCTAssertNil(model.tokensByRowID["a.swift:line:0:0"], "White on a light green row is unreadable.")
     }
 
-    /// The real themes must survive the contrast check on both tints and appearances.
     func testRealHighlighterColoursAdditionsAndDeletionsInBothAppearances() async {
         for isDark in [false, true] {
             let model = ReviewDiffHighlightModel(highlight: { await SourceHighlighter().highlight(lines: $0, language: $1, isDark: $2) })

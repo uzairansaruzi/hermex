@@ -1,11 +1,8 @@
 import SwiftUI
 
-/// Workspace, Profile and context for one chat, opened from the chat header. The
-/// composer supplies the pickers so they keep the gates they have in the new-chat row.
 struct ChatSettingsSheet<WorkspacePicker: View, ProfileControl: View>: View {
     let workspaceTitle: String
     let isWorkspaceDisabled: Bool
-    /// What choosing another Profile does, where that differs from changing this chat.
     let profileNote: String?
     let contextSnapshot: ContextWindowSnapshot?
     @ViewBuilder let workspacePicker: () -> WorkspacePicker
@@ -64,7 +61,6 @@ struct ChatSettingsSheet<WorkspacePicker: View, ProfileControl: View>: View {
     }
 }
 
-/// The rows of Model settings that change a setting on the host.
 enum ModelSettingsRow: Equatable {
     case model
     case thinking
@@ -72,14 +68,10 @@ enum ModelSettingsRow: Equatable {
     case approvals
 }
 
-/// What a row shows beside its value once the host has answered the user's change. Nothing
-/// shows while it is out, so the rows never shift under the finger.
 enum ModelSettingsRowStatus: Equatable {
     case failed(String)
-    /// The host took the change and applies it later, such as after the running response.
     case notice(String)
 
-    /// Only the row that asked hears the answer, and only since this sheet opened.
     static func resolve(
         row: ModelSettingsRow,
         lastChanged: ModelSettingsRow?,
@@ -94,9 +86,6 @@ enum ModelSettingsRowStatus: Equatable {
     }
 }
 
-/// The chat's model and how it runs, opened from the composer's model label. Each change
-/// applies on its own, so there is no Save. Picking a model can raise the host's
-/// expensive-model question, which the composer attaches over this sheet.
 struct ModelSettingsSheet<AllModels: View>: View {
     let selection: ComposerModelEffortSelection
     let providerName: String?
@@ -106,17 +95,14 @@ struct ModelSettingsSheet<AllModels: View>: View {
     let isUpdating: Bool
     let errorMessage: String?
     let notice: String?
-    /// This chat's Fast mode; nil where the host reports none, which hides the row.
     let fastMode: Bool?
     let mayChangeFastMode: Bool
-    /// Nil hides the row, on a composer with no session.
     let approvals: ComposerApprovals?
     let onSelectModel: (ModelCatalogOption) -> Void
     let onSelectEffort: (String) async -> Bool
     let onSelectFastMode: (Bool) -> Void
     let onSetYolo: (Bool) -> Void
     let onSelectApprovalMode: (HermesApprovalMode) -> Void
-    /// All models, given the commit that keeps this sheet's status in step.
     let allModelsPicker: (@escaping (ModelCatalogOption) -> Void) -> AllModels
 
     @Environment(\.dismiss) private var dismiss
@@ -124,7 +110,6 @@ struct ModelSettingsSheet<AllModels: View>: View {
     @State private var lastChanged: ModelSettingsRow?
     @State private var levelSender = ThinkingLevelSender()
 
-    /// The chat's state, with a Thinking level still on its way already showing.
     private var shownSelection: ComposerModelEffortSelection {
         levelSender.pendingLevel.map(selection.replacingEffort(with:)) ?? selection
     }
@@ -190,12 +175,10 @@ struct ModelSettingsSheet<AllModels: View>: View {
                         .font(AppFont.caption(weight: .semibold))
                         .foregroundStyle(.appTertiary)
                 }
-                // Keeps the requested level and the one the host sends apart (#1016).
                 Text(verbatim: [providerName, shownSelection.committedEffort == nil ? nil : shownSelection.effortTitle]
                     .compactMap { $0 }.joined(separator: " · "))
                     .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
-                    // One line, so a level's "sent as" never moves the rows below it.
                     .lineLimit(1)
                 statusLine(for: .model)
             }
@@ -212,27 +195,22 @@ struct ModelSettingsSheet<AllModels: View>: View {
                 LabeledContent("Thinking", value: only.title)
             } else {
                 ThinkingControl(selection: shownSelection, isDisabled: isDisabled, isCovered: showsAllModels) { level in
-                    // VoiceOver's adjustment arrives here past the hit test below.
                     guard !isUpdating || levelSender.isSending else { return }
                     lastChanged = .thinking
                     levelSender.request(level, send: onSelectEffort)
                 }
-                // The host refuses a level while another kind of change is out. Its own sends
-                // stay open, since the sender keeps the newest of them.
                 .allowsHitTesting(!isUpdating || levelSender.isSending)
             }
             statusLine(for: .thinking)
         }
     }
 
-    /// Follows the chat's state, so the switch only stays moved once the host answers.
     private func fastRow(isOn: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Toggle("Fast", isOn: Binding(get: { isOn }, set: { enabled in
                 lastChanged = .fast
                 onSelectFastMode(enabled)
             }))
-            // While another change is out, `allowsHitTesting` holds it off without a flash of grey.
             .disabled(isDisabled || !(mayChangeFastMode || isUpdating))
             .allowsHitTesting(!isUpdating)
             statusLine(for: .fast)
@@ -325,7 +303,6 @@ struct ModelSettingsSheet<AllModels: View>: View {
     }
 }
 
-/// A row's failed or later-applied line.
 private struct ModelSettingsStatusLine: View {
     let status: ModelSettingsRowStatus?
 
@@ -341,9 +318,6 @@ private struct ModelSettingsStatusLine: View {
     }
 }
 
-/// YOLO for this chat and, on Hermes, the mode for every chat in the Profile. The wording is
-/// Official Hermes's; the section label is ours, because copy states the real consequence: the
-/// host writes the mode to that Profile's config. Off asks first for the same reason.
 private struct ApprovalChoicesView: View {
     let approvals: ComposerApprovals
     let isDisabled: Bool
@@ -421,18 +395,13 @@ private struct ApprovalChoicesView: View {
 }
 
 struct ComposerWorkspacePickerSheet: View {
-    /// Direct-Hermes validates a typed path itself; webui uses trusted suggestions.
     var allowsCustomPath = false
     let workspaceRoots: [WorkspaceRoot]
     let selectedWorkspacePath: String?
     let suggestions: [String]
-    /// Server base URL used to open the registry manager; nil hides the
-    /// Manage affordance (e.g. offline cached mode).
     var managementServer: URL?
     let onLoadSuggestions: (String) async -> Void
     let onSelect: (String) async -> Void
-    /// Called after the registry manager closes having changed the registry,
-    /// so the owner can refetch `workspaceRoots`.
     var onRegistryChanged: () async -> Void = {}
 
     @Environment(\.dismiss) private var dismiss

@@ -3,18 +3,13 @@ import SwiftUI
 struct GoalControlsMenu: View {
     let currentGoal: SubmittedGoal?
     let isViewingCachedData: Bool
-    /// Disables Set Goal.
     let isSetGoalDisabled: Bool
-    /// Disables the commands: Status, Pause, Resume, Mark Done, Clear and Stop.
     let isActionDisabled: Bool
     let onSetGoal: () -> Void
     let onSubmitCommand: (String) -> Void
-    /// A Hermes session's loop and heartbeat (#1142), a section each below the goal's commands.
     let automations: [BotSessionControl]
-    /// Whether the host takes Pause and Resume for them; without it they only show their state.
     let allowsAutomationChanges: Bool
     let isAutomationDisabled: Bool
-    /// Asks for one's Pause or Resume, which the chat confirms before sending.
     let onChangeAutomation: (BotSessionControl) -> Void
 
     var body: some View {
@@ -69,7 +64,6 @@ struct GoalControlsMenu: View {
         }
     }
 
-    /// "Loop · Active" over its Pause, or the state alone when nothing can change it.
     @ViewBuilder
     private func automationSection(_ control: BotSessionControl) -> some View {
         let status = switch control.status {
@@ -77,7 +71,6 @@ struct GoalControlsMenu: View {
         case "paused": String(localized: "Paused")
         default: control.status
         }
-        // Both halves are localized already; the separator is not words.
         let title = Text(verbatim: "\(control.kind.title) · \(status)")
         if allowsAutomationChanges, control.action != nil {
             Section {

@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// The Limits widget's snapshot (#1409): when a window stops showing its percentage, that a load
-/// can't write after its server or connection went, and where its Usage link opens.
 @MainActor final class ProviderLimitsSnapshotTests: XCTestCase {
     private let hermesServer = URL(string: "https://hermes.example")!
     private let webuiServer = URL(string: "https://a.test")!
@@ -39,7 +37,6 @@ import XCTest
         let undated = try XCTUnwrap(file.read()?.providers.first { $0.id == "claude" })
         XCTAssertNil(undated.remainingPercent(of: undated.windows[0], at: measuredAt),
                      "A provider with no measurement time never shows a percentage")
-        // The failed refresh 50 minutes later keeps the card: its measurement stays the old one.
         publisher.publish([codex], stale: ["codex"], with: ticket, now: measuredAt + 50 * 60)
 
         let snapshot = try XCTUnwrap(file.read())
@@ -68,7 +65,6 @@ import XCTest
             return (viewModel, client, load)
         }
 
-        // Usage for "work" closes mid-refresh, and Usage for "home" opens and loads.
         let (_, closed, closedLoad) = await heldLoad("work")
         let (_, newer, newerLoad) = await heldLoad("home")
         newer.answer(40)
@@ -112,7 +108,6 @@ import XCTest
         try store.save(record, server: hermesServer)
         XCTAssertNotNil(file.read(), "Removing another server, or saving the same connection again")
 
-        // Every way to replace it (sign-in, the Bots editor) saves it through the store.
         let replacement = BotConnection(id: UUID(), name: "Studio", address: hermesServer, username: "you",
                                         password: "secret")
         try store.save(replacement, server: hermesServer)
@@ -148,7 +143,6 @@ import XCTest
     }
 }
 
-/// One keyed provider whose quota read waits until the test answers it.
 @MainActor private final class HeldQuotaClient: InsightsDataClient {
     nonisolated var insightsFeatures: InsightsFeatures { .hermes }
     let quotaHeld = XCTestExpectation(description: "the quota read is held")
@@ -166,7 +160,6 @@ import XCTest
         }
     }
 
-    /// Answers the held read with one 5 h window at `remainingPercent`.
     func answer(_ remainingPercent: Double) {
         pending?.resume(returning: ProviderQuotaResponse(status: "available", accountLimits: ProviderAccountLimits(
             fetchedAt: "2027-01-15T08:00:00Z", windows: [ProviderQuotaWindow(label: "5h", remainingPercent: remainingPercent)])))

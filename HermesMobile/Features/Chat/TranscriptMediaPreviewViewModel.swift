@@ -1,9 +1,6 @@
 import Foundation
 import SwiftUI
 
-/// One transcript media reference's preview and export. A MEDIA path downloads through the
-/// chat's `WorkspaceFileClient`, from webui's `/api/media` or a Hermes host (#1112); nil is a
-/// chat without a session to read from. A remote URL downloads through `apiClient`.
 @MainActor
 @Observable
 final class TranscriptMediaPreviewViewModel {
@@ -13,15 +10,12 @@ final class TranscriptMediaPreviewViewModel {
     private var didLoad = false
     private var loadGeneration = 0
     private var originalData: Data?
-    /// The preview stopped at its 25 MB cap (a Hermes host), so export reads the whole file.
     private var isPastPreviewCap = false
     private var temporaryVideoURL: URL?
 
     private(set) var previewData: Data? {
         didSet { previewImage = previewData.flatMap(UIImage.init(data:)) }
     }
-    /// `previewData` decoded once, so a redraw hands the lightbox the same image and keeps
-    /// its zoom.
     private(set) var previewImage: UIImage?
     private(set) var audioData: Data?
     private(set) var videoFileURL: URL?
@@ -99,8 +93,6 @@ final class TranscriptMediaPreviewViewModel {
                 temporaryVideoURL = fileURL
                 videoFileURL = fileURL
             } else if reference.isExtensionlessRemoteMediaCandidate, Self.isAudioData(data) {
-                // Sniffed before the image decode: a WAV header is a RIFF
-                // container, which sends ImageIO looking for a WebP codec.
                 audioData = data
             } else {
                 if let downsampled = await ImagePreviewDownsampler.previewDataAsync(

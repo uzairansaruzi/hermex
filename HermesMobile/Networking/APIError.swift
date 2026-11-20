@@ -30,8 +30,6 @@ enum APIError: LocalizedError {
                 }
                 return String(localized: "The server rejected the request.")
             case 403:
-                // A 403 is a per-request refusal (read-only imported session, missing
-                // permission), not a bad password: 401 owns the password copy.
                 if let message = Self.displayableServerMessage(from: body) {
                     return String(localized: "The server refused the request: \(message)")
                 }
@@ -103,8 +101,6 @@ enum APIError: LocalizedError {
         }
     }
 
-    /// Only the durable compression conflict authorizes continuation navigation.
-    /// Decode separately so malformed continuation metadata cannot hide other errors.
     var sessionRotation: SessionRotation? {
         struct Payload: Decodable {
             let code: String?
@@ -123,16 +119,11 @@ enum APIError: LocalizedError {
         return Self.serverErrorMessage(from: body)?.localizedCaseInsensitiveContains("stream not found") == true
     }
 
-    /// Set for hermes-webui's stale-runtime 409 (#955); `errorDescription`
-    /// already shows its copy, and chat uses it to offer Copy fix prompt.
     var agentRuntimeStale: AgentRuntimeStale? {
         guard case .http(let statusCode, let body) = self else { return nil }
         return Self.agentRuntimeStale(statusCode: statusCode, body: body)
     }
 
-    /// True for the documented "prompt already expired" respond rejection:
-    /// HTTP 409 with `{"stale": true, …}` in the body (issue #25). Used to show
-    /// a friendly expired state instead of a generic failure.
     var indicatesExpiredPendingPrompt: Bool {
         guard case .http(let statusCode, let body) = self, statusCode == 409 else { return false }
         return Self.serverErrorPayload(from: body)?.stale == true
@@ -170,8 +161,6 @@ private extension APIError {
         }
     }
 
-    /// Decoded apart from `ErrorPayload`, so a `type` of another shape in some
-    /// other error can't hide that error's message or `active_stream_id`.
     struct AgentRuntimeStalePayload: Decodable {
         let type: String?
         let agentUpdateState: String?
@@ -231,11 +220,8 @@ private extension APIError {
         return serverErrorMessage(from: body)?.localizedCaseInsensitiveContains("Session not found") == true
     }
 
-    /// Longest server-provided message we interpolate into user-facing copy.
     static let displayedServerMessageLimit = 200
 
-    /// The structured server message, bounded for display. Shared by every HTTP
-    /// branch that shows server text so an oversized body never floods an alert.
     static func displayableServerMessage(from body: String?) -> String? {
         guard let message = serverErrorMessage(from: body) else { return nil }
         guard message.count > displayedServerMessageLimit else { return message }
@@ -254,17 +240,9 @@ private extension APIError {
     }
 }
 
-/// hermes-webui's `agent_runtime_stale` 409 (`api/agent_runtime.py`,
-/// `agent_runtime_stale_payload`): Hermes Agent was updated under the running
-/// WebUI, which refuses every local Agent action until someone restarts it on
-/// the server. The app cannot restart it, so the copy says what to do there.
 enum AgentRuntimeStale: Equatable {
-    /// The update finished, or the server can't tell (`stale`, `unverified`,
-    /// `unknown`, absent, or a state added later).
     case updated
-    /// `agent_update_state: "active"`: the update is still running.
     case updating
-    /// `agent_update_state: "incomplete"`: the update stopped partway.
     case incomplete
 
     init(agentUpdateState: String?) {
@@ -286,10 +264,6 @@ enum AgentRuntimeStale: Equatable {
         }
     }
 
-    /// What the chat composer's Copy fix prompt puts on the pasteboard, for the
-    /// user to send their agent over a messaging gateway (which `hermes update`
-    /// restarts, so it still works). Nil while the update is running: the fix
-    /// then is to wait, not restart.
     var fixPrompt: String? {
         guard self != .updating else { return nil }
         return String(localized: """
@@ -305,9 +279,6 @@ enum AgentRuntimeStale: Equatable {
 
 #if DEBUG
 extension APIError {
-    /// `--stale-runtime-send` (`DEVELOPMENT.md`): the first chat send of this
-    /// launch fails with the stale-runtime 409 instead of reaching the server,
-    /// so its banner and Copy fix prompt can be checked without updating Hermes.
     @MainActor static func takeLaunchArgumentStaleRuntimeFailure() -> APIError? {
         guard !didTakeLaunchArgumentStaleRuntimeFailure,
               ProcessInfo.processInfo.arguments.contains("--stale-runtime-send") else { return nil }

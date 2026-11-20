@@ -10,8 +10,6 @@ final class ComposerRecallTests: XCTestCase {
         ChatMessage(role: role, content: content, timestamp: nil, messageId: UUID().uuidString, displayKind: displayKind)
     }
 
-    // MARK: - The rule
-
     func testTheNewestUserMessageWinsOverLaterAssistantAndToolRows() {
         let messages = [
             message("user", "first question"),
@@ -31,8 +29,6 @@ final class ComposerRecallTests: XCTestCase {
         XCTAssertEqual(ComposerRecall.lastSentText(in: messages), "Summarize it")
     }
 
-    /// Sessions sends an attachment-only message as the web UI does, with text
-    /// that names the files, so it carries nothing the user typed.
     func testAnAttachmentOnlySendIsSkippedForTheTextMessageBeforeIt() {
         let messages = [
             message("user", "the text I typed"),
@@ -54,8 +50,6 @@ final class ComposerRecallTests: XCTestCase {
         XCTAssertEqual(ComposerRecall.lastSentText(in: messages), "focus on the tests")
     }
 
-    /// Bot Chat marks system deliveries (cron output, delegation results) as
-    /// user rows with a display kind; the user never typed them.
     func testAUserRowWithANonSteerDisplayKindIsSkipped() {
         let messages = [
             message("user", "what I sent"),
@@ -65,9 +59,6 @@ final class ComposerRecallTests: XCTestCase {
         XCTAssertEqual(ComposerRecall.lastSentText(in: messages), "what I sent")
     }
 
-    /// A compaction mid-turn can append a user-role task-list snapshot, or a
-    /// user-role summary, after the user's message. The transcript draws both
-    /// as cards; the user never typed them.
     func testCompactionMarkerRowsAreSkipped() {
         let messages = [
             message("user", "fix the build"),
@@ -80,8 +71,6 @@ final class ComposerRecallTests: XCTestCase {
         XCTAssertEqual(ComposerRecall.lastSentText(in: messages), "fix the build")
     }
 
-    /// Bot Chat appends one `\n\n` block per attachment to the prompt it sends:
-    /// the image routing note, or `file.attach`'s ref to the UUID-prefixed copy.
     func testBotChatAttachmentRefsAreStrippedAndAnAttachmentOnlySendIsSkipped() {
         let image = BotAttachmentUpload.imageReference(path: "/home/hermes/.hermes/images/photo.jpg")
         let messages = [
@@ -104,7 +93,6 @@ final class ComposerRecallTests: XCTestCase {
         )
     }
 
-    /// Only the refs the send added go: a `@file:` line the user typed stays.
     func testATypedFileReferenceInBotChatIsKept() {
         let messages = [message("user", "read this\n\n@file:docs/notes.md")]
 
@@ -114,13 +102,10 @@ final class ComposerRecallTests: XCTestCase {
         )
     }
 
-    // MARK: - The ↑ command
-
     private func recallCommand(in textView: ComposerChipTextView) -> UIKeyCommand? {
         textView.keyCommands?.first { $0.input == UIKeyCommand.inputUpArrow }
     }
 
-    /// Bot rooms pass no closure, so ↑ is never claimed there.
     func testWithoutARecallSourceUpArrowIsNotClaimed() {
         let textView = ComposerChipTextView()
 
@@ -158,8 +143,6 @@ final class ComposerRecallTests: XCTestCase {
         XCTAssertEqual(textView.sourceSelection, NSRange(location: 16, length: 0))
     }
 
-    /// Drawing a recalled chip replaces the document, which clears the undo
-    /// stack; the recall has to stay undoable anyway.
     func testUndoEmptiesARecalledDraftThatDrewAChip() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 120))

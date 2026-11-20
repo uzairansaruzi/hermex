@@ -107,9 +107,6 @@ final class HermexAttachmentCameraController: NSObject, ObservableObject, @unche
         sessionQueue.async { [weak self] in self?.captureRotationAngle = angle }
     }
 
-    /// Detaching a preview layer makes AVCaptureSession rebuild its graph and
-    /// wait for it to finish, which takes seconds on device. Run it on the
-    /// session queue so the main thread never blocks on it.
     func detachPreviewLayer(_ layer: AVCaptureVideoPreviewLayer) {
         sessionQueue.async {
             layer.session = nil
@@ -555,7 +552,6 @@ private struct HermexAttachmentCameraPreview: UIViewRepresentable {
     }
 }
 
-/// KVO callbacks may arrive off-main, but this view is only touched after hopping to main.
 private final class HermexAttachmentCameraPreviewView: UIView, @unchecked Sendable {
     override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
 

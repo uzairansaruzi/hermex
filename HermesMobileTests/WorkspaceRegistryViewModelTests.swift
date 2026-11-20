@@ -105,7 +105,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         await model.load()
         let beta = try XCTUnwrap(model.rows.last)
 
-        // Staging then cancelling must never hit the network.
         model.requestRemoval(of: beta)
         XCTAssertEqual(model.pendingRemoval?.path, "/Users/test/beta")
         model.cancelPendingRemoval()
@@ -113,16 +112,11 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         XCTAssertEqual(removeCallCount, 0)
         XCTAssertEqual(model.rows.count, 2)
 
-        // Confirming a pathless workspace is a no-op.
         let pathless = try JSONDecoder().decode(WorkspaceRoot.self, from: Data("{}".utf8))
         let noPath = await model.confirmRemoval(of: pathless)
         XCTAssertFalse(noPath)
         XCTAssertEqual(removeCallCount, 0)
 
-        // Confirm performs the removal even after the presentation binding
-        // already cleared the staged state (the dialog-dismissal race the
-        // first review round caught): the confirmed workspace is passed
-        // explicitly, so removal must not depend on `pendingRemoval`.
         model.requestRemoval(of: beta)
         model.cancelPendingRemoval()
         let succeeded = await model.confirmRemoval(of: beta)
@@ -186,8 +180,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         let client = makeClient { request in
             switch request.url?.path {
             case "/api/workspaces":
-                // A pathless entry (tolerant decoding) is hidden from the UI,
-                // so move offsets are relative to the two visible rows.
                 return apiTestJSONResponse("""
                 {
                   "workspaces": [
@@ -209,8 +201,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         await model.load()
         XCTAssertEqual(model.rows.map(\.path), ["/Users/test/alpha", "/Users/test/beta"])
 
-        // Move the second *visible* row (beta) to the front. With offsets
-        // applied to the raw list this would move the pathless ghost instead.
         let succeeded = await model.moveWorkspaces(fromOffsets: IndexSet(integer: 1), toOffset: 0)
 
         XCTAssertTrue(succeeded)
@@ -253,9 +243,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
             case "/api/workspaces":
                 return apiTestJSONResponse(Self.twoWorkspacesJSON, for: request)
             case "/api/workspaces/add":
-                // HTTP 200, but the body reports failure. Upstream uses non-2xx
-                // for failures today, yet the routes are undocumented — an
-                // explicit `ok: false` must never be presented as a success.
                 return apiTestJSONResponse(
                     #"{"ok": false, "error": "Workspace already in list"}"#,
                     for: request
@@ -288,12 +275,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
           ]
         }
         """
-        // First reorder ([beta, gamma, alpha]) is held back so the second one
-        // ([gamma, alpha, beta]) supersedes it before its stale echo lands.
-        // Whether the hold ends via the signal or the bounded timeout (the mock
-        // URL loading may serialize the two requests), the stale echo is always
-        // processed after the newer reorder began — the generation guard must
-        // ignore it.
         let firstReorderStarted = expectation(description: "first reorder request in flight")
         let releaseFirstReorder = DispatchSemaphore(value: 0)
         var reorderCallCount = 0
@@ -336,15 +317,12 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         let model = WorkspaceRegistryViewModel(client: client)
         await model.load()
 
-        // Move 1: alpha to the end → [beta, gamma, alpha]; response is held.
         let firstMove = Task { @MainActor in
             await model.moveWorkspaces(fromOffsets: IndexSet(integer: 0), toOffset: 3)
         }
         await fulfillment(of: [firstReorderStarted], timeout: 2)
         XCTAssertTrue(model.isMutating)
 
-        // Move 2 (overlapping): beta to the end → [gamma, alpha, beta];
-        // completes while move 1 is still awaiting its response.
         let secondSucceeded = await model.moveWorkspaces(fromOffsets: IndexSet(integer: 0), toOffset: 3)
         XCTAssertTrue(secondSucceeded)
         XCTAssertEqual(
@@ -352,7 +330,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
             ["/Users/test/gamma", "/Users/test/alpha", "/Users/test/beta"]
         )
 
-        // Release the stale first response; it must not overwrite the order.
         releaseFirstReorder.signal()
         let firstSucceeded = await firstMove.value
         XCTAssertTrue(firstSucceeded)
@@ -367,11 +344,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
 
     @MainActor
     func testStaleRenameResponseDoesNotResurrectRemovedWorkspace() async throws {
-        // The rename of alpha is held back so an overlapping removal of beta
-        // supersedes it. The stale rename echo still contains beta; the
-        // generation guard must ignore it instead of resurrecting the removed
-        // row. (As above: whether the hold ends via the signal or the bounded
-        // timeout, the stale echo is always processed after the removal began.)
         let renameStarted = expectation(description: "rename request in flight")
         let releaseRename = DispatchSemaphore(value: 0)
 
@@ -408,7 +380,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         let model = WorkspaceRegistryViewModel(client: client)
         await model.load()
 
-        // Rename alpha; the response is held while the removal overlaps it.
         let renameTask = Task { @MainActor in
             await model.renameWorkspace(path: "/Users/test/alpha", to: "Renamed Alpha")
         }
@@ -420,7 +391,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         XCTAssertTrue(removalSucceeded)
         XCTAssertEqual(model.rows.map(\.path), ["/Users/test/alpha"])
 
-        // Release the stale rename response; it must not restore beta.
         releaseRename.signal()
         let renameSucceeded = await renameTask.value
         XCTAssertTrue(renameSucceeded)
@@ -483,7 +453,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         XCTAssertFalse(succeeded)
         XCTAssertTrue(model.managementUnavailable)
         XCTAssertNotNil(model.errorMessage)
-        // The registry list itself must keep working.
         XCTAssertEqual(model.rows.count, 2)
     }
 }

@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// One installed plugin's page (#1582): what it is, and its manifest's settings as a native form. It
-/// reads its row from the model by key, so it always shows what the host last reported.
 struct PluginDetailView: View {
     let key: String
     let model: PluginsModel
@@ -44,8 +42,6 @@ struct PluginDetailView: View {
     }
 }
 
-/// A plugin's settings for all six field types. Only changed fields are sent, and a field the host
-/// refuses says why. Secrets save on their own, straight to the Profile's `.env`.
 private struct PluginSettingsForm: View {
     let plugin: HermesPlugin
     let model: PluginsModel
@@ -72,7 +68,6 @@ private struct PluginSettingsForm: View {
         return problems
     }
 
-    /// The fields whose draft now means something other than what's saved.
     private var changes: [String: BotJSON] {
         var changes: [String: BotJSON] = [:]
         for field in plugin.settings {
@@ -103,8 +98,6 @@ private struct PluginSettingsForm: View {
         .onChange(of: plugin.settings) { old, new in reconcile(old, with: new) }
     }
 
-    /// A field nobody has edited follows what the host now says. One being edited keeps its draft,
-    /// so saving a secret or a slow save never loses other work.
     private func reconcile(_ old: [HermesPluginSetting], with new: [HermesPluginSetting]) {
         for field in new {
             let previous = old.first { $0.key == field.key }?.text
@@ -142,7 +135,6 @@ private struct PluginSettingRow: View {
         }
     }
 
-    /// The label with its required mark, as VoiceOver and the row both read it.
     private var label: String {
         field.isRequired ? String(localized: "\(field.label) (required)") : field.label
     }
@@ -195,7 +187,6 @@ private struct PluginSettingRow: View {
     }
 }
 
-/// A secret: whether it's set, never its value. A value goes out once and isn't kept here.
 private struct PluginSecretField: View {
     let label: String
     let env: String
@@ -223,7 +214,6 @@ private struct PluginSecretField: View {
                 Text(verbatim: failure).font(AppFont.footnote()).foregroundStyle(.red)
             }
             HStack(spacing: 16) {
-                // Borderless so each button takes only its own taps, not the whole row's.
                 Button("Save Key") { Task { await set(value) } }
                     .buttonStyle(.borderless)
                     .disabled(value.isEmpty || isSaving)
@@ -255,8 +245,6 @@ private struct PluginSecretField: View {
     }
 }
 
-/// An update the host held back: the abilities it adds, or what its scan found. Nothing changed, and
-/// nothing changes until the user accepts. A dangerous result offers only Close.
 struct PluginUpdateReviewSheet: View {
     let review: PluginsModel.UpdateReview
     let model: PluginsModel
@@ -320,7 +308,6 @@ struct PluginUpdateReviewSheet: View {
         }
     }
 
-    /// What accepting says, or nil when it can't be accepted.
     private var acceptTitle: String? {
         switch review.reason {
         case .newAbilities: String(localized: "Accept and Update")

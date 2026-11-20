@@ -4,8 +4,6 @@ import SwiftData
 enum CachePolicy {
     static let ttl: TimeInterval = 7 * 24 * 60 * 60
     static let maxMessages = 5_000
-    /// How stale an unchanged cached message may get before a window write
-    /// bumps its `cachedAt`/`expiresAt` again (see `CachedMessage.refresh`).
     static let rowRefreshInterval: TimeInterval = 60 * 60
 }
 
@@ -44,18 +42,12 @@ final class CachedSession {
     var relationshipType: String?
     var readOnly: Bool?
     var isReadOnly: Bool?
-    /// A Hermes row's identity across a legacy compression chain (#1054), which `sessionID`'s
-    /// tip opens. Nil on a webui row. These three were added after the initial schema, so
-    /// SwiftData migrates them as nullable columns on existing stores.
     var lineageRoot: String?
-    /// The Hermes host's read mark.
     var unread: Bool?
-    /// The first prompt, as an untitled Hermes row shows it.
     var preview: String?
     var cachedAt: Date
     var expiresAt: Date
 
-    /// `cacheKey` is a Hermes row's (`CacheStore.hermesSessionKey`); a webui row's is derived.
     init(serverURLString: String, session: SessionSummary, cacheKey: String? = nil, cachedAt: Date = Date()) {
         let sessionID = session.sessionId ?? session.id
         self.cacheKey = cacheKey ?? Self.cacheKey(serverURLString: serverURLString, sessionID: sessionID)
@@ -71,7 +63,6 @@ final class CachedSession {
     }
 
     func apply(_ session: SessionSummary, cachedAt: Date = Date()) {
-        // A Hermes row keeps its key, its lineage root, while its tip can move.
         if let tip = session.sessionId { sessionID = tip }
         title = session.title
         workspace = session.workspace

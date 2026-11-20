@@ -56,7 +56,6 @@ final class ReasoningSummaryFormatterTests: XCTestCase {
         let text = "**Old heading**\n\n\(filler)\n\nNewest paragraph here. Rest"
         XCTAssertEqual(ReasoningSummaryFormatter.latestThought(in: text), "Newest paragraph here.")
 
-        // A tail that starts exactly on a line keeps that line.
         let heading = "**Current phase**\n\n"
         let tail = heading + String(repeating: "x", count: ReasoningSummaryFormatter.tailLimit - heading.count)
         XCTAssertEqual(ReasoningSummaryFormatter.latestThought(in: "Older text.\n" + tail), "Current phase")

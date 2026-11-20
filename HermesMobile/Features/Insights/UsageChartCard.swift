@@ -1,13 +1,6 @@
 import Charts
 import SwiftUI
 
-/// The Usage screen's headline card: the window figure, the metric toggle, the
-/// bar chart, and the edge labels beneath it. Without `showsChart` it is the
-/// figure and toggle alone.
-///
-/// Dragging across the chart replaces the hero with the touched bucket's own
-/// figures and restores the window total on release, which is what lets the old
-/// "Recent Daily Tokens" list go away without losing per-day detail.
 struct UsageChartCard: View {
     let buckets: [UsageBucket]
     @Binding var metric: UsageMetric
@@ -45,8 +38,6 @@ struct UsageChartCard: View {
             selectedBucketID = nil
         }
     }
-
-    // MARK: - Header
 
     private var hero: UsageHeroFigure {
         guard let selectedBucketID, let bucket = buckets.first(where: { $0.id == selectedBucketID }) else {
@@ -91,8 +82,6 @@ struct UsageChartCard: View {
         }
     }
 
-    // MARK: - Chart
-
     private var hasActivity: Bool {
         buckets.contains(where: \.hasActivity)
     }
@@ -109,8 +98,6 @@ struct UsageChartCard: View {
                         )
                         .foregroundStyle(layer.segment.color)
                         .opacity(selectedBucketID == nil || selectedBucketID == bucket.id ? 1 : 0.3)
-                        // One VoiceOver element per bar: the first layer speaks for
-                        // the whole bucket and the rest stay out of the way.
                         .accessibilityLabel(index == 0 ? bucket.label : "")
                         .accessibilityValue(index == 0 ? bucket.accessibilityValue : "")
                         .accessibilityHidden(index != 0)
@@ -142,11 +129,6 @@ struct UsageChartCard: View {
         }
     }
 
-    /// Press and scrub to inspect a bar, release to go back to the window total.
-    ///
-    /// The press comes first on purpose: a bare drag would eat the enclosing
-    /// scroll view's vertical swipes, so the page would stop scrolling wherever
-    /// the chart is.
     private func selectionGesture(proxy: ChartProxy, geometry: GeometryProxy) -> some Gesture {
         LongPressGesture(minimumDuration: 0.12)
             .sequenced(before: DragGesture(minimumDistance: 0))
@@ -161,15 +143,10 @@ struct UsageChartCard: View {
             }
     }
 
-    // MARK: - Footer
-
     private var legendSegments: [UsageChartSegment] {
         usageChartLegendSegments(buckets: buckets, metric: metric)
     }
 
-    /// The legend sits between the two edge labels at normal text sizes and drops
-    /// to its own row at accessibility sizes, where three swatches and two dates
-    /// can no longer share a line.
     private var showsLegendInline: Bool {
         !legendSegments.isEmpty && !dynamicTypeSize.isAccessibilitySize
     }
@@ -204,8 +181,6 @@ struct UsageChartCard: View {
             .frame(maxWidth: .infinity, alignment: alignment)
     }
 
-    /// Sized to its content so the flexible edge labels absorb the slack instead
-    /// of squeezing "Cache read" into one character per line.
     private var legend: some View {
         HStack(spacing: 10) {
             ForEach(legendSegments) { segment in

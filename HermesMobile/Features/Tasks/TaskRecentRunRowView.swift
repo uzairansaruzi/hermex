@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// One row of the Tasks list's "Ran Recently" group: the outcome, the
-/// job's name, and how long ago it finished. The list decides whether the row
-/// links to Task Detail; this view only draws it.
 struct TaskRecentRunRowView: View {
     let completion: CronRecentCompletion
 
@@ -39,8 +36,6 @@ struct TaskRecentRunRowView: View {
         .accessibilityLabel(Text(verbatim: [completion.displayName, status.word, relativeTime].joined(separator: ", ")))
     }
 
-    /// Re-evaluated whenever the row is redrawn, which a refresh forces by
-    /// replacing the feed.
     private var relativeTime: String {
         completion.completedAt.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated))
     }

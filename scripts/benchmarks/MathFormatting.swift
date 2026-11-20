@@ -1,6 +1,5 @@
 import Foundation
 
-/// Timings cover uncached production work, including identical output checks in every run.
 @main
 struct MathFormattingBenchmark {
     static func layoutText(_ input: String) -> String {
@@ -56,8 +55,6 @@ struct MathFormattingBenchmark {
                 "samples_ms": samples, "checksum": checksum, "output": expected
             ])
         }
-        // Long, incrementally delivered content uses the production uncached path.
-        // Compare operation counts and checksums as well as isolated medians.
         for (name, paragraph) in [
             ("incremental plain 30KB", "A normal response with ordinary prose.\n\n"),
             ("incremental math 30KB", inline + "\n\n")

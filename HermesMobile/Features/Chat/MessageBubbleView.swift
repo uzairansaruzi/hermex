@@ -2,11 +2,7 @@ import SwiftUI
 
 struct MessageBubbleView: View {
     @State private var responseIsVisible = false
-    /// A long user bubble's fold, measured by `measureUserBubbleFold`. Only
-    /// `UserBubbleFoldPolicy.mayFold` candidates are ever measured.
     @State private var userBubbleFold: UserBubbleFold?
-    /// Show more and Show less. It survives scrolling, which keeps row
-    /// identity, and resets when the chat reopens.
     @State private var userBubbleIsExpanded = false
     @State private var settledReplyMedia = SettledReplyMedia()
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
@@ -16,37 +12,26 @@ struct MessageBubbleView: View {
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.displayScale) private var displayScale
-    /// The skills this chat can draw as chips, published by `ChatView`.
     @Environment(\.composerChipCatalog) private var composerChipCatalog
     @Environment(\.chatWorkspaceRoot) private var chatWorkspaceRoot
     @Environment(\.resolvesBareMediaPaths) private var resolvesBareMediaPaths
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
 
-    /// Bot snapshots are text-only and must render synchronously while growing.
     let textOnly: Bool
     let message: ChatMessage
     let loadAttachmentImage: ((String) async -> Data?)?
     let attachmentAudio: AttachmentAudioSource?
     let loadTranscriptMediaImage: ((TranscriptMediaReference) async -> Data?)?
     let loadTranscriptMediaData: ((TranscriptMediaReference) async -> Data?)?
-    /// Server (and session) identity for in-memory image caches. Required so
-    /// attachment thumbnails and transcript media cannot share an empty bucket.
     let transcriptMediaCacheNamespace: String
     let localAttachmentPreviews: [String: Data]?
-    /// Called with the tapped attachment and the message's other grid attachments, in
-    /// order, so an image opens in a gallery of the message's images.
     let onPreviewAttachment: ((MessageAttachmentPreview, [MessageAttachmentPreview]) -> Void)?
-    /// Called with the tapped media and every media reference in the reply, in order.
     let onPreviewTranscriptMedia: ((TranscriptMediaReference, [TranscriptMediaReference]) -> Void)?
     let isStreaming: Bool
     let liveTokensPerSecond: Double?
     let onAskHermex: (String) -> Void
-    /// Long-press actions, attached to the message content only so the empty
-    /// gutter beside a user bubble does not open its menu.
     let contextMenuActions: [ChatMessageActionItem]
-    /// A Hermes session's queued prompt (#1379): the user bubble's fill dims, its text does
-    /// not, and it fetches no link preview.
     let isQueued: Bool
 
     init(
@@ -114,9 +99,6 @@ struct MessageBubbleView: View {
                 attachmentPreviews
             }
 
-            // When the attachment-path line is hidden, an attachment-only
-            // message has no bubble text left; skip the empty pill so only the
-            // attachment grid shows.
             if hasVisibleText || previewURL != nil {
                 HStack(alignment: .bottom, spacing: 0) {
                     Spacer(minLength: userBubbleLeadingGutter)
@@ -132,8 +114,6 @@ struct MessageBubbleView: View {
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .background {
-            // Only a fold candidate reads its width, and it measures again only
-            // for a new width, text size or text, so scrolling never measures.
             if mayFold {
                 Color.clear
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth in
@@ -152,8 +132,6 @@ struct MessageBubbleView: View {
         }
     }
 
-    /// Counts a candidate's wrapped lines in its text column: the row less the
-    /// leading gutter and the bubble's side padding.
     private func measureUserBubbleFold(_ text: String, rowWidth: CGFloat?, bodyFont: UIFont) {
         guard let rowWidth else { return }
         let lineCount = UserBubbleFoldPolicy.lineCount(
@@ -170,10 +148,6 @@ struct MessageBubbleView: View {
         )
     }
 
-    /// A mid-turn steering hint: compact and visually distinct from the user's
-    /// own messages, with the server's out-of-band wrapper stripped. Steer
-    /// rows are annotations on the active turn, not user-editable content, so
-    /// they carry no context menu or meta row.
     private var steerBubble: some View {
         VStack(alignment: .trailing, spacing: 4) {
             Label {
@@ -217,7 +191,6 @@ struct MessageBubbleView: View {
             resolvesBarePaths: resolvesBareMediaPaths,
             isStreaming: isStreaming
         )
-        // The reply's other media is collected when an image is tapped, not on each pass.
         let onPreviewTranscriptMedia = onPreviewTranscriptMedia.map { preview in
             { (reference: TranscriptMediaReference) in preview(reference, segments.mediaReferences) }
         }
@@ -292,12 +265,6 @@ struct MessageBubbleView: View {
         }
     }
 
-    // MARK: - Assistant turn header (issue #258)
-
-    /// A compact `glyph + speed` marker drawn above an assistant reply while
-    /// Response Speed is on. Deliberately carries no model/profile/agent
-    /// identity. The reply's time is not here: it sits under the message in
-    /// `ChatMessageMetaRow`, next to the copy button.
     private var assistantTurnHeader: some View {
         HStack(spacing: 5) {
             Image(systemName: "sparkle")
@@ -323,9 +290,6 @@ struct MessageBubbleView: View {
         )
     }
 
-    /// Uses the raw `content` (not `messageText`, which substitutes a placeholder
-    /// space) so an empty or tool-call-only assistant row never shows a floating
-    /// header.
     private var hasVisibleAssistantText: Bool {
         guard let content = message.content else { return false }
         return !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -372,7 +336,6 @@ struct MessageBubbleView: View {
 
             MarkdownRenderer(content: messageText, isStreaming: isStreaming)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // The card's material is translucent, so no solid fade matches it.
                 .environment(\.markdownTableEdgeFadeColor, nil)
         }
         .padding(.horizontal, 12)
@@ -385,13 +348,6 @@ struct MessageBubbleView: View {
         .padding(.vertical, 4)
     }
 
-    /// The sent message, with any skill reference drawn as the same chip the
-    /// composer showed before the send. A long one `folds` to its first
-    /// `UserBubbleFoldPolicy.visibleLines` behind Show more.
-    ///
-    /// A chip is a picture, so dragging a selection across one leaves its
-    /// `/slug` out of what is copied; the message's own Copy action reads
-    /// `message.content`, which is always the exact text, folded or not.
     private func userBubble(text: String, folds: Bool, bodyFont: UIFont) -> some View {
         let chips = textOnly ? [] : userBubbleChips(in: text)
         let isFolded = folds && !userBubbleIsExpanded
@@ -402,8 +358,6 @@ struct MessageBubbleView: View {
                 .lineLimit(isFolded ? UserBubbleFoldPolicy.visibleLines : nil)
                 .textSelection(.enabled)
                 .overlay(alignment: .bottom) {
-                    // The bubble is a solid colour, so a gradient into it fades
-                    // the last line with no mask or offscreen pass.
                     if isFolded {
                         LinearGradient(
                             colors: [userBubbleBackground.opacity(0), userBubbleBackground],
@@ -414,9 +368,6 @@ struct MessageBubbleView: View {
                         .allowsHitTesting(false)
                     }
                 }
-                // VoiceOver reads the whole message, folded or not, and a chip
-                // by its skill's name rather than announcing an image, the way
-                // both composer states already do.
                 .accessibilityLabel(
                     chips.isEmpty
                         ? Text(verbatim: text)
@@ -437,11 +388,8 @@ struct MessageBubbleView: View {
         )
     }
 
-    /// Show more and Show less, at the bubble's leading edge under the text.
-    /// Instant, like the diff block's Show all, so there is no motion to reduce.
     private var userBubbleFoldToggle: some View {
         Button {
-            // Pins the reader's offset while the bubble grows or shrinks.
             chatDisclosureToggled()
             userBubbleIsExpanded.toggle()
         } label: {
@@ -461,11 +409,6 @@ struct MessageBubbleView: View {
         .foregroundStyle(.tint)
     }
 
-    /// The references in a sent message. `isComplete` is what a send means: the
-    /// text will not grow, so a reference that ends the message is finished and
-    /// draws as a chip even though the composer was still waiting for a space.
-    /// A slug the server no longer knows resolves to nothing and stays plain
-    /// text, which is the same rule the composer follows.
     private func userBubbleChips(in text: String) -> [ComposerChipToken] {
         guard !composerChipCatalog.isEmpty else { return [] }
         return ComposerChipTokenizer.tokens(in: text, catalog: composerChipCatalog, isComplete: true)
@@ -482,8 +425,6 @@ struct MessageBubbleView: View {
         )
     }
 
-    /// Read once per row body; the user row needs it both to decide whether to
-    /// draw the bubble stack and to draw the preview inside it.
     private var linkPreviewURL: URL? {
         guard !textOnly, !isQueued else { return nil }
         return TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming)
@@ -497,10 +438,6 @@ struct MessageBubbleView: View {
         }
     }
 
-    // Audio attachments render as full-width Telegram-style player bars stacked
-    // above the square image/file grid; everything else stays in the grid. Audio
-    // that `attachmentAudio` can't play (none given, or a Hermes chip with no host
-    // path yet) stays a file cell.
     private var attachmentPreviews: some View {
         let allItems = attachmentsWithPreviews
         let audioItems = allItems.filter { attachmentAudio?.playsInline($0.attachment) == true }
@@ -514,10 +451,6 @@ struct MessageBubbleView: View {
             ForEach(audioItems.indices, id: \.self) { index in
                 let attachment = audioItems[index].attachment
                 inlineAudioPlayer(for: attachment, localData: audioItems[index].localData)
-                // Identity follows the attachment, not the row position. The
-                // transcript bubble's id is positional (`transcript:<index>`),
-                // so without this a recycled row would keep its old `@State`
-                // model (and stale audio bytes) for a different clip.
                 .id(attachment.path ?? attachment.name ?? "\(index)")
                 .frame(width: contentWidth, alignment: .trailing)
             }
@@ -535,7 +468,6 @@ struct MessageBubbleView: View {
                 )
             }
         }
-        // Before the full-width frame, so the marker covers the grid only.
         .chatMessageContextMenu(contextMenuActions)
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
@@ -571,7 +503,6 @@ struct MessageBubbleView: View {
         .frame(width: width, alignment: .trailing)
     }
 
-    /// Display name for an audio bar, mirroring the grid file cell's logic.
     private func audioDisplayName(for attachment: MessageAttachment) -> String {
         if let name = attachment.name?.trimmingCharacters(in: .whitespacesAndNewlines),
            !name.isEmpty {
@@ -585,10 +516,6 @@ struct MessageBubbleView: View {
         return String(localized: "Audio")
     }
 
-    /// Builds the lazy byte loader for an audio bar. Resolves the server path
-    /// (or filename fallback) once and defers to the injected raw-data loader.
-    /// The inline player for an audio attachment `attachmentAudio` plays. It keeps the
-    /// source's `loadKey` as is, so a detached Hermes chat's nil waits rather than fails.
     func inlineAudioPlayer(for attachment: MessageAttachment, localData: Data?) -> InlineAudioPlayerView {
         InlineAudioPlayerView(
             title: audioDisplayName(for: attachment),
@@ -646,13 +573,10 @@ struct MessageBubbleView: View {
 
     private static let userBubbleHorizontalPadding: CGFloat = 14
 
-    /// The body font at this view's text size, for measuring the fold.
     private var userBubbleBodyFont: UIFont {
         .app(forTextStyle: .body, at: dynamicTypeSize)
     }
 
-    /// Opaque even when queued, which mixes it toward the transcript's background, so the
-    /// fold's gradient still hides the text under it.
     private var userBubbleBackground: Color {
         let fill = Color(.appUserBubble)
         return isQueued ? fill.mix(with: Color(.appCanvas), by: 0.45) : fill
@@ -676,9 +600,6 @@ struct MessageBubbleView: View {
         return content
     }
 
-    /// The user bubble's text, with the appended attachment-path marker stripped
-    /// when the user has opted to hide it. Display-only: `message.content` and the
-    /// sent payload are untouched.
     private var userBubbleText: String {
         let content = message.content ?? ""
         guard !textOnly, hidesAttachmentPaths else { return content }
@@ -686,9 +607,6 @@ struct MessageBubbleView: View {
     }
 }
 
-/// A user bubble's measured fold and what it was measured for. A new text or
-/// text size leaves it stale until `measureUserBubbleFold` runs again, and a
-/// stale one never folds.
 private struct UserBubbleFold {
     let text: String
     let rowWidth: CGFloat
@@ -720,34 +638,22 @@ private extension [TranscriptMediaSegment] {
     }
 }
 
-/// A sent attachment as its message row draws it: the server's record and any local copy.
 typealias MessageAttachmentPreview = (attachment: MessageAttachment, localData: Data?)
 
-/// Where a sent message's attachment row gets its inline audio. Without one, audio
-/// attachments are file cells. Equal sources differ only in `load`, which is fixed for a
-/// chat, so a transcript row's equality can compare it and still see a new `loadKey`.
 struct AttachmentAudioSource: Equatable {
-    /// Downloads an attachment's bytes by its path (or, on webui, an older chip's name).
     let load: (String) async -> Data?
-    /// A Hermes chat's chips live on its host (#1143): audio plays inline only from the
-    /// chip's host path, since a name is no host path and a just-sent chip has none yet,
-    /// and the player keeps the chip's Open action for Quick Look, Save and Share.
     let isHost: Bool
-    /// The player's `loadKey`: nil while a Hermes chat is detached, so its players wait for
-    /// the attach instead of failing.
     var loadKey: Int? = 0
 
     static func == (lhs: AttachmentAudioSource, rhs: AttachmentAudioSource) -> Bool {
         lhs.isHost == rhs.isHost && lhs.loadKey == rhs.loadKey
     }
 
-    /// Whether `attachment` draws as an inline player rather than a file cell.
     func playsInline(_ attachment: MessageAttachment) -> Bool {
         guard attachment.inferredIsAudio else { return false }
         return !isHost || attachment.path?.isEmpty == false
     }
 
-    /// The inline player's Open button: the chip's preview on a Hermes chat, none on webui.
     func openAction(
         for attachment: MessageAttachment,
         localData: Data?,
@@ -767,8 +673,6 @@ private struct GridAttachmentCell: View {
     let size: CGFloat
 
     private var resolvedPath: String? {
-        // The server saves uploads to the workspace root. Use the explicit
-        // path when available; for older sessions fall back to filename.
         if let path = attachment.path, !path.isEmpty { return path }
         if let name = attachment.name, !name.isEmpty { return name }
         return nil
@@ -798,14 +702,10 @@ private struct GridAttachmentCell: View {
     }
 
     private var inferredIsImage: Bool {
-        // Explicit server flag is the strongest signal.
         if attachment.isImage == true { return true }
 
-        // Fall back to MIME type (e.g. "image/jpeg").
         if let mime = attachment.mime?.lowercased(), mime.hasPrefix("image/") { return true }
 
-        // Fall back to file extension for older sessions where the server
-        // did not persist `is_image`.
         let ext = URL(fileURLWithPath: attachment.name ?? resolvedPath ?? "").pathExtension.lowercased()
         return ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tiff", "tif"].contains(ext)
     }
@@ -937,12 +837,6 @@ private struct GridAttachmentCell: View {
     }
 }
 
-// MARK: - Remote image loading with cookie-aware session
-
-/// Loads attachment images through the authenticated `APIClient` instead of
-/// `AsyncImage`, which uses `URLSession.shared` and may not carry our auth
-/// cookie. `TranscriptImageCache` deduplicates concurrent requests and keeps
-/// the thumbnails in memory.
 private struct RemoteAttachmentImage: View {
     let path: String
     let cacheNamespace: String
@@ -1004,15 +898,10 @@ private struct RemoteAttachmentImage: View {
     }
 }
 
-/// Identifies an attachment thumbnail in `TranscriptImageCache`. The cache is
-/// process-wide and survives `.id(server)` teardown, so keys include the
-/// server (and session) namespace rather than the relative path alone.
 struct AttachmentImageCacheKey: Hashable {
     let namespace: String
     let path: String
 
-    /// The shared cache's key. The kind prefix keeps it apart from media keys;
-    /// the length prefix keeps the namespace boundary fixed.
     var cacheKey: String {
         "attachment|\(namespace.utf8.count)|\(namespace)|\(path)"
     }
@@ -1037,9 +926,6 @@ enum ResponseSpeedFormatter {
     }
 }
 
-/// What a settled reply's hosted content renders from besides its text and the
-/// environment `ResponseTextSelection` forwards. A media callback's presence
-/// changes the rows drawn; the callbacks themselves go through `SettledReplyMedia`.
 private struct SettledReplyInputs: Hashable {
     let workspaceRoot: String?
     let resolvesBarePaths: Bool
@@ -1049,18 +935,12 @@ private struct SettledReplyInputs: Hashable {
     let previewsMedia: Bool
 }
 
-/// A settled reply's media callbacks. The selection host keeps its content while
-/// the reply is unchanged, so that content calls through this reference, refreshed
-/// on every pass, instead of closures captured on an earlier one. Main-actor
-/// isolated because body passes refresh it while detached thumbnail loads call
-/// the forwarders; each forwarder reads the latest callback there, then awaits it.
 @MainActor
 private final class SettledReplyMedia {
     private var loadImage: ((TranscriptMediaReference) async -> Data?)?
     private var loadData: ((TranscriptMediaReference) async -> Data?)?
     private var preview: ((TranscriptMediaReference) -> Void)?
 
-    /// Stores the latest callbacks and returns forwarders to them, nil where the callback is.
     func refreshed(
         loadImage: ((TranscriptMediaReference) async -> Data?)?,
         loadData: ((TranscriptMediaReference) async -> Data?)?,

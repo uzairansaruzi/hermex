@@ -1,21 +1,13 @@
 import Foundation
 
-/// The server a Kanban client reads. A Hermes host (#1043) has no Columns in `/config`, no
-/// `changed` Board envelope and no events route, and its live updates come over a socket
-/// (#1045), so the feature state checks, refreshes and reconnects it differently.
 enum KanbanBackend: Sendable {
     case webui
     case hermes
 }
 
-/// Everything the Kanban screens read and write. `APIClient` serves a webui server and
-/// `HermesKanbanClient` a Hermes host (#1043, #1044); a write a client does not implement throws.
 protocol KanbanDataClient: Sendable {
     var backend: KanbanBackend { get }
-    /// Whether the Filters offer Only Mine: webui filters by its active chat Profile, and a
-    /// Hermes host by the Profile the Sessions side lists, when one is known (#1677).
     var offersOnlyMine: Bool { get }
-    /// The server's live-update channel: webui's SSE stream, or a Hermes host's Kanban socket.
     @MainActor func makeEventStream(server: URL) -> any KanbanEventStreamingClient
     func kanbanConfiguration() async throws -> KanbanConfiguration
     func kanbanBoards() async throws -> KanbanBoardsResponse
@@ -376,7 +368,6 @@ private struct KanbanBulkActionBody: Encodable {
         switch request.action {
         case let .changeStatus(status):
             try container.encode(status, forKey: .status)
-        // Never built for webui, which completes any Card without a note.
         case .complete:
             try container.encode("done", forKey: .status)
         case let .assignProfile(profile):

@@ -1,8 +1,5 @@
 import Foundation
 
-/// Shared `multipart/form-data` body builders for the upload and transcribe
-/// endpoints. Kept in one place so `APIClient+Upload` and `APIClient+Transcribe`
-/// emit byte-identical field encodings (boundaries, CRLFs, dispositions).
 extension Data {
     mutating func appendMultipart(textField name: String, value: String, boundary: String) {
         append(Data("--\(boundary)\r\n".utf8))

@@ -8,8 +8,6 @@ struct CronMutationResponse: Decodable, Equatable {
     let ok: Bool?
     let job: CronJob?
     let error: String?
-    /// Set when the server saved the job but warns about it: a Hermes host whose scheduler
-    /// could not register a new Task (424, #1040). Never decoded from webui.
     var warning: String?
 
     enum CodingKeys: String, CodingKey {
@@ -43,9 +41,6 @@ struct CronStatusResponse: Decodable, Equatable {
 }
 
 struct CronJob: Decodable, Equatable, Identifiable {
-    /// Stable across refreshes. Never a fresh `UUID` — `id` is computed, so a
-    /// UUID fallback would hand SwiftUI a different identity on every read and
-    /// rebuild every row of the list on every poll.
     var id: String {
         jobId ?? name ?? ""
     }
@@ -69,13 +64,8 @@ struct CronJob: Decodable, Equatable, Identifiable {
     let provider: String?
     let profile: String?
     let toastNotifications: Bool?
-    /// A Hermes host's claim on a run in progress (`fire_claim`); nil when none is held.
     let fireClaim: CronFireClaim?
-    /// `latest_execution.status` from a Hermes host's executions ledger: `claimed`,
-    /// `running`, `completed`, `failed` or `unknown`.
     let latestExecutionStatus: String?
-    /// `scheduler_heartbeat_age_s`: seconds since a Hermes host's scheduler last ticked for
-    /// this job's Profile; nil when it never has or the host can't tell.
     let schedulerHeartbeatAge: Double?
 
     enum CodingKeys: String, CodingKey {
@@ -131,8 +121,6 @@ struct CronJob: Decodable, Equatable, Identifiable {
         schedulerHeartbeatAge = (try? container.decodeFlexibleDoubleIfPresent(forKey: .schedulerHeartbeatAge)) ?? nil
     }
 
-    /// The job's Profile as a row names it, "Default" for the host's default Profile; nil
-    /// when the job names none.
     var profileLabel: String? {
         guard let profile = profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty else { return nil }
         return profile == "default" ? String(localized: "Default") : profile
@@ -237,8 +225,6 @@ struct CronRepeat: Decodable, Equatable {
     let completed: Int?
 }
 
-/// A Hermes host's `fire_claim`, `{at, by}`: a run of the job is in progress. `by` names
-/// the claiming machine and is never decoded.
 struct CronFireClaim: Decodable, Equatable {
     let at: Date?
 
@@ -250,7 +236,6 @@ struct CronFireClaim: Decodable, Equatable {
     }
 }
 
-/// The part of a Hermes host's `latest_execution` the Tasks list reads.
 private struct CronExecution: Decodable {
     let status: String?
 
@@ -340,27 +325,15 @@ struct CronDeliveryOption: Decodable, Equatable, Identifiable {
     }
 }
 
-/// One selectable row in the cron deliver picker.
 struct CronDeliverPickerOption: Equatable, Identifiable {
     let value: String
     let label: String
-    /// `true` when the row exists only to round-trip a draft value that the
-    /// server did not list (unknown/legacy deliver target).
     let isCustom: Bool
 
     var id: String { value }
 }
 
 enum CronDeliverPicker {
-    /// Builds picker rows from server-provided delivery options.
-    ///
-    /// Returns `nil` when the picker should fall back to free-text entry:
-    /// options missing/empty (endpoint failed or returned nothing usable) or
-    /// the current draft value is blank (nothing safe to select).
-    /// A current value outside the server list is preserved as an extra
-    /// custom row instead of being clobbered. `initialValue` (the draft's
-    /// deliver value when the editor opened) also keeps its custom row so an
-    /// unknown/legacy value can be re-selected after choosing another option.
     static func options(
         serverOptions: [CronDeliveryOption]?,
         currentValue: String,
@@ -523,42 +496,19 @@ struct CronJobEditorDraft: Equatable {
         return nil
     }
 
-    /// Applies a model picked in the editor, or `nil` for "Server default".
-    ///
-    /// Model and provider always move together, because every picker option
-    /// names both: writing one without the other is how a job ends up asking a
-    /// provider for a model it does not serve. Clearing writes both back to
-    /// empty, which is the server's cue to fall back to the selected profile.
     mutating func applyModelSelection(_ option: ModelCatalogOption?) {
         model = option?.id ?? ""
         provider = option?.providerID ?? ""
     }
 
-    /// Applies a profile picked in the editor, or `nil` for "Server default".
-    ///
-    /// Deliberately leaves `model` and `provider` alone. Upstream computes both
-    /// from the profile's environment only when at least one of them is blank
-    /// (`_selected_profile_snapshot_updates`), so prefilling the model here
-    /// would suppress the server's own snapshot and move a server decision into
-    /// the app.
     mutating func applyProfileSelection(_ profileName: String?) {
         profile = profileName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    /// Applies a skill selection from the picker.
-    ///
-    /// `skillsText` stays the storage, so a job created before the picker
-    /// existed keeps round-tripping through the same comma-separated form the
-    /// server has always received.
     mutating func applySkillSelection(_ names: [String]) {
         skillsText = names.joined(separator: ", ")
     }
 
-    /// Drops the delivery targets and skills chosen in `earlier`, the draft when another
-    /// Profile was picked, that the new Profile doesn't offer, once its lists have loaded
-    /// (#1040). Choices made since the pick stay. A target is kept when its platform
-    /// (`telegram` in `telegram:123`) is offered; with none left, delivery falls back to
-    /// `local`, which every Profile offers. A list that didn't load (nil) checks nothing.
     mutating func keepChoices(madeBefore earlier: CronJobEditorDraft, offeredTargets: [String]?,
                               offeredSkills: [String]?) {
         if let offeredTargets, deliver == earlier.deliver {
@@ -571,11 +521,6 @@ struct CronJobEditorDraft: Equatable {
         }
     }
 
-    /// `selection` with `name` added if absent, removed if present.
-    ///
-    /// Order is the user's: a newly selected skill goes on the end rather than
-    /// re-sorting a list they just read. Matching is exact, because the server
-    /// stores back whatever spelling it was sent.
     static func togglingSkill(_ name: String, in selection: [String]) -> [String] {
         guard let index = selection.firstIndex(of: name) else { return selection + [name] }
 

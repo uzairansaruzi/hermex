@@ -1,14 +1,7 @@
 import SwiftUI
 
-/// Why the last Hermes turn failed, or a warning about how it ended, drawn under the
-/// turn in every Hermes chat (design C, #878; #1139). A failure shows
-/// its title, the host's raw error, when a rate limit resets, and Retry or the billing
-/// page; a warning shows the host's own sentence. Static: nothing animates, and a
-/// passed reset time simply drops on the next redraw.
 struct HermesTurnOutcomeRow: View {
-    /// The host-retained failure (`HermesChatActivity.failure`).
     let failure: HermesTurnOutcome?
-    /// The live-only billing link and warning (`HermesChatActivity.notice`).
     let notice: HermesTurnOutcome?
     let offersRetry: Bool
     let mayRetry: Bool
@@ -25,7 +18,6 @@ struct HermesTurnOutcomeRow: View {
                 }
             }
             if let warning = notice?.warning {
-                // The host's words, verbatim: a fixed sentence could lie about a new warning.
                 block(systemImage: "exclamationmark.triangle.fill", tint: .orange,
                       title: String(localized: "Reply shown but not saved"), detail: warning, resetsAt: nil) {
                     EmptyView()
@@ -34,14 +26,8 @@ struct HermesTurnOutcomeRow: View {
         }
     }
 
-    /// Hermex's title for a failure: the host's own sentence when it sends one, then
-    /// the custom endpoint when that is what failed, then a title for the code where
-    /// the fix differs, then one for the layer that failed. The host's wording
-    /// without its slash commands (`user_messages.py`).
     static func title(for failure: HermesTurnOutcome) -> String {
         if let message = failure.surface?.message { return message }
-        // The host files a custom or local endpoint's timeout under `endpoint` so the
-        // user checks that endpoint on the Mac, not the provider.
         if failure.surface?.layer == "endpoint" { return String(localized: "Your custom model endpoint did not answer") }
         switch failure.surface?.code ?? failure.failureReason {
         case "rate_limit", "upstream_rate_limit": return String(localized: "The model provider is rate-limiting requests")
@@ -65,8 +51,6 @@ struct HermesTurnOutcomeRow: View {
         }
     }
 
-    /// One recessed block: icon and title, then the detail and reset time under the
-    /// title, then any buttons across the full width.
     private func block(systemImage: String, tint: Color, title: String, detail: String?, resetsAt: Date?,
                        @ViewBuilder buttons: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -80,7 +64,6 @@ struct HermesTurnOutcomeRow: View {
                         .font(AppFont.subheadline(weight: .semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     if let detail {
-                        // Raw provider text is often a JSON blob: capped, and selectable to copy.
                         Text(detail)
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.appSecondary)
@@ -115,8 +98,6 @@ struct HermesTurnOutcomeRow: View {
                     .disabled(!mayRetry)
                 }
                 if let billingURL {
-                    // Safari, not an in-app sheet, as for connector links (#770): the
-                    // provider sign-in lives there. Opened directly, past the link router.
                     Button { UIApplication.shared.open(billingURL) } label: {
                         Label("Open billing page", systemImage: "safari").frame(maxWidth: .infinity)
                     }
@@ -126,7 +107,6 @@ struct HermesTurnOutcomeRow: View {
         }
     }
 
-    /// "Limit resets at 14:05" in the user's locale, with the date when it is not today.
     private static func resetLine(_ date: Date) -> String {
         let time = Calendar.current.isDateInToday(date)
             ? date.formatted(date: .omitted, time: .shortened)

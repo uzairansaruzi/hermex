@@ -22,8 +22,6 @@ final class ComposerDocumentThumbnailsTests: XCTestCase {
         XCTAssertEqual(requests.first?.scale, 3)
     }
 
-    /// Images already carry their own thumbnail, and an attachment without a
-    /// draft copy has no file to read.
     func testImagesAndAttachmentsWithoutADraftCopyNeverReachTheGenerator() async throws {
         let fixture = try await Fixture()
         let image = PendingAttachment(
@@ -41,8 +39,6 @@ final class ComposerDocumentThumbnailsTests: XCTestCase {
         XCTAssertTrue(requests.isEmpty)
     }
 
-    /// A document Quick Look can't draw keeps its icon, and isn't retried on
-    /// every render.
     func testAFailureIsCachedAndNotRetried() async throws {
         let fixture = try await Fixture(image: nil)
         let archive = try await fixture.stageDocument(named: "logs.zip")
@@ -56,8 +52,6 @@ final class ComposerDocumentThumbnailsTests: XCTestCase {
         XCTAssertEqual(requests.count, 1)
     }
 
-    /// A tile that goes away mid-request leaves nothing behind, so the next
-    /// tile to ask generates afresh.
     func testACancelledRequestStoresNoResult() async throws {
         let fixture = try await Fixture()
         let document = try await fixture.stageDocument(named: "report.pdf")
@@ -77,7 +71,6 @@ final class ComposerDocumentThumbnailsTests: XCTestCase {
         XCTAssertEqual(requests.count, 2)
     }
 
-    /// An edited paste keeps its attachment id with a new copy (#1456), so its tile draws afresh.
     func testANewCopyOfTheSameAttachmentGeneratesAgain() async throws {
         let fixture = try await Fixture()
         let document = try await fixture.stageDocument(named: "pasted-text.txt")
@@ -149,7 +142,6 @@ private actor ScriptedThumbnailGenerator: ComposerThumbnailGenerating {
         requests.append(Request(url: url, size: size, scale: scale))
         if let signal = holdSignal {
             holdSignal = nil
-            // Like Quick Look, this one answers even after its caller gave up.
             await withCheckedContinuation { continuation in
                 held = continuation
                 signal.fulfill()
@@ -158,8 +150,6 @@ private actor ScriptedThumbnailGenerator: ComposerThumbnailGenerating {
         return image
     }
 
-    /// Parks the next request until `releaseHeldRequest`, fulfilling `signal`
-    /// once it is parked.
     func holdNextRequest(signalling signal: XCTestExpectation) {
         holdSignal = signal
     }

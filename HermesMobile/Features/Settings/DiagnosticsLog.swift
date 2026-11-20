@@ -2,11 +2,6 @@ import CryptoKit
 import Foundation
 import MetricKit
 
-/// Receives MetricKit's crash, hang, CPU and disk-write diagnostics for the app's lifetime and keeps
-/// them in `DiagnosticsStore` for About → Diagnostics (#1397). `PushAppDelegate` retains one and
-/// registers it at launch. iOS decides when, and whether, to deliver a report, and only for the
-/// main app: the extensions are not covered. MetricKit calls in off the main thread, and the
-/// payload is projected and stored there; nothing is uploaded.
 final class DiagnosticsLog: NSObject, MXMetricManagerSubscriber {
     private let store: DiagnosticsStore
 
@@ -27,16 +22,11 @@ final class DiagnosticsLog: NSObject, MXMetricManagerSubscriber {
     }
 }
 
-/// One MetricKit diagnostic as Hermex keeps and copies it: its kind, the payload's time window
-/// (when the diagnostic happened, not an exact moment), the app version, numeric codes, Apple's
-/// measurement for the kind, and bounded stack frames that can be symbolicated off the device.
-/// Keys follow Apple's payload JSON so the copy reads like MetricKit's own.
 struct DiagnosticReport: Codable, Equatable {
     enum Kind: String, Codable {
         case crash, hang, cpu, diskWrites
     }
 
-    /// One thread's frames, or one aggregated tree for hang and CPU reports.
     struct CallStack: Codable, Equatable {
         var threadAttributed: Bool?
         var frames: [Frame]
@@ -44,7 +34,6 @@ struct DiagnosticReport: Codable, Equatable {
 
     struct Frame: Codable, Equatable {
         var binaryUUID: String?
-        /// The binary's file name, never its path.
         var binaryName: String?
         var offsetIntoBinaryTextSegment: Int?
         var subFrames: [Frame]?
@@ -65,14 +54,8 @@ struct DiagnosticReport: Codable, Equatable {
 }
 
 extension DiagnosticReport {
-    /// Most frames one report keeps, across all its stacks, the attributed thread first.
     static let frameBudget = 128
 
-    /// One report per diagnostic in MetricKit's payload JSON (`MXDiagnosticPayload.jsonRepresentation()`),
-    /// read tolerantly: a missing or mistyped field leaves that field nil and never drops the
-    /// diagnostic. Only the fields above are read. Exception and termination messages, VM region
-    /// info, signposts, and device, OS and locale metadata can hold user text, paths or device
-    /// details, and never leave this function.
     static func reports(fromPayload json: Data, begin: Date, end: Date) -> [DiagnosticReport] {
         guard let payload = (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] else { return [] }
         let arrays: [(Kind, String)] = [
@@ -104,7 +87,6 @@ extension DiagnosticReport {
 
     private static func callStacks(_ tree: Any?) -> [CallStack] {
         let stacks = ((tree as? [String: Any])?["callStacks"] as? [Any] ?? []).compactMap { $0 as? [String: Any] }
-        // The thread that crashed or hung comes first, so the budget spends on it.
         let ordered = stacks.filter { $0["threadAttributed"] as? Bool == true }
             + stacks.filter { $0["threadAttributed"] as? Bool != true }
         var budget = frameBudget
@@ -114,7 +96,6 @@ extension DiagnosticReport {
         }
     }
 
-    /// The frames in `list`, depth first, until `budget` runs out; nil when none are kept.
     private static func frames(_ list: Any?, budget: inout Int) -> [Frame]? {
         var frames: [Frame] = []
         for case let frame as [String: Any] in list as? [Any] ?? [] {
@@ -130,23 +111,12 @@ extension DiagnosticReport {
         return frames.isEmpty ? nil : frames
     }
 
-    /// A string field cut to a length that fits a version, UUID, binary name or measurement.
     private static func short(_ value: Any?) -> String? {
         (value as? String).map { String($0.prefix(64)) }
     }
 }
 
-/// The kept reports on disk: one JSON file per report under Application Support/Diagnostics, in the
-/// main app's container only and excluded from backup, named by a hash of its content so a
-/// repeated delivery is stored once. At most `maxCount` files, `maxAge` old and `maxBytes` in
-/// total are kept; the rest are removed on every save and every read, so an idle install never
-/// shows an expired report. Every call holds one lock, and a report received before a delete
-/// that covers it is dropped, so a delivery still in flight can't bring a deleted report back.
-/// A save that keeps a new report posts `didSaveNotification`, from the caller's thread, with the
-/// store as its object.
 final class DiagnosticsStore: @unchecked Sendable {
-    /// A kept file: its report and the exact text About previews and copies, or neither when the
-    /// file can't be read.
     struct Entry: Identifiable, Equatable {
         let id: String
         let received: Date
@@ -183,7 +153,6 @@ final class DiagnosticsStore: @unchecked Sendable {
         self.now = now
     }
 
-    /// Writes each report not already kept, dated `receivedAt`: when MetricKit handed it over.
     func save(_ reports: [DiagnosticReport], receivedAt: Date) {
         let didKeep = lock.withLock {
             var didKeep = false
@@ -214,7 +183,6 @@ final class DiagnosticsStore: @unchecked Sendable {
         }
     }
 
-    /// The kept reports, newest diagnostic window first, after removing any past the limits.
     func entries() -> [Entry] {
         lock.withLock { prunedEntries() }
     }
@@ -262,8 +230,6 @@ final class DiagnosticsStore: @unchecked Sendable {
                 text: report == nil ? nil : data.flatMap { String(data: $0, encoding: .utf8) }
             ))
         }
-        // Retention goes by receipt, but one delivery can carry several windows, so the list
-        // orders by when each diagnostic happened; an unreadable file falls back to its receipt.
         return kept.sorted {
             ($0.report?.windowEnd ?? $0.received, $0.received, $0.id) > ($1.report?.windowEnd ?? $1.received, $1.received, $1.id)
         }

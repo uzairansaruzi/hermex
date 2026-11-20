@@ -1,9 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Dictation on a Hermes host (#1071): a Hermes chat's transcriber against a scripted host.
-/// The refusals are the shapes `scripts/local-hermes` answered at the pin (0.21.5, ca678285);
-/// the success shape is read from the route at the same pin.
 @MainActor final class HermesTranscribeTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
@@ -73,7 +70,6 @@ import XCTest
         }
     }
 
-    /// A slow transcription a Cloudflare tunnel gave up on reads as the tunnel's failure.
     func testATunnelTimeoutThrowsTheConnectionsCopy() async {
         let (transcribe, _) = transcriber { request in
             request.url?.path == "/api/audio/transcribe" ? .json(524, .string("A timeout occurred")) : nil
@@ -87,7 +83,6 @@ import XCTest
         }
     }
 
-    /// A Hermes chat on the `research` Profile, with its own connection registry over the scripted host.
     private func transcriber(_ script: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> (ComposerTranscriber, HermesConnections) {
         let connections = HermesConnections(configuration: { HermesHostFixture.configuration(script) })
         let chat = HermesSessionChat(server: server, connection: record,

@@ -3,20 +3,12 @@ import Observation
 import SwiftUI
 @testable import HermesMobile
 
-/// A Hermes host scripted at the socket, so a Hermes chat runs over a real
-/// `BotClient` and the shared `HermesGateway`. A reply can follow live frames, as the
-/// host's event thread writes them ahead of it, which `BotFixtureWire` cannot show.
-/// Sockets answer off the main actor, so the script is locked.
 final class BotSocketHost: @unchecked Sendable {
     struct Reply {
         var result: BotJSON = .object([:])
-        /// A JSON-RPC error code answered instead of `result`.
         var error: Int?
-        /// The error's message.
         var message = "refused"
-        /// The error's `data`, such as a canonical host's refusal `reason`.
         var data: BotJSON = .null
-        /// Event frames written ahead of the reply.
         var before: [BotJSON] = []
     }
 
@@ -31,35 +23,22 @@ final class BotSocketHost: @unchecked Sendable {
     private var log: [BotJSON] = []
     private var waiters: [(method: String, expectation: XCTestExpectation)] = []
 
-    /// Every request the conversation sent, across its sockets, handshakes excluded.
     var requests: [BotJSON] { lock.withLock { log } }
 
-    /// Answers every later `method` call with `reply`.
     func always(_ method: String, _ reply: Reply) { lock.withLock { standing[method] = reply } }
-    /// Answers the next `method` call with `reply`, ahead of any standing one.
     func next(_ method: String, _ reply: Reply) { lock.withLock { queued[method, default: []].append(reply) } }
-    /// Leaves every later `method` call unanswered, as a reply the socket lost; it is still
-    /// logged.
     func withhold(_ method: String) { lock.withLock { _ = withheld.insert(method) } }
-    /// Answers `method` again after `withhold`.
     func allow(_ method: String) { lock.withLock { _ = withheld.remove(method) } }
-    /// Opens the next socket without `gateway.ready`, as a host stalled mid-handshake, and
-    /// fulfills `opened` as it opens.
     func stallReady(_ opened: XCTestExpectation) { lock.withLock { stalledOpen = opened } }
-    /// Fulfills `expectation` when the next `method` call arrives.
     func expect(_ expectation: XCTestExpectation, onNext method: String) {
         lock.withLock { waiters.append((method, expectation)) }
     }
 
-    /// For each `session.resume` from request `index` on, whether it asked for the transcript.
     func transcriptReads(since index: Int) -> [Bool] {
         requests.dropFirst(index).filter { $0["method"].text == "session.resume" }
             .map { $0["params"]["omit_messages"].flag != true }
     }
 
-    /// A connection to this host: an ordinary sign-in, then a scripted socket per open.
-    /// `rpcDeadline` shortens how long an unanswered call waits. `canonical` opens sockets
-    /// whose `gateway.ready` says `session_authority` (#1341), under an epoch no session replays under.
     @MainActor func connection(_ record: BotConnection, rpcDeadline: Duration = .seconds(30), canonical: Bool = false,
                                rest: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
         let ready = canonical ? #"{"replay_epoch":"socket-epoch","session_authority":true}"# : #"{"replay_epoch":"epoch"}"#
@@ -71,15 +50,13 @@ final class BotSocketHost: @unchecked Sendable {
                              socket.reply = { [weak socket, self] request in answer(request, on: socket) }
                              socket.withholdReply = { [self] request in
                                  guard lock.withLock({ withheld.contains(request["method"].text ?? "") }) else { return false }
-                                 _ = answer(request, on: nil) // logged and awaited like any call; its answer is dropped
+                                 _ = answer(request, on: nil)
                                  return true
                              }
                              return socket
                          }))
     }
 
-    /// Without a script, `session.resume` answers with the running turn, honouring
-    /// `omit_messages` as the host does, and any other method is unknown.
     private func answer(_ request: BotJSON, on socket: BotScriptedSocket?) -> BotJSON {
         let method = request["method"].text ?? ""
         let (reply, fulfilled): (Reply?, [XCTestExpectation]) = lock.withLock {
@@ -119,13 +96,6 @@ final class BotSocketHost: @unchecked Sendable {
 }
 
 extension XCTestCase {
-    /// Lets a hosted SwiftUI window apply pending state before a test reads it.
-    /// Each pass yields one main-queue turn, so queued main-actor work (a view's
-    /// `.task`, an observation callback, a deferred focus change) runs, then
-    /// lays the window out, which is where the hosting view applies that state.
-    /// Display cadence plays no part, so a runner whose display link stalls
-    /// cannot time a test out. Content produced off the main queue needs its own
-    /// signal: await the model first, or read until the content shows.
     @MainActor func settle(_ window: UIWindow, passes: Int = 3) async {
         for _ in 0..<passes {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -135,11 +105,6 @@ extension XCTestCase {
         }
     }
 
-    /// A freshly cloned CI simulator boots without the keyboard daemon. The first
-    /// focus change after a text view takes focus blocks the main thread inside
-    /// UIKit until `kbd` answers, which took 5–55 s on hosted runners, so no
-    /// test's wait is safe while it starts. `TestHostStateGuard` calls this before
-    /// the first test, where no test's clock runs; later calls return at once.
     @MainActor static func warmUpSoftwareKeyboard() {
         guard !softwareKeyboardIsWarm,
               let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first
@@ -151,7 +116,6 @@ extension XCTestCase {
         window.makeKeyAndVisible()
         let shown = XCTNSNotificationExpectation(name: UIResponder.keyboardWillShowNotification)
         field.becomeFirstResponder()
-        // The keyboard is requested on focus; giving focus up is what waits for it.
         _ = XCTWaiter().wait(for: [shown], timeout: 60)
         field.resignFirstResponder()
         window.isHidden = true
@@ -159,7 +123,6 @@ extension XCTestCase {
 
     @MainActor private static var softwareKeyboardIsWarm = false
 
-    /// Hosts `content` in a window whose scene phase `driver` sets.
     @MainActor func host(_ content: some View, phase driver: ScenePhaseDriver) throws -> UIWindow {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -170,9 +133,6 @@ extension XCTestCase {
     }
 }
 
-/// Stands in for the system's scene phase under a hosted screen, so a test can pull down
-/// Control Center (`.inactive`) or go home (`.background`). Settle the window after each
-/// change, so the screen sees every phase rather than only the last.
 @MainActor @Observable final class ScenePhaseDriver {
     var phase: ScenePhase
     init(_ phase: ScenePhase) { self.phase = phase }
@@ -200,25 +160,16 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var runtimeID = "runtime"
     var running = false
     var inflight = BotJSON.null
-    /// When the current turn began, as `turn_started_at`; nil for a host that sends none.
     var turnStartedAt: Double?
     var queued = BotJSON.null
-    /// Shorthand for "a command approval is blocking this session"; set
-    /// `pendingApproval` directly to control the payload.
     var attention = false
     var pendingApproval: BotJSON?
-    /// A `clarify` server request in `open_requests`, in the `clarify()` shape:
-    /// its `request_id` becomes the envelope id. Cleared once answered.
     var openClarify = BotJSON.null
     var openRequests = BotJSON.null
-    /// The snapshot's `pending_connection`: an open `manage_connections` operation.
     var pendingConnection = BotJSON.null
-    /// What `connection.respond` answers; by default `ok`, not settled.
     var connectionRespond: (([String: BotJSON]) throws -> BotJSON)?
     var answerRequest: ((String, [String: BotJSON]) throws -> BotJSON)?
-    /// What `approval.respond` reports unblocking.
     var approvalResolved = 1
-    /// What `request.answer` / `clarify.lock` report by default; "ok" or "expired".
     var answerStatus = "ok"
     var respondFailure: BotFailure?
     var todoState = BotJSON.null
@@ -227,10 +178,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var settingsCall: ((String, [String: BotJSON]) -> BotJSON)?
     var lookupFailure: BotFailure?
     var submitFailure: BotFailure?
-    /// What `commands.catalog` answers, and what `command.dispatch` answers for a
-    /// skill; nil means the host has no reply and the RPC fails.
     var catalog: BotJSON?
-    /// Consumed before `catalog`, so a test can change the host's answer between reads.
     var catalogQueue: [BotJSON] = []
     var catalogFailure: BotFailure?
     var dispatch: BotJSON?
@@ -252,7 +200,6 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         guard let downloadArtifact else { throw BotArtifactFailure.unavailable }
         return try await downloadArtifact(path, context)
     }
-    /// Each `keepPlatformNote`'s Profile, with how many calls had gone out by then.
     var platformNotes: [String] = []
     func keepPlatformNote(profile: String) async { platformNotes.append("\(profile) after \(calls.count) calls") }
     var connectCount = 0
@@ -324,7 +271,6 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             throw BotFailure.unsupported
         }
     }
-    /// `openRequests` plus `openClarify` as its server-request envelope.
     private var openRequestsWithClarify: BotJSON {
         guard var params = openClarify.fields else { return openRequests }
         let id = params.removeValue(forKey: "request_id") ?? .string("clr")
@@ -333,8 +279,6 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         return .array((openRequests.list ?? []) + [frame])
     }
 
-    /// The gateway's `_approval_request_payload` shape, as it reaches both the
-    /// `approval` server request and the resume snapshot.
     static func approval(id: String = "req-1", command: String = "rm -rf build",
                          choices: [String] = ["once", "session", "always", "deny"]) -> BotJSON {
         .object([
@@ -344,7 +288,6 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         ])
     }
 
-    /// The single-question `clarify` shape, plus the id its envelope carries.
     static func clarify(id: String = "clr-1", question: String = "Which mailbox first?",
                         choices: [String] = ["Primary (Recommended)", "Follow-ups"],
                         multiSelect: Bool = false) -> BotJSON {

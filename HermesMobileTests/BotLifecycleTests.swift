@@ -2,8 +2,6 @@ import SwiftData
 import XCTest
 @testable import HermesMobile
 
-/// Creating, duplicating and deleting bots: the host writes, their order, what a
-/// retry repeats, and what the phone forgets after a delete.
 @MainActor final class BotLifecycleTests: XCTestCase {
     private let server = URL(string: "https://one.example")!
     private var defaults: UserDefaults!
@@ -19,8 +17,6 @@ import XCTest
         defaults.removePersistentDomain(forName: suite)
         super.tearDown()
     }
-
-    // MARK: - Names
 
     func testProfileNamesFollowTheHostRules() {
         XCTAssertEqual(BotProfileName.slug(from: "  Chief of Staff! "), "chief-of-staff")
@@ -49,10 +45,6 @@ import XCTest
         XCTAssertEqual(wire.calls.map(\.0), [])
     }
 
-    // MARK: - Create
-
-    /// A canonical host's create titles and hides the Bot Chat itself (#1603), and has no
-    /// `session.title`: the chat is done once it's made.
     func testACanonicalCreateMakesTheChatWithoutATitleWrite() async throws {
         let (creator, wire) = try makeCreator(roster: []) { _ in }
         wire.speaksCanonicalProtocol = true
@@ -193,7 +185,6 @@ import XCTest
         XCTAssertEqual(creator.outcomes[.profile], .uncertain)
         XCTAssertEqual(creator.phase, .editing)
 
-        // The host did create it; the retry must find it instead of minting a twin.
         wire.roster = [row("fresh")]
         wire.create = { _ in XCTFail("no second create"); return .null }
         wire.calls = []
@@ -246,7 +237,6 @@ import XCTest
                                      username: "u", password: "p", hermesVersion: nil), server: server)
         let (creator, wire) = try makeCreator(roster: [], store: store)
         creator.setTitle("Fresh")
-        // The user re-pointed the Bot connection while the sheet was open.
         try store.save(BotConnection(id: UUID(), name: "Other", address: URL(string: "https://other.example")!,
                                      username: "u", password: "p", hermesVersion: nil), server: server)
 
@@ -260,7 +250,6 @@ import XCTest
     func testDisconnectDuringCreateReleasesTheSheetWithAnUncertainStep() async throws {
         let (creator, wire) = try makeCreator(roster: [])
         creator.setTitle("Fresh")
-        // BotClient closes and reports the disconnect before the suspended call throws.
         wire.create = { _ in
             wire.onDisconnect?(BotFailure.transport)
             throw BotFailure.transport
@@ -306,8 +295,6 @@ import XCTest
         XCTAssertEqual(wire.calls.map(\.0), ["profiles.create"], "the late reply wrote nothing")
     }
 
-    // MARK: - Delete
-
     func testDeleteRemovesTheHostProfileThenLocalStateAndRereadsTheRoster() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage"), row("keep")])
         wire.delete = { _ in wire.roster = [self.row("keep")] }
@@ -329,8 +316,6 @@ import XCTest
         XCTAssertEqual(BotUnreadStore(defaults: defaults).load(connectionID: inbox.connection!.id).keys.sorted(), ["keep"])
     }
 
-    /// A deleted bot's Bot Chat leaves the offline cache, so a bot made again under its name
-    /// never shows it; the other bots' stay.
     func testDeleteDropsTheBotsCachedBotChat() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage"), row("keep")])
         wire.delete = { _ in wire.roster = [self.row("keep")] }
@@ -354,10 +339,6 @@ import XCTest
                        "root")
     }
 
-    /// A bot deleted from another client leaves the offline cache when the next roster omits it,
-    /// without any `delete` here: a late chat write can't put it back, and a bot made again under
-    /// its name starts empty. Present bots and other connections' rows stay. A bot with no cached
-    /// rows yet (`fresh`) leaving the roster revokes writers too: its first read may be in flight.
     func testARosterOmittingABotDropsItsCachedBotChat() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage"), row("fresh"), row("keep")])
         let inbox = try makeInbox(wires: [wire]) { _, _ in }
@@ -417,7 +398,6 @@ import XCTest
         XCTAssertEqual(purged, 0)
         XCTAssertEqual(wire.listCalls, 1, "no automatic retry or re-read")
 
-        // The bot survived: the next roster read keeps its local state.
         wire.emit("sessions.changed")
         await settle(inbox) { $0.profiles.map(\.id) == ["triage"] && wire.listCalls == 2 }
         XCTAssertEqual(purged, 0)
@@ -439,8 +419,6 @@ import XCTest
         XCTAssertEqual(BotUnreadStore(defaults: defaults).load(connectionID: inbox.connection!.id).keys.sorted(), ["keep"])
     }
 
-    // MARK: - Helpers
-
     private func makeCreator(roster: [BotJSON], source: BotProfile? = nil, store: BotConnectionStore? = nil,
                              onCreated: @escaping (String) -> Void = { _ in }) throws -> (BotCreator, BotLifecycleFixtureWire) {
         let store = try store ?? {
@@ -456,7 +434,6 @@ import XCTest
         return (creator, wire)
     }
 
-    /// Waits for `condition` through Observation rather than sleeping.
     private func settle(_ inbox: BotInbox, until condition: @escaping @MainActor (BotInbox) -> Bool) async {
         let done = expectation(description: "inbox settled")
         Task { @MainActor in
@@ -490,8 +467,6 @@ import XCTest
     }
 }
 
-/// Answers the create flow's calls with overridable handlers and lets a test park
-/// `profiles.create` to leave the screen mid-write.
 @MainActor final class BotLifecycleFixtureWire: BotTransport {
     var replayEpoch: String? = "epoch"
     var speaksCanonicalProtocol = false
@@ -504,7 +479,6 @@ import XCTest
     var sessionCreate: (([String: BotJSON]) throws -> BotJSON)?
     var title: (([String: BotJSON]) throws -> BotJSON)?
     var calls: [(String, [String: BotJSON])] = []
-    /// Each `keepPlatformNote`'s Profile, with the last call sent before it.
     var platformNotes: [String] = []
     func keepPlatformNote(profile: String) async { platformNotes.append("\(profile) after \(calls.last?.0 ?? "nothing")") }
     var onCall: ((String) -> Void)?

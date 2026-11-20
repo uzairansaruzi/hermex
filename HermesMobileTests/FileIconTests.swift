@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Icon precedence for filenames: exact name, then `tsconfig.*.json`, then the longest
-/// extension chain, then the default document glyph.
 final class FileIconTests: XCTestCase {
     func testLongestExtensionChainWins() {
         XCTAssertEqual(FileIcon.resolve(".env.local"), .text)

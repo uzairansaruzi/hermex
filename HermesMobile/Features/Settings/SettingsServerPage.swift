@@ -1,9 +1,6 @@
 import SwiftData
 import SwiftUI
 
-/// One server's page (#1252): its identity, then its connection and sessions, then the way to
-/// switch to it, sign out of it, or remove it. The active server's sections load from it;
-/// another server shows only what this iPhone saved.
 struct SettingsServerPage: View {
     @Bindable var authManager: AuthManager
     let account: ServerAccount
@@ -17,12 +14,8 @@ struct SettingsServerPage: View {
     @State private var isConfirmingRemove = false
     @State private var isConfirmingSignOut = false
     @State private var isRemoving = false
-    /// Set only while this is the active webui server, the one kind whose page loads settings.
     @State private var webui: WebuiServerSettingsModel?
-    /// The active Hermes server's saved connection, read on appear (#899): its username shows
-    /// on the connection row, and Archived Sessions reads through it (#1048).
     @State private var hermesConnection: BotConnection?
-    /// What a Webapp says about the Profiles it serves (#1611), read on appear after the connection.
     @State private var profileServing: HermesProfileServing?
     @State private var moveRequest: MoveToHermesRequest?
 
@@ -46,7 +39,6 @@ struct SettingsServerPage: View {
     private var isActive: Bool { account.id == authManager.activeServerID }
     private var hasOtherServers: Bool { authManager.servers.count > 1 }
     private var hostFallback: String { server?.host ?? account.urlString }
-    /// The active Hermes server, whose page shows its sign-in, release, and update standing.
     private var activeHermesServer: URL? { isActive && account.kind == .hermes ? server : nil }
 
     var body: some View {
@@ -75,15 +67,11 @@ struct SettingsServerPage: View {
             accountSections
         }
         .settingsPage(displayName.isEmpty ? hostFallback : displayName)
-        // Persist identity edits to this server's registry entry. When it's the
-        // active server, the registry mirrors them into the global @AppStorage so
-        // the avatar / header tint update live (#17).
         .onChange(of: displayName) { persistIdentity() }
         .onChange(of: initials) { persistIdentity() }
         .onChange(of: colorHex) { persistIdentity() }
         .task {
             guard let server = activeHermesServer else { return }
-            // A Hermes server has no webui to load from, so no webui 401 can sign it out (#899).
             hermesConnection = try? BotConnectionStore().load(server: server)
             let updates = HermesUpdateModel.for(server: server)
             updates.onUpdated = { version in
@@ -91,8 +79,6 @@ struct SettingsServerPage: View {
             }
             await updates.appear()
         }
-        // Its own task, so a slow host never holds up the update check, and a read that ends after
-        // the page leaves changes nothing.
         .task(id: hermesConnection?.id) {
             guard let server = activeHermesServer, let hermesConnection else { return }
             let read = await ProfileServingSection.read(connection: hermesConnection, server: server)
@@ -115,10 +101,6 @@ struct SettingsServerPage: View {
             Button("Cancel", role: .cancel) {}
             Button("Sign Out", role: .destructive) {
                 Task {
-                    // Purge this server's offline cache before signing out, while
-                    // the view (and its modelContext) is still alive. Best-effort:
-                    // the cache is server-keyed, so a leftover row can never surface
-                    // as another server's.
                     if let server { try? CacheStore.clearCache(for: server, in: modelContext) }
                     await authManager.signOut()
                     dismiss()
@@ -135,10 +117,6 @@ struct SettingsServerPage: View {
         }
     }
 
-    /// The active Hermes server's sign-in, with its headers, the release saved at that sign-in,
-    /// and the host's update standing (#1075), a Webapp's unserved Profiles (#1611), then its archived
-    /// sessions and which sessions it lists (#1674), the home's Main Page switches (#1585), a Profile's
-    /// default model (#1670), API keys (#1318) and plugins (#1582), and its offline data.
     @ViewBuilder
     private func hermesSections(server: URL) -> some View {
         Section {
@@ -222,7 +200,6 @@ struct SettingsServerPage: View {
         }
     }
 
-    /// A server that isn't active shows what this iPhone saved for it, and its Hermes sign-in.
     @ViewBuilder
     private var inactiveServerSection: some View {
         Section {
@@ -234,9 +211,6 @@ struct SettingsServerPage: View {
                 SettingsStatusPill(label: String(localized: "Inactive"))
             }
 
-            // Not behind the Bot Mode preview gate (#557): this login is what push pairing
-            // needs. On a Hermes server it is the server's own sign-in, and saving it signs a
-            // signed-out server back in (#899).
             if let server {
                 NavigationLink {
                     BotConnectionView(server: server) { authManager.hermesSignInSaved(server: server) }
@@ -263,8 +237,6 @@ struct SettingsServerPage: View {
             }
         }
 
-        // Signing out keeps a Hermes server and shows its sign-in form (#899); a webui
-        // server's sign-out removes it, below.
         if activeHermesServer != nil {
             Section {
                 Button(String(localized: "Sign Out of This Server"), role: .destructive) {
@@ -303,28 +275,17 @@ struct SettingsServerPage: View {
     private func remove() async {
         let wasActive = isActive
         isRemoving = true
-        // Purge this server's offline cache *before* removing it, while
-        // the view (and its modelContext) is still alive — removing the
-        // active server flips auth state and tears this stack down on
-        // its own. Best-effort: the cache is server-keyed, so a leftover
-        // row can never surface as another server's content (#18, PR
-        // #286 W2).
         if let server {
             try? CacheStore.clearCache(for: server, in: modelContext)
             await ChatDraftStore.shared.discardDrafts(for: server)
         }
         await authManager.removeServer(account)
-        // Only a non-active removal leaves this view alive to reset its
-        // state and pop; the active-server case is already torn down.
         if !wasActive {
             isRemoving = false
             dismiss()
         }
     }
 
-    /// Whether this page's remove button signs out of the active webui server, which also
-    /// removes it. An active Hermes server is removed here under that name instead, because
-    /// its Sign Out keeps the server and shows its sign-in form (#899).
     private var signsOut: Bool { isActive && account.kind == .webui }
 
     private var removeButtonTitle: String {
@@ -337,7 +298,6 @@ struct SettingsServerPage: View {
         return String(localized: "Remove this server?")
     }
 
-    /// What removing a server a move involves leaves behind and keeps routing (S2, S3).
     private var moveRemovalMessage: String? {
         MoveToHermesRemoval.message(for: account, servers: authManager.servers)
     }
@@ -350,7 +310,6 @@ struct SettingsServerPage: View {
 
     private var removeAlertMessage: String {
         guard let moved = moveRemovalMessage else { return usualRemovalMessage }
-        // S2 replaces the usual copy for a webui server; a destination keeps it and adds S3.
         return signsOut || isActive || account.kind == .hermes ? usualRemovalMessage + " " + moved : moved
     }
 
@@ -371,9 +330,6 @@ struct SettingsServerPage: View {
     }
 }
 
-/// A webui server's Move to Hermes section (#1218): A1 before a move, then where it stands (1A):
-/// moving, paused, finished with its report waiting for Done, or moved. Each sets the request
-/// the page opens the guided sheet for.
 private struct MoveToHermesSection: View {
     @Bindable var authManager: AuthManager
     let account: ServerAccount
@@ -410,7 +366,6 @@ private struct MoveToHermesSection: View {
         }
     }
 
-    /// The host this server's saved Hermes sign-in names, as the move would show it.
     private var savedHost: String? {
         guard let url = URL(string: account.id),
               let saved = try? BotConnectionStore(keychain: authManager.keychain).load(server: url) else { return nil }
@@ -440,7 +395,6 @@ private struct MoveToHermesSection: View {
         }
     }
 
-    /// Chats the last count left only here, or unknown: never zero when the move couldn't count.
     private func onlyHere(_ report: MovedWebuiReport?) -> String {
         guard let remaining = report?.remaining, let unchecked = report?.unchecked else { return String(localized: "Not counted") }
         return String(localized: "\(remaining + unchecked) chats")
@@ -452,7 +406,6 @@ private struct MoveToHermesRequest: Identifiable {
     var id: String { "\(entry)" }
 }
 
-/// The per-server "Bot Screen (beta)" switch (#1567), off by default.
 private struct BotScreenToggleSection: View {
     @AppStorage private var isEnabled: Bool
     private let server: URL
@@ -470,7 +423,6 @@ private struct BotScreenToggleSection: View {
         } appFooter: {
             Text("Watch and control this host's screen. Anyone with this server's login could do the same.")
         }
-        // Turning it off also hands back any control, since nothing would show that it's held.
         .onChange(of: isEnabled) {
             if !isEnabled { Task { await ScreenHolds.handBackAll(server: server) } }
         }

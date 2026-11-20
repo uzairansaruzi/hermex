@@ -1,13 +1,8 @@
 import SwiftUI
 
-/// Workspace-registry management sheet (issue #22): add, rename, reorder, and
-/// remove registered workspaces. Removal only unregisters a path from the
-/// server's list — it never deletes files — and is confirmation-gated.
 struct WorkspaceManagerView: View {
     @State private var viewModel: WorkspaceRegistryViewModel
 
-    /// Called when the sheet disappears after at least one successful mutation,
-    /// so the presenting surface can refresh its own copy of the registry.
     private let onRegistryChanged: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -42,12 +37,6 @@ struct WorkspaceManagerView: View {
                 if !viewModel.rows.isEmpty {
                     Section {
                         ForEach(viewModel.rows, id: \.path) { workspace in
-                            // moveDisabled/deleteDisabled block new drags and
-                            // swipe-deletes while a mutation is in flight:
-                            // actor reentrancy across the network await would
-                            // otherwise let overlapping mutations race (the
-                            // view model's generation guard is the second
-                            // line of defense).
                             workspaceRow(workspace)
                                 .moveDisabled(viewModel.isMutating)
                                 .deleteDisabled(viewModel.isMutating)
@@ -130,10 +119,6 @@ struct WorkspaceManagerView: View {
                 titleVisibility: .visible,
                 presenting: viewModel.pendingRemoval
             ) { workspace in
-                // `presenting:` hands the staged workspace to this closure at
-                // presentation time — the dismissal binding clears
-                // `pendingRemoval` before this async task runs, so the target
-                // must not be re-read from the view model here.
                 Button("Remove", role: .destructive) {
                     Task { @MainActor in
                         await viewModel.confirmRemoval(of: workspace)
@@ -209,8 +194,6 @@ struct WorkspaceManagerView: View {
     }
 }
 
-/// Add-workspace form: path (with server suggestions), optional display name,
-/// and an opt-in "create the folder" flag mirroring the web UI's Add Space.
 private struct WorkspaceAddSheet: View {
     let viewModel: WorkspaceRegistryViewModel
 

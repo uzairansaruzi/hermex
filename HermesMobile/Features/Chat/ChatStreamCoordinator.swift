@@ -13,8 +13,6 @@ struct ChatStreamCoordinatorTiming: Equatable {
     let reconnectInterval: TimeInterval
     let runningToolReconnectInterval: TimeInterval
     let statusPollCooldown: TimeInterval
-    // Transport quieter than this is treated as provably alive; must sit above
-    // the server's ~5s SSE heartbeat cadence and below reconnectInterval (#227).
     let transportFreshInterval: TimeInterval
 
     static let standard = ChatStreamCoordinatorTiming(
@@ -26,12 +24,9 @@ struct ChatStreamCoordinatorTiming: Equatable {
     )
 }
 
-/// Delays between reconnect status probes. Production sleeps; tests inject a no-op
-/// so the retry loop can be asserted without waiting (#537).
 typealias ChatStreamReconnectDelay = @Sendable (TimeInterval) async throws -> Void
 
 enum ChatStreamReconnectBackoff {
-    /// Delays after the initial probe: three retries at 1s, 2s, and 4s.
     static let delays: [TimeInterval] = [1, 2, 4]
     static let maxProbeAttempts = delays.count + 1
 
@@ -55,7 +50,6 @@ struct ChatStreamSnapshotRestoreResult: Equatable {
     )
 }
 
-/// Span of a finished run and how it ended; the view model keys it to a turn.
 struct ChatRunEnding: Equatable {
     let startedAt: Date
     let endedAt: Date
@@ -110,13 +104,6 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorEnqueuePendingSteerLeftover(_ text: String) -> Bool
 }
 
-/// The run lifecycle `ChatViewModel` reads and drives whichever backend runs the chat's
-/// turns: a webui server's SSE streams (`ChatStreamCoordinator`) or a Hermes session on
-/// the gateway socket (`HermesChatTurnCoordinator`, #1010). Both feed the same
-/// `ChatStreamCoordinatorDelegate`, so transcript building, pacing and run endings stay
-/// shared. `activeStreamID` names the running turn: a webui stream id, or a Hermes turn
-/// identity. Starting, cancelling and reconciling a webui session load stay on
-/// `ChatStreamCoordinator`, since they speak its REST contract.
 @MainActor
 protocol ChatTurnCoordinating: AnyObject {
     var activeStreamID: String? { get }
@@ -126,9 +113,7 @@ protocol ChatTurnCoordinating: AnyObject {
     var successfulResponseCompletion: ChatStreamCoordinator.SuccessfulResponseCompletion? { get }
     var liveTokensPerSecond: Double? { get }
     var hasCompletedCurrentResponse: Bool { get }
-    /// The chat left or backgrounded mid-turn; `reconnectIfNeeded` resumes it.
     var isConnectionSuspended: Bool { get }
-    /// Events may repeat text the transcript already holds, so appends deduplicate.
     var isReplayConnection: Bool { get }
 
     func attach(delegate: any ChatStreamCoordinatorDelegate)
@@ -153,13 +138,9 @@ final class ChatStreamCoordinator {
     private let ratingPromptState: RatingPromptState
     private let timing: ChatStreamCoordinatorTiming
     private let reconnectDelay: ChatStreamReconnectDelay
-    /// Whether the device has a network. False parks recovery in
-    /// `.waitingForNetwork` without probing; tests pass a fake.
     private let isNetworkAvailable: @MainActor () -> Bool
     private var showsLiveActivityResponseExcerpts: Bool
 
-    /// Retains hydration requirements through transport teardown, which can arrive
-    /// before SwiftUI observes the successful completion.
     struct SuccessfulResponseCompletion {
         let streamID: String
         let needsTranscriptRefresh: Bool
@@ -175,29 +156,12 @@ final class ChatStreamCoordinator {
             }
         }
     }
-    /// When the run behind the current stream started. Seeded by the caller from
-    /// the server's `pending_started_at` (session load and `/api/chat/start`),
-    /// then the latest user message's timestamp, and only failing both from the
-    /// local moment this coordinator discovered the stream. Keyed to stream
-    /// identity, so a same-stream reattach keeps counting from the same instant
-    /// instead of restarting "Working for" on every return to the session.
     private(set) var activeRunStartedAt: Date?
-    /// The last run's span and how it ended, recorded the moment the run stops
-    /// counting (`done` or teardown) so the delegate can key it to a turn.
-    /// Cleared when the next run starts, so a stale ending never outlives it.
     private(set) var latestRunEnding: ChatRunEnding?
     private(set) var recoveryState: ActiveStreamRecoveryState = .idle
     private(set) var isConnectionSuspended = false
     private(set) var hasCompletedCurrentResponse = false
-    /// Terminal-content fence (#288 review): set when the response completes and
-    /// NOT cleared by finishStream, so content queued after `done → streamEnd`
-    /// still cannot reach the transcript. Cleared only by the next run start /
-    /// new-response preparation / session load.
     @ObservationIgnored private var isTerminalContentFenceActive = false
-    /// Per-run one-shot teardown owner. The first caller of finishStream owns
-    /// teardown; later terminal events are ignored so delegate finish, snapshot
-    /// cleanup, queue drain, and title-refresh side effects cannot repeat.
-    /// Reset wherever the content fence disarms.
     @ObservationIgnored private var isTransportFinished = false
     @ObservationIgnored private(set) var lastEventID: String?
     @ObservationIgnored private(set) var lastProgressDate: Date?
@@ -206,10 +170,6 @@ final class ChatStreamCoordinator {
     @ObservationIgnored private var lastRecoveryStatusCheckDate: Date?
     @ObservationIgnored private var hasInMemorySnapshotForActiveStream = false
     private(set) var isReplayConnection = false
-    // Foreground activation and view appearance can both request recovery for the
-    // same suspended stream. Share one recovery task so callers cannot duplicate
-    // status checks or transcript loads. Identity and generation fence late work
-    // from a replacement run.
     private var reconnectTask: (
         id: UUID,
         streamID: String,
@@ -218,9 +178,6 @@ final class ChatStreamCoordinator {
         task: Task<Void, Never>
     )?
     private var reconnectTranscriptLoadTaskID: UUID?
-    // Bumped whenever the active run starts or finalizes. Captured before an async
-    // transcript load so a concurrent cancel/completion during the load can't be
-    // double-finalized (PR #266 review #2).
     private var runGeneration = 0
 
     init(
@@ -275,16 +232,10 @@ final class ChatStreamCoordinator {
         isTransportFinished
     }
 
-    /// Test seam for the clock-skew clamp: production callers always seed with
-    /// the current instant, which tests cannot advance.
     func seedActiveRunStartForTesting(_ startedAt: Date?, now: Date) {
         seedActiveRunStart(startedAt, now: now)
     }
 
-    /// `runStartedAt` is the run's real start when the caller knows it — the
-    /// server's `pending_started_at` from `/api/chat/start`, else the local send
-    /// time. Reconnects and replays pass nil: they rejoin the same stream, whose
-    /// start is already recorded.
     func start(
         streamID: String,
         replayAfterSeq: Int? = nil,
@@ -366,10 +317,6 @@ final class ChatStreamCoordinator {
             return false
         }
 
-        // A same-stream `start()` (foreground reconnect / replay) bumps
-        // `runGeneration` without replacing the server run. Stream identity is
-        // the successor fence; generation would treat that restart as a new
-        // authority and drop the uncached optimistic row.
         guard activeStreamID == activeStreamIDBeforeLoad else {
             return false
         }
@@ -379,10 +326,6 @@ final class ChatStreamCoordinator {
         return loadedActiveStreamID == activeStreamIDBeforeLoad
     }
 
-    /// `runStartedAt` is when the loaded session says its in-flight turn started
-    /// (`pending_started_at`, else the latest user message's timestamp). Adopting
-    /// a running stream counts from there instead of from this load, so returning
-    /// to a session never restarts its "Working for" counter.
     func reconcileSessionLoad(
         loadedActiveStreamID rawLoadedActiveStreamID: String?,
         preparation: ChatStreamLoadPreparation,
@@ -469,10 +412,6 @@ final class ChatStreamCoordinator {
         await task.value
     }
 
-    /// The open chat calls this when the device's network path changes (#869).
-    /// A suspended stream retries at once through the single-flight reconnect,
-    /// so a flapping path joins one attempt. A live stream that was waiting
-    /// drops back to idle, and the stale-stream loop decides whether to probe.
     func networkPathDidChange(modelContext: ModelContext? = nil) async {
         if isConnectionSuspended {
             await reconnectIfNeeded(modelContext: modelContext)
@@ -492,8 +431,6 @@ final class ChatStreamCoordinator {
                 streamID: streamID,
                 runGeneration: runGeneration
             ) else { return }
-            // Offline: end the attempt uncounted and stay suspended; the
-            // network's return starts a fresh one.
             guard networkAllowsStatusProbe() else { return }
             let runStartedAt = activeRunStartedAt
 
@@ -522,12 +459,6 @@ final class ChatStreamCoordinator {
                     if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
                         delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                     }
-                    // Resume from the last event this process rendered (#599): a
-                    // cursorless attach can replay the run from the start and
-                    // duplicate text already on screen. A cold process with no
-                    // snapshot asks the journal for the whole run so the loaded
-                    // partial transcript fills in before `done`. A snapshot or an
-                    // unparseable cursor keeps an ordinary connection.
                     let replayAfterSeq: Int?
                     if response.replayAvailable != true {
                         replayAfterSeq = nil
@@ -558,9 +489,6 @@ final class ChatStreamCoordinator {
                           canFinalizeRunAfterLoad(streamID: streamID, capturedGeneration: runGeneration)
                     else { return }
 
-                    // #246: the server reports the run is over. Finalize it (and end
-                    // the Live Activity) instead of re-arming and leaving it dangling
-                    // on "running" when no assistant reply surfaced.
                     finalizeInactiveStream(streamID: streamID, runStartedAt: runStartedAt)
                 }
                 return
@@ -587,8 +515,6 @@ final class ChatStreamCoordinator {
                 }
 
                 let isTransientFailure = Self.isTransientReconnectFailure(error)
-                // The probe failed because the network went away: wait for it
-                // instead of spending the rest of the budget on an error (#869).
                 if isTransientFailure, !isNetworkAvailable() {
                     if reconnectTaskIsCurrent(
                         reconnectTaskID: reconnectTaskID,
@@ -621,8 +547,6 @@ final class ChatStreamCoordinator {
         }
     }
 
-    /// Transient tunnel/connectivity failures that are worth retrying inside the
-    /// reconnect budget. Auth, decoding, and ordinary HTTP errors surface once (#537).
     nonisolated static func isTransientReconnectFailure(_ error: Error) -> Bool {
         switch error {
         case APIError.network(let underlying):
@@ -656,9 +580,6 @@ final class ChatStreamCoordinator {
         }
     }
 
-    /// Finishes the run from the server's transcript when the server says it
-    /// ended and its reply is saved; otherwise leaves the live SSE to finish it.
-    /// Used by the foreground refresh and by a steer that found the run ended.
     func refreshTranscriptIfCompleted(
         streamID expectedStreamID: String,
         modelContext: ModelContext? = nil
@@ -673,16 +594,9 @@ final class ChatStreamCoordinator {
             guard response.active == false else { return }
 
             await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
-            // Bail if a concurrent completion/cancel/new run finalized or replaced
-            // this run during the load (see canFinalizeRunAfterLoad).
             guard canFinalizeRunAfterLoad(streamID: expectedStreamID, capturedGeneration: generation) else { return }
 
             guard delegate?.streamCoordinatorLatestServerLoadHadAssistantResponseAfterLatestUser == true else {
-                // Foreground safety net: the live SSE is still connected and owns
-                // completion, so a status poll that briefly reports inactive must
-                // not finalize the run — keep waiting for the real `.done`. (This
-                // is why #246's finalize-on-reopen fix deliberately excludes this
-                // path; see finalizeInactiveStream.)
                 activeStreamID = expectedStreamID
                 isConnectionSuspended = false
                 return
@@ -690,8 +604,6 @@ final class ChatStreamCoordinator {
 
             completeResponseFromRefreshedTranscriptAndFinishStream(streamID: expectedStreamID)
         } catch {
-            // This is a foreground safety net. The primary SSE path owns visible
-            // stream errors; a failed status poll should not interrupt it.
             chatStreamCoordinatorLogger.warning(
                 "Active stream status refresh failed category=\(APIError.privacySafeLogCategory(for: error), privacy: .public)"
             )
@@ -745,10 +657,6 @@ final class ChatStreamCoordinator {
 
         let transportElapsed = now.timeIntervalSince(lastTransportActivityDate ?? lastProgressDate)
         guard transportElapsed >= timing.transportFreshInterval else {
-            // #227: heartbeats prove the connection is alive during a
-            // semantically quiet window (model thinking / slow tool call), so
-            // stay idle and skip status polls. A genuinely silent transport
-            // still escalates below once past transportFreshInterval.
             setRecoveryStateIfChanged(.idle)
             return
         }
@@ -800,12 +708,6 @@ final class ChatStreamCoordinator {
     }
 
     private func handle(_ event: SSEEvent) {
-        // Terminal-content fence (#288): once the response has completed, late
-        // content must never reach the transcript. The fence survives streamEnd
-        // (finishStream resets hasCompletedCurrentResponse but not the fence),
-        // closing the done → streamEnd → token ordering. Title and metering are
-        // session metadata and still pass; a settled completion is never
-        // re-ended by late error/cancel (#288 review).
         if isTerminalContentFenceActive {
             switch event {
             case .title(let payload):
@@ -820,17 +722,10 @@ final class ChatStreamCoordinator {
                 setLiveTokensPerSecondIfChanged(payload.displayableTokensPerSecond)
                 return
             case .done:
-                // Duplicate done after completion — already finalized; ignore.
                 return
             case .heartbeat, .ignored:
                 break
             case .transportError, .cancelled, .error, .streamEnd:
-                // Settled completion wins: tear down exactly once without
-                // publishing a second Live Activity end or repeating delegate
-                // finish/drain/title-refresh side effects. transportError after
-                // done must still finish (snapshot cleanup, queued-slash drain,
-                // completed-title refresh) — it previously fell through to the
-                // pre-change handleTransportError path (PR #295 re-gate).
                 finishStream()
                 return
             case .token, .interimAssistant, .reasoning, .toolStarted, .toolCompleted,
@@ -916,10 +811,6 @@ final class ChatStreamCoordinator {
             handleTransportError(message)
         case .heartbeat:
             delegate?.streamCoordinatorDidConfirmRecovery()
-            // #227: a heartbeat proves the transport is alive without carrying
-            // semantic progress — drop an already-shown "Checking stream" state
-            // immediately. Never demote .reconnecting; that chip is owned by
-            // the reconnect flow until real progress lands.
             if recoveryState == .checking {
                 setRecoveryStateIfChanged(.idle)
             }
@@ -929,8 +820,6 @@ final class ChatStreamCoordinator {
     }
 
     private func handleTransportError(_ message: String) {
-        // webui closes the socket right after `cancel` or `error`, and the SSE
-        // library reports that close; a finished run has nothing left to fail.
         guard !isTransportFinished else { return }
         setLiveTokensPerSecondIfChanged(nil)
         guard activeStreamID != nil, !hasCompletedCurrentResponse else {
@@ -956,9 +845,6 @@ final class ChatStreamCoordinator {
         }
     }
 
-    /// Parks recovery in `.waitingForNetwork` and returns false while the
-    /// device is offline, so no status probe is sent (#869). Online, it lifts
-    /// an earlier wait so a failing probe can't leave that label behind.
     private func networkAllowsStatusProbe() -> Bool {
         guard isNetworkAvailable() else {
             setRecoveryStateIfChanged(.waitingForNetwork)
@@ -992,9 +878,6 @@ final class ChatStreamCoordinator {
 
             if response.active == false {
                 await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
-                // Same generation/clobber guard as the reconnect and refresh paths;
-                // the extra `!isConnectionSuspended` keeps the reconnect path owning
-                // a stream that was suspended mid-load. (PR #266 review #3)
                 guard canFinalizeRunAfterLoad(streamID: expectedStreamID, capturedGeneration: generation),
                       !isConnectionSuspended else { return }
 
@@ -1002,11 +885,6 @@ final class ChatStreamCoordinator {
                 return
             }
 
-            // PR #238 review: recoveryState was set to .checking before this
-            // await. If it changed mid-flight (a heartbeat or real progress
-            // demoted it to .idle), the transport just proved itself alive —
-            // don't resurrect the chip or churn a live connection; the next
-            // recovery tick re-evaluates from scratch.
             guard recoveryState == .checking, forceReconnect else { return }
 
             reconnectStaleStream(
@@ -1028,8 +906,6 @@ final class ChatStreamCoordinator {
                 return
             }
 
-            // Same mid-flight demotion guard as the success path (PR #238
-            // review): only a still-.checking state may escalate.
             guard recoveryState == .checking,
                   forceReconnect,
                   activeStreamID == expectedStreamID,
@@ -1084,39 +960,16 @@ final class ChatStreamCoordinator {
     }
 
     private func completeResponseFromRefreshedTranscriptAndFinishStream(streamID completedStreamID: String?) {
-        // The owned transcript load may have reconciled activeStreamID to nil.
         completeCurrentResponse(needsTranscriptRefresh: false, completedStreamID: completedStreamID)
         delegate?.streamCoordinatorRemoveSnapshot(streamID: completedStreamID)
         finishStream()
     }
 
-    /// Whether `self` may still finalize the run captured before an awaited
-    /// transcript load. Returns false (bail) when a concurrent completion / cancel
-    /// / new run bumped the generation — finalizing would double-finalize — or when
-    /// a *different* run is now active — finalizing would clobber the newer stream.
-    /// A run reconciled to `nil` during the load still passes: it should be
-    /// finalized from the refreshed transcript so its Live Activity can't dangle on
-    /// "running" (#246). Shared by all three post-load finalize paths
-    /// (reconnect-after-suspend, foreground refresh, stale recovery) so they stay in
-    /// lockstep — recoverStaleStream previously used a stricter, hand-rolled guard.
-    /// (PR #266 review #3)
     private func canFinalizeRunAfterLoad(streamID: String, capturedGeneration: Int) -> Bool {
         guard runGeneration == capturedGeneration else { return false }
         return activeStreamID == nil || activeStreamID == streamID
     }
 
-    /// The server reports this stream is no longer active. Complete from the
-    /// just-refreshed transcript when an assistant reply surfaced, otherwise
-    /// finalize as failed. Either branch ends the Live Activity, so it can never
-    /// dangle on "running" after the run is over (#246). Shared by the two paths
-    /// with no live SSE behind them — reconnect-after-suspend and stale recovery.
-    /// The foreground transcript-refresh safety net deliberately keeps waiting
-    /// instead, because its live SSE still owns completion.
-    ///
-    /// `runStartedAt` is the run's start captured before the awaited transcript
-    /// load. A load that finds the stream gone clears the live run start, so a
-    /// failure is recorded against the captured one and the chat still alerts for
-    /// it, the way the Live Activity says "Response failed" (#862).
     private func finalizeInactiveStream(streamID: String?, runStartedAt: Date?) {
         if delegate?.streamCoordinatorLatestServerLoadHadAssistantResponseAfterLatestUser == true {
             completeResponseFromRefreshedTranscriptAndFinishStream(streamID: streamID)
@@ -1156,24 +1009,12 @@ final class ChatStreamCoordinator {
         }
     }
 
-    /// Adopts a server-known start for the run that is now active, replacing the
-    /// local stamp `activeStreamID`'s observer laid down. Every seed a caller can
-    /// supply is stable across re-entry, so applying one on a same-stream
-    /// reattach sharpens the counter rather than restarting it; a nil seed leaves
-    /// the discovery stamp alone. A future-dated seed (clock skew between phone
-    /// and server) is clamped to `now` so the label never counts backwards, and
-    /// the earliest start known for this stream wins: a re-seed can only move the
-    /// start earlier, never forward onto a fresh `now`, which would restart
-    /// "Working for" on every reload of a session a skewed server is running.
     private func seedActiveRunStart(_ startedAt: Date?, now: Date = Date()) {
         guard activeStreamID != nil, let startedAt else { return }
         let clamped = min(startedAt, now)
         activeRunStartedAt = min(activeRunStartedAt ?? clamped, clamped)
     }
 
-    /// Records the run's span once. `completeCurrentResponse` already cleared
-    /// the run start for a normal completion, so a later teardown event (a
-    /// `streamEnd` or `cancelled` after `done`) cannot overwrite that ending.
     private func recordRunEndingIfRunning(_ ending: TranscriptTurnRunOutcome.Ending) {
         guard let activeRunStartedAt else { return }
         latestRunEnding = ChatRunEnding(startedAt: activeRunStartedAt, endedAt: Date(), ending: ending)
@@ -1199,10 +1040,6 @@ final class ChatStreamCoordinator {
             await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
             guard reconnectTranscriptLoadTaskID == reconnectTaskID else { return false }
 
-            // The transport-error path can begin recovery without persistence
-            // access. If a foreground caller supplied it while that nil-context
-            // load was in flight, repeat the shared load once so optimistic
-            // messages and the cache participate in reconciliation.
             if modelContext == nil, recoveryModelContext(for: reconnectTaskID) != nil {
                 continue
             }
@@ -1294,9 +1131,6 @@ final class ChatStreamCoordinator {
         delegate?.streamCoordinatorDidResetRecoveryState()
     }
 
-    /// Called right after `seedActiveRunStart`, so the widget's system elapsed
-    /// timer starts from the same instant as the in-app "Working for" label
-    /// rather than from the moment this process attached to the stream (#406).
     private func startLiveActivity(streamID: String) {
         guard let sessionID = delegate?.streamCoordinatorSessionID else { return }
 
@@ -1309,9 +1143,6 @@ final class ChatStreamCoordinator {
         )
     }
 
-    /// Restores `streamID`'s snapshot while a session load adopts it. Adopting a
-    /// different stream first drops the previous stream's resume cursor, so its
-    /// seq is never sent as `after_seq` for the new run (#599).
     private func restoreLoadedStreamSnapshot(streamID: String, preparation: ChatStreamLoadPreparation) {
         guard preparation.activeStreamIDBeforeLoad != streamID else {
             restoreSnapshotIfAvailable(streamID: streamID)

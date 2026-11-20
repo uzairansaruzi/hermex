@@ -1,318 +1,117 @@
 import Foundation
 
-/// The host's `approvals.mode`, the three values `config.set` accepts at the pinned commit.
 enum HermesApprovalMode: String, CaseIterable, Sendable {
     case smart, manual, off
 }
 
-/// Every JSON-RPC request Hermex sends to a direct Hermes gateway: one case per
-/// operation the app uses, and deliberately none for any other upstream method.
-/// A case carries only what its callers vary. Values the contract fixes for
-/// Hermex (the canonical Bot Chat title, `queued`, the avatar asset, the room
-/// page size) are written here, so no caller can widen a request.
-///
-/// `params()` is the only way to the wire. It runs admission first, for the
-/// value rules the types cannot express (a non-empty session, a bare skill
-/// name, a valid room id), so `BotClient` never sends a refused request.
 enum HermesCall: Equatable, Sendable {
-    /// The exact title of a bot's one canonical chat, as Desktop names it.
     static let botChatTitle = "Bot Chat"
-    /// Room lists are read in the host's largest page.
     static let roomPageSize = 500
-    /// The surface every session Hermex creates or resumes runs as (#1278). The host picks the
-    /// agent's note about the screen it is talking to by this name, and without one it assumes
-    /// its terminal UI, whose note tells the agent it cannot send files. `gui` for two reasons
-    /// (#1335): the host has no note of its own for it, so `HermesREST.platformNote`, which
-    /// Hermex keeps in each Profile's config, is the only one the agent gets; and a gateway
-    /// beside the dashboard takes an edit to a session it hasn't loaded only from a local
-    /// source, which `hermex` was not. Desktop's in-process chats run as `desktop` and never read
-    /// this note, but one a gateway runs in a managed worker (safe mode, or a custom provider)
-    /// does; no other name the gateway accepts lacks a note of its own. On the canonical
-    /// protocol `gui` means Desktop.
     static let source = "gui"
 
-    // Profiles
     case profilesList(includeSessions: Bool)
     case profilesDescribe(name: String)
-    /// The Profile's avatar, the only asset Hermex reads.
     case profilesGetAsset(name: String)
     case profilesSetAsset(name: String, avatar: AvatarChange)
     case profilesConfigure(ProfileChanges)
     case profilesCreate(NewProfile)
 
-    // The bot's screen (#1567). Read at the pin and checked against `scripts/local-hermes` on a
-    // Linux host; `docs/agents/screen.md` has the contract. Every failure is 5300.
-    /// `{supported, installed, missing, running, blocker, geometry, lease, profile_key, …}`.
     case displayStatus(profile: String)
-    /// The same fields, plus a single-use 30 s `ticket` for `/api/display/ws` and a `viewer_id`.
-    /// A `viewerID` this connection minted comes back unchanged; any other gets a new one.
     case displayObserve(profile: String, viewerID: String?)
-    /// Take Over: `{lease}`. Refuses a `viewerID` this connection didn't mint, with `viewer_mismatch`.
     case displayLeaseAcquire(profile: String, viewerID: String)
-    /// Hand Back: `{lease}`. `force` skips that refusal, and with a `viewerID` the host still lets
-    /// only that holder release, so another person's takeover survives. It answers success either
-    /// way, so read the lease. With no `viewerID` it clears any holder: the force Hand Back only.
     case displayLeaseRelease(profile: String, viewerID: String?)
-    /// Starts the screen and answers the status fields once it's up. It can wait 15 s or more for
-    /// the desktop. A refusal, such as too little memory, is 5300 with the host's message.
     case displayStart(profile: String)
-    /// Stops the screen and answers the status fields plus `stopped`. Refused with
-    /// `viewer_mismatch` while a human holds it, unless `force`.
     case displayStop(profile: String, force: Bool)
 
-    // Connected apps (#1629), per Profile, on that Profile's own Nous account (`owner: account`).
-    // A refusal carries `error.data.reason`; a host without them answers -32601.
-    /// `{connectors: [{slug, name, description, category, logo_url}]}`: every app the Profile's
-    /// Nous account may connect, or the public catalog when the host has no Nous identity yet.
     case connectedAppsCatalog(profile: String)
-    /// `{available, connectors: [{connector, enabled, connected, connection_status}]}`. `enabled`
-    /// is the account's policy; nothing else says an app is turned off.
     case connectedAppsList(profile: String)
-    /// Starts a sign-in for `app`, or returns the one still open. `{op_id, deadline_at, settled,
-    /// targets: [{name, state, connect_url, connection_id}]}`; the link lasts about ten minutes,
-    /// and an app that is already connected answers `state: connected` with no link. `repairing`
-    /// replaces that broken account, named by its alias when it has one. The first sign-in on a
-    /// host with no Nous account creates a free guest identity there.
     case connectedAppsConnect(profile: String, app: String, repairing: HermesConnectedApp.Account? = nil)
-    /// The browser came back, so the host reads the accounts now rather than at its next tick.
     case connectedAppsWake(profile: String, opID: String)
-    /// Closes a sign-in nobody will finish, so the next connect mints a new link instead of
-    /// returning this one. `{status: "ok", settled}`.
     case connectedAppsSettle(profile: String, opID: String)
-    /// `{accounts: [{connection_id, connector, status, label, alias, active, disabled}]}`.
     case connectedAppsAccounts(profile: String)
-    /// Removes one account, connected or still waiting. `{connection_id, connector, status: "removed"}`.
     case connectedAppsRemove(profile: String, connectionID: String)
 
-    // Plugins (#1582), per Profile. A Profile the host doesn't have answers 4064.
-    /// `{plugins, user_count, bundled_count}`. Every row, and on 0.22.5 it reads the catalog's pins too.
     case pluginsList(profile: String)
-    /// `{ok, unchanged, restart_required, gateway_reloaded, activation, name, plugin}`. Always names
-    /// the canonical key, because bare names collide across category folders. Either direction can
-    /// sync the Profile's Python packages first, which took 30 s on a fresh host. A refusal is 5026.
     case pluginsToggle(profile: String, key: String, enable: Bool)
-    /// `{ok, plugin_name, enabled, missing_env, restart_required, gateway_reloaded, activation, …}`.
-    /// A catalog source names the entry, so the host resolves its repo and enforces its removal list,
-    /// and sends `ref`, because without one the host reuses a disabled copy at whatever commit it has
-    /// rather than the one the review showed. `replace` is the host's `force`, which also lets a
-    /// caution scan through on a repo source; a dangerous one stays blocked. Every refusal is 5026
-    /// with the host's message.
     case pluginsInstall(profile: String, source: HermesPluginSource, replace: Bool, enable: Bool)
-    /// `{ok, name, cleared_memory_provider?}`. The host refuses a bundled plugin with 5026.
     case pluginsRemove(profile: String, key: String)
-    /// Re-pins a catalog install or pulls a git one. `{ok: true, unchanged, restart_required, …}`, or
-    /// `{ok: false}` with nothing changed and either `consent_required`, `delta_lines` for a re-pin
-    /// that widens the plugin, or `scan_blocked`, `scan_verdict`, `scan_findings`. `acceptCapabilities`
-    /// answers the first and `acceptCaution` a caution scan; a dangerous one never updates. Each is
-    /// sent only after the user read what it accepts. Any other refusal is 4021.
     case pluginsUpdate(profile: String, key: String, acceptCapabilities: Bool, acceptCaution: Bool)
-    /// `{ok, name, written, plugin}`. `values` are the manifest's non-secret keys; a wrong type or
-    /// a secret is 4021, and secrets go to `/api/env`. A plugin the host lacks is 4020. Empty `values`
-    /// follow a secret's write, as Desktop's do: this call is what tells the host to reconnect the
-    /// plugin's MCP servers on the new value and tell its other clients.
     case pluginsSettings(profile: String, key: String, values: [String: BotJSON])
 
-    // The canonical Bot Chat
-    /// Finds the Profile's Bot Chat by its exact title, hidden rows included.
     case sessionList(profile: String)
-    /// Mints the Profile's hidden Bot Chat under its configuration.
     case sessionCreate(profile: String)
-    /// Persists a freshly minted Bot Chat under its canonical title.
     case sessionTitle(sessionID: String)
-    /// Attaches to a session without closing it when this socket drops.
     case sessionResume(profile: String, sessionID: String, omitMessages: Bool)
-    /// The runtime's frames after `lastSeen`. `profile` and `replayEpoch`, the session's own
-    /// epoch from its last snapshot, go only to a canonical host (`canonicalParams`).
     case sessionEventsSince(profile: String, sessionID: String, lastSeen: Int, replayEpoch: String?)
-    /// Ends this socket's subscription to a session on a canonical host (#1601), sent by the
-    /// gateway when the last screen holding it leaves (`HermesCanonicalSubscriptions`). A stale
-    /// `subscriptionID` answers `detached: false`. Never sent to the dashboard.
     case sessionDetach(profile: String, sessionID: String, subscriptionID: String)
-    /// The inbox's live-status read. `current_session_id` only marks a TUI's
-    /// focused row, which Hermex never has.
     case sessionActiveList
-    /// A live runtime's unresolved approvals (#1679), which tell the list's Approval badge from
-    /// Input. `sessionID` is the runtime `id` `session.active_list` lists, never a stored key.
     case approvalPending(sessionID: String)
-    /// The Sessions list's one Profile-scoped read after it connects (#1046): naming the
-    /// Profile makes the host watch its store for `sessions.changed`, which it does only once
-    /// some call names it. A Profile the host no longer has answers 4064.
     case sessionMostRecent(profile: String)
 
-    // Sessions
-    /// Mints a plain session under the Profile: no title, not hidden. The host writes no
-    /// row until its first prompt (`ConversationTarget.new`). `/clear` (#1050) starts it in
-    /// the old chat's working folder and on its model; otherwise the Profile's defaults.
     case sessionNew(profile: String, cwd: String? = nil, model: Model? = nil)
-    /// A hidden draft for one `promptBtw`, on the Profile's model. No prompt ever runs in it. The
-    /// host still writes an empty row for it, so the caller closes and deletes it afterwards.
     case sessionDraft(profile: String)
-    /// `/title` in an open chat (#1048): renames the session `runtime` runs and emits
-    /// `session.info`. A title in use or over 100 characters is 4022 with the host's message.
     case sessionRename(runtime: String, title: String)
-    /// Ends one runtime, for every client attached to it. Only a delete sends it, and only
-    /// for an idle runtime this phone attached (#1048).
     case sessionClose(runtime: String)
-    /// Deletes that exact stored session and its messages under `profile` (#1048). The host
-    /// refuses with 4023 while a runtime in its process holds the session; REST `DELETE` has
-    /// no such check, so it is never used.
     case sessionDelete(profile: String, storedKey: String)
-    /// Fork From Here, `/branch` and `/fork` (#1051): copies the session `runtime` runs into a
-    /// new session whose `parent_session_id` is this one, and answers `{session_id, stored_session_id,
-    /// title, parent, message_count, messages, info}`, its `session_id` the branch's own runtime.
-    /// `count` keeps the first rows of the host's visible history (`HermesBranchCount`); without
-    /// it every row is copied. Tool rows never are. `name` titles the branch, else the host takes
-    /// the parent's next title in its lineage. Nothing to copy is 4008; a name in use is 5008.
     case sessionBranch(runtime: String, name: String?, count: Int?)
-    /// Move to Project (#1052): sets that exact stored session's working folder to `cwd` and
-    /// answers `{cwd, branch, git_repo_root}`. A runtime on it follows, even mid-turn. A folder
-    /// the host lacks is 4017.
     case sessionWorkspaceMove(profile: String, storedKey: String, cwd: String)
 
-    // Projects (#1052): folder-based and per Profile. A session belongs to the project whose
-    // folder it works in, so membership is read, never written.
-    /// The Profile's project lanes: `{projects, active_id, scoped_session_ids}`. `active_id` is
-    /// Desktop's own pick and is never read.
     case projectsTree(profile: String)
-    /// A project on one folder, its primary. A folder another project has as its primary is 5063.
     case projectsCreate(profile: String, name: String, folder: String, color: String?)
-    /// Renames a project; a nil color leaves its color as it is.
     case projectsUpdate(profile: String, id: String, name: String, color: String?)
-    /// Removes the project only: the sessions in its folders stay.
     case projectsDelete(profile: String, id: String)
 
-    // Turns
-    /// Always `queued`: even an idle Send can race Desktop, so a fresh send never
-    /// inherits a host setting that converts it into a redirect or steer. `fence` goes only to
-    /// a canonical host (#1602), which also gets a `submission_id` minted for this one send.
-    /// `images` go only to a canonical host too (#1644), as the prompt's own `attachments`, so
-    /// the host stores them with it and every client shows them; a dashboard listener has no such
-    /// field, and its prompt names its images in the text (`BotAttachmentUpload.imageReference`).
-    /// `titlePreview` is the start of a pasted-text attachment, for the session titler only
-    /// (#1701); it goes out bounded, and only to a host that takes it.
     case promptSubmit(sessionID: String, text: String, fence: Fence? = nil, images: [BotUploadedImage] = [], titlePreview: String? = nil)
-    /// Cuts the transcript at one durable prompt row and starts the turn again with
-    /// `text`, in one call under the host's history lock. Never `queued`: the host
-    /// refuses a cut while busy (4009) instead of queueing or steering it. A Hermes
-    /// chat's retry of a failed turn (#878), Edit, Regenerate and `/retry` (#1049) use it.
-    /// `deep` sends `confirm_deep_truncate`, which a host that guards deep cuts asks for (4033)
-    /// before one that drops later prompts (#1300). Older hosts refuse the unknown key (4000),
-    /// so it goes only to a host that asked (`HermesChatTurnCoordinator.rewind`).
     case promptRewind(sessionID: String, text: String, beforeRowID: Int, deep: Bool)
-    /// `/undo` in a Hermes session (#1049): rewinds the last real user turn on `runtime`
-    /// and answers `{removed}`. Refused while a turn runs (4009).
     case sessionUndo(runtime: String)
-    /// `/compress` and `/compact` in a Hermes session (#1050): compacts `runtime`'s history,
-    /// steered by `focus`, and answers `{status, removed, summary, info}`; another compressor
-    /// holding the lock answers `{lock_held, message}`. Refused while a turn runs (4009).
     case sessionCompress(runtime: String, focus: String?, profile: String)
-    /// `/rollback` in a Hermes chat (#1728): the checkpoints of `runtime`'s working folder,
-    /// newest first, as `{enabled, checkpoints: [{hash, timestamp, message}]}`. A host that takes
-    /// none answers `enabled: false`.
     case rollbackList(runtime: String)
-    /// What changed since the checkpoint `hash`: `{stat, diff}`, the diff cut at 4000
-    /// characters. A hash the host doesn't hold answers empty, so send one `rollbackList` named.
     case rollbackDiff(runtime: String, hash: String)
-    /// Restores `filePath` alone, or else the whole tree keeping the user's own edits, to the
-    /// checkpoint `hash`: `{success, restored_to?, restored_files?, skipped_user_edits?,
-    /// history_removed?, error?}`. A whole-tree restore is refused while a turn runs (4009, or a
-    /// Webapp's 4001 `session_busy`) and may rewind the newest turn. Sent once.
     case rollbackRestore(runtime: String, hash: String, filePath: String?)
-    /// On a canonical host `fence` names the running generation the correction or stop is for,
-    /// and a newer one refuses it (`HermesFenceRefusal`).
     case sessionSteer(sessionID: String, text: String, fence: Fence? = nil)
     case sessionRedirect(sessionID: String, text: String, fence: Fence? = nil)
     case sessionInterrupt(sessionID: String, fence: Fence? = nil)
-    /// Withdraws one queued admission on a canonical host (#1602); a started one is interrupted
-    /// in the same call. Answers its receipt, `terminal` once withdrawn.
     case promptCancel(profile: String, sessionID: String, admissionID: String)
-    /// Acknowledges a turn a canonical host lost across its restart (`status: unknown`), so the
-    /// admissions behind it run (#1602). `fence` is that admission's own generation. Never
-    /// requeues the lost prompt.
     case promptResolveUnknown(sessionID: String, admissionID: String, fence: Fence)
     case fileAttach(sessionID: String, name: String, dataURL: String)
 
-    // Side work (#1013): each runs beside the session's turn, even mid-turn, and answers
-    // `{task_id}`; its result arrives later on the session's runtime.
-    /// A side question over a snapshot of the conversation, tools off: `btw.complete`.
     case promptBtw(sessionID: String, text: String)
-    /// A side agent in its own `bg_<id>` session under the Profile: `background.complete`.
     case promptBackground(sessionID: String, text: String)
 
-    // Answers to the host's requests
-    /// On a canonical host `requestID` is the prompt's `prompt_id` and `fence` its generation.
     case approvalRespond(sessionID: String, requestID: String, choice: BotApprovalRequest.Choice, fence: Fence? = nil)
-    /// A canonical host's single clarify prompt (#1602): `{status: resolved | already_resolved}`.
     case clarifyRespond(sessionID: String, promptID: String, answer: String, fence: Fence)
-    /// One revision-fenced edit of a session on a canonical host (#1603), where the dashboard's
-    /// rename, delete, branch, undo, rewind, compress and folder calls don't exist. Answers
-    /// `{session_id, revision, execution_generation, operation, …}`; a fence that moved on throws
-    /// `HermesFenceRefusal`, any other refusal `BotSettingFailure` with the host's reason.
     case sessionMutate(SessionMutation)
     case requestAnswer(id: String, result: RequestAnswer)
     case clarifyLock(requestID: String, questionID: String, answer: String)
     case connectionRespond(sessionID: String, opID: String, answer: BotConnectionOperation.Answer)
 
-    // Runtime-scoped session settings
     case modelOptions(sessionID: String, profile: String)
-    /// The configured-provider inventory the Profile editors pick from.
     case configuredModelOptions
-    /// One Profile's models, outside any session: the Task editor's picker (#1040) and a
-    /// Profile's Default Model page (#1670). `refresh` asks the host to read its providers' live
-    /// lists rather than its cache.
     case profileModelOptions(profile: String, refresh: Bool = false)
     case configSet(sessionID: String, profile: String, setting: SessionSetting)
     case sessionCwdSet(sessionID: String, profile: String, cwd: String)
     case sessionControlRead(sessionID: String, profile: String)
     case sessionControl(sessionID: String, profile: String, action: String)
 
-    // Composer panels
     case commandsCatalog(sessionID: String)
     case commandDispatch(name: String, argument: String, sessionID: String)
-    /// `timesOutLocally`: the Hermes chat's `@` lookups (#1113) fail only themselves when the
-    /// host never answers; without it the call keeps the required-call policy, ending the
-    /// connection.
     case completePath(word: String, sessionID: String, profile: String, timesOutLocally: Bool = false)
-    /// `complete.path` for a host folder outside any session (#1052): `word` is a path from the
-    /// host's root or home (`HermesFolderCompletion.completes`), so no session's folder resolves it.
     case completeFolder(word: String, profile: String)
-    /// `complete.path` against the folder `cwd` instead of a session's (#1389): Files' workspace
-    /// search, which runs while the chat it was opened from is detached.
     case completeWorkspacePath(word: String, cwd: String, profile: String)
-    /// `complete.slash` at a command's argument stage (#1036): `text` is one `/name …` line
-    /// with a space. The command stage is ranked on the phone from `commands.catalog`.
     case completeSlash(text: String, sessionID: String)
-    /// Runs one typed `/name …` line on the session (#1036): the host's built-ins, the user's
-    /// quick commands (which can run shell) and plugin commands, as Desktop runs them.
     case slashExec(sessionID: String, command: String)
 
-    /// An optional plain-language explanation, outside the conversation and with no tools,
-    /// written in `language`, the app's language named in English ("Japanese").
     case approvalSummary(input: String, language: String, sessionID: String?, profile: String)
 
-    // Git (#1115)
-    /// A commit message for `diff`, from `llm.oneshot`'s `commit_message` template at Desktop's
-    /// temperature: one stateless model call outside the conversation, on the model of the
-    /// runtime `sessionID` names when there is one, else the Profile's task backend. `avoid` is the
-    /// last suggestion, which the host is told not to repeat. Answers `{text}`.
     case commitMessage(diff: String, recentCommits: String, avoid: String?, sessionID: String?, profile: String)
 
-    // Usage
-    /// The Profile's visible sessions started in the last `days` (1-365) and their messages, over
-    /// at most its newest 500 sessions: `{days, sessions, messages}`, or 5017 for a store the host
-    /// can't open (#1074).
     case insightsGet(days: Int, profile: String)
 
-    // Delegated work
     case subagentList(sessionID: String)
-    /// The session list's read of which stored conversations in `profile` still run delegated
-    /// children or background processes after their turn (#1730): `{sessions: [{session_id,
-    /// subagents, background}]}`. Needs no attached session.
     case subagentRoster(profile: String)
     case subagentTail(sessionID: String, subagentID: String)
     case subagentInterrupt(sessionID: String, subagentID: String)
 
-    // Rooms: reads, participation and lifecycle; never peer administration.
     case groupsCapabilities
     case groupsList(offset: Int)
     case groupsState(roomID: String)
@@ -321,28 +120,19 @@ enum HermesCall: Equatable, Sendable {
     case groupsStop(roomID: String, cancelID: String)
     case groupsApprove(roomID: String, memberID: String, taskID: String, executionGeneration: Int,
                        requestID: String, choice: BotApprovalRequest.Choice)
-    /// `attempt` names the member and execution generation a canonical host's retry is fenced by
-    /// (#1605); the dashboard takes room and task only.
     case groupsRetry(roomID: String, taskID: String, attempt: RoomAttempt? = nil)
-    /// Gives up a canonical room task whose outcome is unknown (`indeterminate`, #1605), after the
-    /// user confirmed; the group carries on and it isn't retried. Answers `{discarded, task}`.
     case groupsDiscard(roomID: String, taskID: String, attempt: RoomAttempt)
     case groupsCreate(RoomCreation)
     case groupsRename(roomID: String, eventID: String, name: String)
     case groupsDisband(roomID: String)
 
-    /// The socket handshake's opt-in to server→client requests. `HermesGateway` sends it itself.
     case clientCapabilities
 
-    /// A new avatar as a base64 data URL, or its removal.
     enum AvatarChange: Equatable, Sendable {
         case replace(String)
         case clear
     }
 
-    /// The member and execution generation a canonical host fences one room task by (#1605).
-    /// `memberID` is echoed back as the host named it, which isn't always one member id: a
-    /// stalled preparation's Retry names every member it couldn't wake (`"chief, coder"`).
     struct RoomAttempt: Equatable, Sendable {
         var memberID: String
         var executionGeneration: Int
@@ -353,21 +143,14 @@ enum HermesCall: Equatable, Sendable {
         var isAdmissible: Bool { !memberID.isEmpty && executionGeneration > 0 }
     }
 
-    /// One `session.mutate` (#1603): the edit, under the fences it was prepared at. A retry of
-    /// the same edit after a lost reply sends this exact value again, `requestID` included, so the
-    /// host answers from its receipt instead of applying it twice.
     struct SessionMutation: Equatable, Sendable {
         enum Operation: Equatable, Sendable {
             case rename(String)
             case delete
-            /// Keeps the rows through `throughMessageID`, a saved row's id; nil copies them all.
             case branch(title: String?, throughMessageID: Int?)
-            /// Removes the user row `targetMessageID` and every row after it.
             case rewind(targetMessageID: Int)
             case compress(focus: String?)
             case workspace(cwd: String)
-            /// This session's model and provider (#1604). `confirm` is the token a
-            /// `confirmation_required` answer gave for exactly this selection.
             case model(id: String, provider: String, confirm: String?)
 
             var name: String {
@@ -406,7 +189,6 @@ enum HermesCall: Equatable, Sendable {
         var sessionID: String
         var requestID: String
         var revision: Int
-        /// Every edit but a rename is fenced by the execution generation too, as Desktop sends them.
         var generation: Int?
         var operation: Operation
 
@@ -423,8 +205,6 @@ enum HermesCall: Equatable, Sendable {
         }
     }
 
-    /// What a canonical host (#1341) fences a session call by: the session's Profile, which routes
-    /// it, and the execution generation it acts on. The dashboard never receives either.
     struct Fence: Equatable, Sendable {
         var profile: String
         var generation: Int?
@@ -436,25 +216,21 @@ enum HermesCall: Equatable, Sendable {
         }
     }
 
-    /// A model the host resolves under one provider.
     struct Model: Hashable, Sendable {
         var id: String
         var provider: String
     }
 
-    /// Desktop's `hermes-bots` look object, sent whole under the revision it was read at.
     struct Look: Equatable, Sendable {
         var fields: [String: BotJSON]
         var revision: Int
     }
 
-    /// One `profiles.configure` write. Only the fields that are set are sent.
     struct ProfileChanges: Equatable, Sendable {
         var name: String
         var description: String?
         var soul: String?
         var model: Model?
-        /// Resends a model change the host asked to confirm. Only with `model`.
         var confirmExpensiveModel = false
         var disabledSkills: [String]?
         var enabledToolsets: [String]?
@@ -462,7 +238,6 @@ enum HermesCall: Equatable, Sendable {
         var look: Look?
     }
 
-    /// One `profiles.create`. A clone copies its source's skills, so it cannot skip them.
     struct NewProfile: Equatable, Sendable {
         var name: String
         var description: String?
@@ -470,19 +245,14 @@ enum HermesCall: Equatable, Sendable {
         var soul: String?
         var model: Model?
         var skipsBundledSkills = false
-        /// True shares the default Profile's credentials; false keeps its own, unmirrored.
         var sharesCredentials: Bool
     }
 
-    /// `request.answer`'s result: a `value` for sudo, secret and Desktop prompts,
-    /// an `answer` for an unkeyed clarify, `said` for a `theme.pick` the phone has no card for.
     enum RequestAnswer: Equatable, Sendable {
         case value(String)
         case answer(String)
         case said(String)
 
-        /// The server request's result: `{value}` for sudo and secret, `{answer}` for a question,
-        /// `{said}` for a picker.
         var json: BotJSON {
             switch self {
             case .value(let value): return .object(["value": .string(value)])
@@ -492,26 +262,15 @@ enum HermesCall: Equatable, Sendable {
         }
     }
 
-    /// The writes `config.set` may carry. All are runtime-scoped except `personality` and
-    /// `approvalMode`. The host still has a missing-runtime fallback for effort/fast; never send
-    /// global or display writes.
     enum SessionSetting: Equatable, Sendable {
-        /// `value` must end in `--session` so the host never writes the Profile's default.
         case model(value: String, confirmExpensive: Bool)
         case reasoning(String)
         case fast(Bool)
-        /// The session's approval bypass: on auto-approves its dangerous commands, off asks again.
         case yolo(Bool)
-        /// The one write that reaches the Profile, deliberately (#1016): the host has no
-        /// session-only personality, so it always writes the Profile's default and switches
-        /// this session too. `none` clears it. Sent without a scope, which the host ignores here.
         case personality(String)
-        /// Writes the Profile's `approvals.mode`, deliberately, and the host re-reports
-        /// `session.info` to its sessions. Sent without a scope, which the host ignores here.
         case approvalMode(HermesApprovalMode)
     }
 
-    /// One immutable room creation. A deliberate retry resends the same value.
     struct RoomCreation: Equatable, Sendable {
         var roomID: String
         var name: String
@@ -623,9 +382,6 @@ enum HermesCall: Equatable, Sendable {
         }
     }
 
-    /// The JSON-RPC `params`, after admission, in the shape the host's release takes.
-    /// `hostVersion` is the `version` `/api/status` reported; nil reads as the pin.
-    /// Throws `BotFailure.unsupported` for a value the host must never receive from this app.
     func params(hostVersion: String? = nil) throws -> [String: BotJSON] {
         try admit()
         switch self {
@@ -634,7 +390,6 @@ enum HermesCall: Equatable, Sendable {
         case .connectedAppsConnect(let profile, let app, let repairing):
             var params: [String: BotJSON] = ["profile": .string(profile), "owner": Self.accountOwner,
                                              "connectors": .array([.string(app)]), "reconnect": .bool(repairing != nil)]
-            // A named account is addressed by its name; an unnamed one only has its id.
             if let alias = repairing?.alias { params["alias"] = .string(alias) }
             else if let repairing { params["connection_id"] = .string(repairing.id) }
             return params
@@ -753,14 +508,11 @@ enum HermesCall: Equatable, Sendable {
                HermesCompatibility.supportsTitlePreview(hostVersion) {
                 params["title_preview"] = .string(bounded)
             }
-            // Exactly `path` and `mime`: the host refuses any other key (4001).
             if !images.isEmpty {
                 params["attachments"] = .array(images.map { .object(["path": .string($0.path), "mime": .string($0.mime)]) })
             }
             return params
         case .promptRewind(let sessionID, let text, let rowID, let deep):
-            // `confirm_empty_truncate` too, as Desktop sends whenever it names a row:
-            // cutting at the first prompt legitimately empties the transcript.
             var params: [String: BotJSON] = [
                 "session_id": .string(sessionID), "text": .string(text), "truncate_before_row_id": .number(Double(rowID)),
                 "confirm_truncate": .bool(true), "confirm_empty_truncate": .bool(true)
@@ -789,8 +541,6 @@ enum HermesCall: Equatable, Sendable {
         case .clarifyLock(let requestID, let questionID, let answer):
             return ["request_id": .string(requestID), "question_id": .string(questionID), "answer": .string(answer)]
         case .connectionRespond(let sessionID, let opID, let answer):
-            // 0.21.5 names the session as an `owner`; 0.21.4 took a bare `session_id`.
-            // Each refuses the other's key, so send the one the host's release expects.
             var params: [String: BotJSON] = ["op_id": .string(opID), "result": answer.result]
             if Self.predatesSessionOwner(hostVersion) { params["session_id"] = .string(sessionID) }
             else { params["owner"] = .object(["type": .string("session"), "session_id": .string(sessionID)]) }
@@ -837,8 +587,6 @@ enum HermesCall: Equatable, Sendable {
         case .slashExec(let sessionID, let command): return ["session_id": .string(sessionID), "command": .string(command)]
         case .insightsGet(let days, let profile): return ["days": .number(Double(days)), "profile": .string(profile)]
         case .approvalSummary(let input, let language, let sessionID, let profile):
-            // ca678285 tui_gateway/contracts/sessions.py:LlmOneshotParams accepts free
-            // instructions/input. No template or conversation prompt is needed.
             var params: [String: BotJSON] = [
                 "instructions": .string("""
                 Explain this flagged shell command in one or two short, plain sentences in \(language).
@@ -885,9 +633,6 @@ enum HermesCall: Equatable, Sendable {
         }
     }
 
-    /// Whether `version` is a release before 0.21.5, which moved `connection.respond`'s
-    /// `session_id` into `owner`. A canary reads as its base release; a missing, partial
-    /// or unreadable one reads as the pin (`HermesCompatibility.release`).
     private static func predatesSessionOwner(_ version: String?) -> Bool {
         HermesCompatibility.release(version)?.lexicographicallyPrecedes([0, 21, 5]) ?? false
     }
@@ -896,15 +641,12 @@ enum HermesCall: Equatable, Sendable {
         text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// One line that opens with `/` and names something after it.
-    /// The `owner` of a call made for the Profile's Nous account rather than for one session.
     private static let accountOwner: BotJSON = .object(["type": .string("account")])
 
     private static func isSlashLine(_ text: String) -> Bool {
         text.count > 1 && text.hasPrefix("/") && !text.contains(where: \.isNewline)
     }
 
-    /// The value rules each case's types cannot express. A case with none is `true`.
     private func admit() throws {
         let valid: Bool
         switch self {
@@ -923,7 +665,6 @@ enum HermesCall: Equatable, Sendable {
         case .pluginsInstall(let profile, .catalog(let identifier, _), _, _), .pluginsInstall(let profile, .repo(let identifier), _, _):
             valid = !profile.isEmpty && !identifier.isEmpty
         case .profilesSetAsset(let name, let avatar):
-            // Base64 for the server's 2 MB decoded cap, with small data-URL headroom.
             if case .replace(let data) = avatar { valid = !name.isEmpty && !data.isEmpty && data.utf8.count <= 3_000_000 }
             else { valid = !name.isEmpty }
         case .profilesConfigure(let changes): valid = changes.isAdmissible
@@ -970,12 +711,9 @@ enum HermesCall: Equatable, Sendable {
                 valid = !sessionID.isEmpty && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
         case .commandDispatch(let name, _, let sessionID):
-            // One bare name, so this never widens into the general slash runner:
-            // the gateway resolves quick commands, which can run shell, ahead of skills.
             valid = !name.isEmpty && !name.hasPrefix("/") && name.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
                 && !sessionID.isEmpty
         case .completeSlash(let text, let sessionID):
-            // The argument stage only: a named command, then a space.
             valid = !sessionID.isEmpty && Self.isSlashLine(text) && text.dropFirst().first?.isWhitespace == false
                 && text.contains(" ")
         case .slashExec(let sessionID, let command):
@@ -983,8 +721,6 @@ enum HermesCall: Equatable, Sendable {
         case .completePath(let word, let sessionID, let profile, _):
             valid = !word.isEmpty && !word.contains(where: \.isWhitespace) && !sessionID.isEmpty && !profile.isEmpty
         case .completeWorkspacePath(let word, let cwd, let profile):
-            // The host's fuzzy search takes a spaced name (`@file:Git Diff`); only a line break
-            // is out, as `BotFilePathSearch.searchesEveryFolder` refuses.
             valid = !word.isEmpty && !word.contains(where: \.isNewline) && !Self.isBlank(cwd) && !profile.isEmpty
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             valid = !sessionID.isEmpty && !subagentID.isEmpty
@@ -1000,7 +736,6 @@ enum HermesCall: Equatable, Sendable {
         case .promptRewind(let sessionID, let text, let rowID, _):
             valid = !sessionID.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && rowID > 0
         case .promptBtw(let sessionID, let text), .promptBackground(let sessionID, let text):
-            // The host refuses empty text (4012).
             valid = !sessionID.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .groupsList(let offset): valid = offset >= 0
         case .profileModelOptions(let profile, _): valid = !profile.isEmpty
@@ -1088,9 +823,6 @@ private extension HermesCall.Model {
 }
 
 private extension HermesCall.RoomCreation {
-    /// Two to six members, each a Profile addressed by its own name (`default` may
-    /// answer to `hermes`), with no duplicate id, Profile or handle and no handle
-    /// that collides with `all` or `everyone`.
     var isAdmissible: Bool {
         guard BotRoomRPC.validID(roomID), BotRoomRPC.validName(name), (2...6).contains(members.count) else { return false }
         var ids = Set<String>(), profiles = Set<String>(), handles: Set<String> = ["all", "everyone"]

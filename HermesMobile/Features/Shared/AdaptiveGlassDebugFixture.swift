@@ -112,8 +112,6 @@ private struct AdaptiveGlassDebugFixture: View {
         .preferredColorScheme(.dark)
 }
 
-// SwiftUI does not expose public writable preview keys for these states.
-// Keep the underscored overrides isolated to this DEBUG-only fixture.
 #Preview("Adaptive Glass Increased Contrast") {
     AdaptiveGlassDebugFixture()
         .environment(\._colorSchemeContrast, ColorSchemeContrast.increased)

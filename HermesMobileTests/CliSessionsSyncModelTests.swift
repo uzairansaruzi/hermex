@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Issue #19: expanded `/api/settings` decode, the `show_cli_sessions`
-/// server-sync model, and its per-server storage isolation.
 final class CliSessionsSyncModelTests: APIClientTestCase {
     private var defaults: UserDefaults!
     private let suiteName = "CliSessionsSyncModelTests"
@@ -20,8 +18,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         defaults = nil
         super.tearDown()
     }
-
-    // MARK: - SettingsResponse decode
 
     func testSettingsDecodesAllFieldsAsNilWhenAbsent() async throws {
         let client = makeClient { request in
@@ -45,8 +41,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         XCTAssertNil(response.passwordlessEnabled)
     }
 
-    // MARK: - POST /api/settings write
-
     func testUpdateSettingsPostsExactlyTheShowCliSessionsKey() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/settings")
@@ -56,7 +50,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
             XCTAssertEqual(body.count, 1, "The write must touch only show_cli_sessions")
             XCTAssertEqual(body["show_cli_sessions"] as? Bool, false)
 
-            // The server echoes the full saved settings dict back.
             return apiTestJSONResponse("""
             {
               "bot_name": "Hermes",
@@ -91,8 +84,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         XCTAssertEqual(response.showClaudeCodeSessions, false)
     }
 
-    // MARK: - Adopt on load
-
     @MainActor
     func testAdoptServerValueWinsOverLocalAndPersistsPerServer() {
         defaults.set(true, forKey: SessionRowDisplaySettings.showCliSessionsKey(for: serverA))
@@ -123,7 +114,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         XCTAssertFalse(model.showsCliSessions)
         XCTAssertFalse(model.serverSyncsCliSessions)
 
-        // Toggling still works locally but never writes to the server.
         model.setShowsCliSessions(true)
         await model.pendingWrite?.value
 
@@ -134,8 +124,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
             true
         )
     }
-
-    // MARK: - Toggle write + revert on failure
 
     @MainActor
     func testFailedWriteRevertsTheToggleAndSurfacesAnError() async {
@@ -161,9 +149,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
 
     @MainActor
     func testRapidReToggleIgnoresTheStaleFailureAndWritesTheFinalValue() async {
-        // The write for `false` fails; the follow-up write for `true` succeeds.
-        // The stale failure must neither revert the newer value nor surface an
-        // error.
         let model = makeModel(
             server: serverA,
             writeToServer: { value in
@@ -189,12 +174,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
 
     @MainActor
     func testRapidReTogglesSerializeWritesAndCoalesceToTheFinalValue() async {
-        // Cancelling a Task cannot un-send an in-flight POST, so the model must
-        // instead hold the next write until the previous response lands and
-        // skip superseded writes. Here the first write is suspended while the
-        // user toggles twice more: no second request may be sent while the
-        // first is in flight, and after it completes only the *final* value is
-        // written (the intermediate toggle is coalesced away).
         var writtenValues: [Bool] = []
         var releaseFirstWrite: CheckedContinuation<Void, Never>?
         let firstWriteInFlight = expectation(description: "write 1 is in flight")
@@ -212,14 +191,12 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         )
         model.adopt(serverValue: true)
 
-        model.setShowsCliSessions(false) // write 1 — held in flight below
+        model.setShowsCliSessions(false)
 
-        // Let write 1 start and suspend inside writeToServer, so it is truly
-        // in flight when the user keeps toggling.
         await fulfillment(of: [firstWriteInFlight], timeout: 5)
 
-        model.setShowsCliSessions(true)  // superseded before it can send
-        model.setShowsCliSessions(false) // final desired value
+        model.setShowsCliSessions(true)
+        model.setShowsCliSessions(false)
 
         await Task.yield()
         XCTAssertEqual(
@@ -242,8 +219,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         )
     }
 
-    // MARK: - Per-server isolation
-
     @MainActor
     func testAdoptedValueDoesNotLeakToAnotherServer() {
         defaults.set(true, forKey: SessionRowDisplaySettings.showCliSessionsKey(for: serverB))
@@ -259,14 +234,11 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
     }
 
     func testShowsCliSessionsFallsBackToLegacyGlobalValueThenDefault() {
-        // No per-server or legacy value: shown by default, exactly as today.
         XCTAssertTrue(SessionRowDisplaySettings.showsCliSessions(for: serverA, in: defaults))
 
-        // A pre-#19 global value seeds servers that have no per-server value yet.
         defaults.set(false, forKey: SessionRowDisplaySettings.showCliSessionsKey)
         XCTAssertFalse(SessionRowDisplaySettings.showsCliSessions(for: serverA, in: defaults))
 
-        // A per-server value always wins over the legacy seed.
         defaults.set(true, forKey: SessionRowDisplaySettings.showCliSessionsKey(for: serverA))
         XCTAssertTrue(SessionRowDisplaySettings.showsCliSessions(for: serverA, in: defaults))
         XCTAssertFalse(
@@ -274,8 +246,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
             "Another server still reads the legacy seed until it stores its own value"
         )
     }
-
-    // MARK: - Claude Code child setting
 
     @MainActor
     func testClaudeCodeSettingAdoptsServerValueAndPersistsPerServer() {
@@ -355,8 +325,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
 
         XCTAssertFalse(model.showsClaudeCodeSessions)
     }
-
-    // MARK: - Helpers
 
     @MainActor
     private func makeModel(

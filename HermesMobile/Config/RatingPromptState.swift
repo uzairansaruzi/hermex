@@ -1,6 +1,5 @@
 import Foundation
 
-/// Only completed main-app replies count. Later requests require both cooldowns.
 struct RatingPromptPolicy {
     static let day: TimeInterval = 24 * 60 * 60
 
@@ -30,7 +29,6 @@ enum RatingPromptMoment {
     case returnedToSessionList
 }
 
-/// Persists engagement across servers; launch guards and weak stream owners stay in memory.
 @MainActor
 final class RatingPromptState {
     static let shared: RatingPromptState = {
@@ -49,7 +47,6 @@ final class RatingPromptState {
     }
 
     private let defaults: UserDefaults
-    /// Also counts each completed response for the week's usage report, when reports are allowed.
     private let usage: UsageReports?
     private var streamOwners: [StreamOwner] = []
     private(set) var isFirstLaunch: Bool
@@ -78,7 +75,6 @@ final class RatingPromptState {
         usage?.recordCompletedResponse(now: now)
     }
 
-    /// A webui stream or a Hermes chat on `server`; a running turn holds the request back.
     func register(_ coordinator: any ChatTurnCoordinating, server: URL) {
         streamOwners.removeAll { $0.coordinator == nil }
         streamOwners.append(StreamOwner(coordinator: coordinator, server: server))
@@ -88,9 +84,6 @@ final class RatingPromptState {
         streamOwners.contains { $0.server == server && $0.coordinator?.activeStreamID != nil }
     }
 
-    // The list checks card eligibility before rating requests and records display here,
-    // so dismissing a card cannot allow a rating request, or the other card, later in the
-    // same launch.
     func recordCardShown(_ card: SessionListCard) {
         if cardShownThisLaunch == nil { cardShownThisLaunch = card }
     }
@@ -99,8 +92,6 @@ final class RatingPromptState {
         !isFirstLaunch && cardShownThisLaunch == nil && policy.isEligible(at: now)
     }
 
-    /// Check all server sessions, including rows hidden by sidebar filters. Recheck
-    /// local ownership and navigation after the await; failure simply skips this moment.
     func requestWhenQuiet(
         moment: RatingPromptMoment,
         server: URL,
@@ -121,11 +112,9 @@ final class RatingPromptState {
                 request: request
             )
         } catch {
-            // An optional prompt never turns a connection failure into a user-facing error.
         }
     }
 
-    /// Record the attempt before invoking StoreKit; Apple may choose not to show anything.
     @discardableResult
     func requestIfEligible(
         moment: RatingPromptMoment,
@@ -152,7 +141,6 @@ final class RatingPromptState {
         cardShownThisLaunch = nil
     }
 
-    /// Launch-only override for exercising the real navigation and stream guards.
     private func prepareForTesting(now: Date = Date()) {
         reset(now: now.addingTimeInterval(-4 * RatingPromptPolicy.day))
         defaults.set(10, forKey: TipJar.completedResponseCountKey)

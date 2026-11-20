@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// The Connected Apps screen on a Hermes host (#1629): `ConnectedAppsModel` and the real client
-/// over a scripted socket, with the fields the app reads from a live 0.23.1 host's replies (pin 3b421578).
 @MainActor final class ConnectedAppsModelTests: XCTestCase {
     private let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                        username: "user", password: "secret")
@@ -10,7 +8,6 @@ import XCTest
     func testEachAppShowsTheStateItsAccountsAndPolicyPutItIn() async {
         let host = host(apps: ["notion", "linear", "slack", "jira", "asana", "ahrefs"], turnedOff: ["jira"], accounts: [
             account("ca_1", "notion", "active"), account("ca_2", "linear", "pending"), account("ca_3", "slack", "expired"),
-            // A reconnect retires the old account; it stays on the host and must not count.
             account("ca_4", "asana", "active", retired: true)
         ])
         let model = model(on: host)
@@ -69,8 +66,6 @@ import XCTest
         XCTAssertEqual(first["connection_id"], .null)
     }
 
-    /// The host keeps a cancelled sign-in open until its deadline and hands its link back, which
-    /// the portal answers with 404. Its account is gone, so the link is closed and asked for again.
     func testALinkWhoseAccountWasRemovedIsReplacedByAFreshOne() async throws {
         let host = host(apps: ["notion"], accounts: [])
         host.next("connectors.connect", .init(result: signIn(op: "dead", account: "ca_gone")))

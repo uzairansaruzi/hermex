@@ -231,7 +231,6 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertEqual(buckets.map(\.label).last, "Aug 31")
         XCTAssertEqual(buckets[3].processedTokens, 120)
         XCTAssertEqual(buckets[3].sessions, 2)
-        // The two days the server skipped, plus the padded lead-in, are real zeros.
         XCTAssertEqual(buckets[4].processedTokens, 0)
         XCTAssertEqual(buckets[5].processedTokens, 0)
         XCTAssertFalse(buckets[0].hasActivity)
@@ -254,7 +253,6 @@ final class InsightsViewModelTests: XCTestCase {
 
         XCTAssertEqual(buckets.count, 24)
         XCTAssertEqual(buckets[9].sessions, 4)
-        // Hour buckets carry sessions and nothing else, so nothing may be stacked.
         XCTAssertEqual(buckets[9].processedTokens, 0)
         XCTAssertEqual(buckets[9].segments(for: .tokens).map(\.segment), [.sessions])
         XCTAssertFalse(viewModel.showsMetricToggle)
@@ -277,7 +275,6 @@ final class InsightsViewModelTests: XCTestCase {
         }
         """)
 
-        // A priced window opens on cost.
         XCTAssertEqual(viewModel.metric, .cost)
         XCTAssertEqual(viewModel.heroFigure.value, "$0.42")
         let bucket = try XCTUnwrap(viewModel.chartBuckets.last)
@@ -305,7 +302,6 @@ final class InsightsViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.metric, .tokens)
 
-        // The user can still ask for cost, and it stays asked for.
         viewModel.metric = .cost
         XCTAssertEqual(viewModel.metric, .cost)
     }
@@ -357,9 +353,6 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertNil(withoutCache.totalsCells.first { $0.id == "cacheHitRate" })
     }
 
-    /// A Hermes host (#1074) has no hours and counts messages over part of the window: the
-    /// picker offers a rolling 24 hours instead of Today, and messages read "≈". The 24-hour
-    /// window asks for one day and shows totals only (#1678).
     @MainActor
     func testHermesFeaturesOffer24HoursAndMarkMessagesApproximate() async throws {
         let client = StubInsightsClient(
@@ -400,8 +393,6 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.totalsCells.first { $0.id == "messages" }?.value, "1,234")
     }
 
-    /// Without a sessions fallback, a failed read is the screen's error, never zeros or the
-    /// previous window's figures, and picking another window from there loads it.
     @MainActor
     func testWithoutASessionsFallbackAFailedReadIsTheError() async throws {
         let client = StubInsightsClient(
@@ -538,7 +529,6 @@ private final class DelayedInsightsClient: InsightsDataClient {
     nonisolated var insightsFeatures: InsightsFeatures { .webui }
     private var firstResponse: InsightsResponse?
     private var pendingContinuation: CheckedContinuation<InsightsResponse, Error>?
-    /// Fulfilled once a request after the first is held.
     let requestHeld = XCTestExpectation(description: "the refresh request is held")
 
     init(firstResponse: InsightsResponse) {

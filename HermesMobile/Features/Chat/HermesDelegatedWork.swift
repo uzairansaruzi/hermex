@@ -1,9 +1,6 @@
 import Foundation
 import Observation
 
-/// One live worker projected by the direct-Hermes gateway. The initializer is
-/// intentionally tolerant: a future host may add fields or omit presentation
-/// details, while identity remains the minimum needed to show a row.
 struct HermesDelegatedWorker: Identifiable, Equatable, Sendable {
     struct Identity: Equatable, Hashable, Sendable {
         let subagentID: String
@@ -25,9 +22,6 @@ struct HermesDelegatedWorker: Identifiable, Equatable, Sendable {
     var id: Identity { identity }
     var identity: Identity { Identity(subagentID: subagentID, startedAt: startedAt, delegationID: delegationID) }
 
-    /// Treat ids as potentially reusable across snapshots even though current
-    /// hosts generate a fresh id per spawn. Destructive control therefore also
-    /// requires the generation-bearing timestamp.
     var canInterrupt: Bool { startedAt != nil }
 
     init?(_ value: BotJSON) {
@@ -55,9 +49,6 @@ struct HermesDelegatedTail: Equatable, Sendable {
     let truncated: Bool
 }
 
-/// A durable async-delegation delivery projected from transcript display
-/// metadata. The report itself stays opaque so future host formatting remains
-/// readable without Hermex having to parse server-authored prose.
 struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
     static let displayKind = "async_delegation_complete"
     static let maximumDisplayCount = 999
@@ -114,17 +105,12 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
     }
 }
 
-/// Owns live delegated-work inspection for one `HermesConversation` attach: Bot
-/// Chat's, or a Hermes chat's through `HermesChatActivity` (#1140). It refreshes
-/// only on connect, an explicit user action, or coalesced subagent lifecycle
-/// events, never on a timer; worker tails are always opt-in reads.
 @MainActor @Observable final class HermesDelegatedWork {
     enum Availability: Equatable { case unknown, supported, unsupported }
 
     struct Context: Equatable, Sendable {
         let connectionID: UUID
         let runtime: String
-        /// The attach's `HermesConversation.generation`.
         let generation: Int
     }
 
@@ -140,8 +126,6 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
     private(set) var availability = Availability.unknown
     private(set) var workers: [HermesDelegatedWorker] = []
     private(set) var omittedWorkerCount = 0
-    /// Every live worker, the omitted included. Stored apart from `workers`, whose rows change
-    /// with each tool a worker calls, so a toolbar reading it redraws only when the count does.
     private(set) var activeCount = 0
     private(set) var isRefreshing = false
     private(set) var loadingTail: HermesDelegatedWorker.Identity?
@@ -151,7 +135,6 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
     private(set) var errorMessage: String?
 
     @ObservationIgnored private let wire: any BotTransport
-    /// Fired after the active worker count may have changed, for the Live Activity chips (#489).
     @ObservationIgnored var onWorkersChanged: (() -> Void)?
     @ObservationIgnored private var context: Context?
     @ObservationIgnored private var listRequestID = UUID()
@@ -214,8 +197,6 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
         }
     }
 
-    /// Coalesces the finite lifecycle/tool events that can change the roster.
-    /// Token and reasoning deltas do not call this and never cause list polling.
     func noteSubagentEvent() {
         guard context != nil else { return }
         eventRefreshPending = true
@@ -230,7 +211,6 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
                     do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
                 }
             }
-            // A cancelled task was already replaced or dropped by whoever cancelled it.
             if !Task.isCancelled { self.eventRefreshTask = nil }
         }
     }
@@ -275,9 +255,6 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
         return InterruptAction(context: context, worker: worker.identity)
     }
 
-    /// Re-lists immediately before the destructive call. This rejects a worker
-    /// that completed during confirmation and an id that has since been reused.
-    /// The gateway then resolves the authorized live record at dispatch time.
     func interrupt(_ action: InterruptAction) async {
         guard owns(action.context), current(action.worker) != nil, interruptingWorker == nil else { return }
         interruptingWorker = action.worker
@@ -349,8 +326,6 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
         context == owner && !Task.isCancelled
     }
 
-    /// Ends the newest refresh, and says whether its result may be applied. A cancelled
-    /// refresh still ends, or the list would read as refreshing until the next one.
     private func finishRefresh(_ requestID: UUID, for owner: Context) -> Bool {
         guard context == owner, listRequestID == requestID else { return false }
         isRefreshing = false

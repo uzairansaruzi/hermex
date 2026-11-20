@@ -5,7 +5,6 @@ import XCTest
 final class UserBubbleFoldPolicyTests: XCTestCase {
     private let body = UIFont.systemFont(ofSize: 17)
 
-    /// About 1,200 characters of ordinary prose with no hard line breaks.
     private let paragraph = String(
         String(repeating: "The quick brown fox jumps over the lazy dog near the riverbank. ", count: 20).prefix(1_200)
     )
@@ -23,8 +22,6 @@ final class UserBubbleFoldPolicyTests: XCTestCase {
         XCTAssertTrue(UserBubbleFoldPolicy.folds(lineCount: nineLines))
     }
 
-    /// A 99-character message is a short bubble at the default size but can
-    /// wrap past eight lines at AX3's 40 pt, so there it must be measured.
     func testPreFilterLetsThroughTextThatCanWrapPastEightLines() {
         let message = "Deploy failed again on staging. Can you find why the migration step times out? It worked yesterday."
         let sevenWrappingLines = Array(repeating: String(repeating: "word ", count: 8), count: 7)
@@ -36,9 +33,6 @@ final class UserBubbleFoldPolicyTests: XCTestCase {
         XCTAssertTrue(UserBubbleFoldPolicy.mayFold(text: sevenWrappingLines, font: body))
     }
 
-    /// The narrowest text column is 228 pt: a 320 pt window (Slide Over,
-    /// Display Zoom) less the row padding, the gutter and the bubble padding.
-    /// The longest text the pre-filter skips must fit there, capitals included.
     func testTextThePreFilterSkipsFitsTheNarrowestColumn() {
         for text in [paragraph, paragraph.uppercased()] {
             var skipped = ""

@@ -1,12 +1,8 @@
 import XCTest
 @testable import HermesMobile
 
-// MARK: - Model, storage, and store
-
 final class CustomHeaderModelTests: XCTestCase {
     func testDecodeIsTolerantOfMissingField() {
-        // A row missing "value" decodes with an empty value rather than dropping
-        // the whole list (tolerant decoding rule).
         let decoded = [CustomHeader].decodeFromStorage(#"[{"name":"X-Only-Name"}]"#)
 
         XCTAssertEqual(decoded.count, 1)
@@ -22,16 +18,13 @@ final class CustomHeaderModelTests: XCTestCase {
     }
 
     func testIsApplicableRejectsNonTokenHeaderNames() {
-        XCTAssertFalse(CustomHeader(name: "X Bad", value: "v").isApplicable)        // space
-        XCTAssertFalse(CustomHeader(name: "X:Bad", value: "v").isApplicable)        // colon
-        XCTAssertFalse(CustomHeader(name: "Aut\u{007F}h", value: "v").isApplicable) // control char
+        XCTAssertFalse(CustomHeader(name: "X Bad", value: "v").isApplicable)
+        XCTAssertFalse(CustomHeader(name: "X:Bad", value: "v").isApplicable)
+        XCTAssertFalse(CustomHeader(name: "Aut\u{007F}h", value: "v").isApplicable)
         XCTAssertTrue(CustomHeader(name: "X-Api-Key", value: "v").isApplicable)
-        // Internal spaces are fine in a value (e.g. "Bearer <token>").
         XCTAssertTrue(CustomHeader(name: "Authorization", value: "Bearer a b c").isApplicable)
     }
 }
-
-// MARK: - AuthStatusResponse tolerant decode
 
 final class CustomHeaderAuthStatusDecodeTests: XCTestCase {
     private func decode(_ json: String) throws -> AuthStatusResponse {
@@ -47,8 +40,6 @@ final class CustomHeaderAuthStatusDecodeTests: XCTestCase {
         XCTAssertNil(status.passwordAuthEnabled)
     }
 }
-
-// MARK: - APIClient request injection
 
 final class CustomHeaderAPIClientInjectionTests: APIClientTestCase {
     private func makeHeaderClient(
@@ -84,7 +75,6 @@ final class CustomHeaderAPIClientInjectionTests: APIClientTestCase {
         ]) { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer abc")
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Api-Key"), "k1")
-            // Built-in Accept is set after the custom headers, so it wins its key.
             XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
             return try self.ok(request)
         }
@@ -98,8 +88,6 @@ final class CustomHeaderAPIClientInjectionTests: APIClientTestCase {
             CustomHeader(name: "Content-Type", value: "application/evil")
         ]) { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer upload")
-            // The built-in multipart Content-Type is set after the custom
-            // headers, so it wins its key.
             XCTAssertEqual(
                 request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary="),
                 true
@@ -130,8 +118,6 @@ final class CustomHeaderAPIClientInjectionTests: APIClientTestCase {
         let (client, session) = makeHeaderClient([
             CustomHeader(name: "Authorization", value: "Bearer secret")
         ]) { request in
-            // A third-party transcript image must never receive the (possibly
-            // secret) custom headers — off-origin leak guard.
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
             return try self.ok(request, body: "img")
         }
@@ -144,8 +130,6 @@ final class CustomHeaderAPIClientInjectionTests: APIClientTestCase {
     }
 }
 
-// MARK: - SSE stream injection
-
 @MainActor
 final class CustomHeaderSSEInjectionTests: XCTestCase {
     override func tearDown() {
@@ -157,7 +141,6 @@ final class CustomHeaderSSEInjectionTests: XCTestCase {
         let captured = expectation(description: "sse request captured")
         MockURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sse")
-            // Built-in Accept must win over a user-supplied Accept.
             XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "text/event-stream")
             captured.fulfill()
 
@@ -187,9 +170,6 @@ final class CustomHeaderSSEInjectionTests: XCTestCase {
         client.stop()
     }
 
-    /// The default SSE header provider reads `CustomHeaderStore.shared`, which holds
-    /// only the active server's headers (#16) — so the stream carries the active
-    /// server's proxy header, never another configured server's.
     func testSSEStreamSourcesHeadersFromActiveServerStore() async throws {
         let previous = CustomHeaderStore.shared.snapshot()
         defer { CustomHeaderStore.shared.replace(with: previous) }
@@ -210,7 +190,6 @@ final class CustomHeaderSSEInjectionTests: XCTestCase {
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
-        // No explicit provider → uses the default active-server store.
         let client = SSEClient(urlSessionConfiguration: configuration)
 
         client.start(url: URL(string: "https://a.test/api/chat/stream?stream_id=s1")!) { _ in }
@@ -218,8 +197,6 @@ final class CustomHeaderSSEInjectionTests: XCTestCase {
         client.stop()
     }
 }
-
-// MARK: - AuthManager configure / lifecycle
 
 @MainActor
 final class CustomHeaderAuthManagerTests: XCTestCase {
@@ -248,7 +225,6 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .loggedIn(server: try XCTUnwrap(URL(string: "https://proxy.test"))))
         XCTAssertEqual(store.snapshot().map(\.name), ["Authorization"])
-        // Headers persist under this server's scoped key, not a global one (#16).
         let saved = try XCTUnwrap(keychain.scopedValue(.customHeaders, scope: "https://proxy.test"))
         XCTAssertEqual([CustomHeader].decodeFromStorage(saved).map(\.value), ["Bearer abc"])
         XCTAssertNil(keychain.savedValues[.customHeaders])
@@ -267,10 +243,6 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
         XCTAssertNil(keychain.savedValues[.serverURL])
     }
 
-    /// Trusted-header deployments — the reverse-proxy setups the custom-header
-    /// feature exists for — authenticate at the proxy and answer
-    /// `logged_in: true` with no password auth. Reading that as "passkeys" shut
-    /// them out of a server they were already signed in to (#3).
     func testTrustedHeaderServerThatAlreadySignedUsInIsSavedWithoutLogin() async throws {
         let keychain = InMemoryKeychainStore()
         let client = MockAuthAPIClient(authStatus: AuthStatusResponse(
@@ -289,8 +261,6 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
         XCTAssertEqual(keychain.savedValues[.serverURL], "https://example.test")
     }
 
-    /// Trusted-header mode where the proxy did not authorize this request is a
-    /// different problem again, with a different thing to try.
     func testTrustedHeaderServerWithoutASessionExplainsTheProxy() async throws {
         let client = MockAuthAPIClient(authStatus: AuthStatusResponse(
             authEnabled: true,
@@ -306,8 +276,6 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .unconfigured)
     }
 
-    /// `addServer` carried a verbatim copy of the same inference and has to
-    /// behave identically.
     func testAddServerAcceptsAServerThatAlreadySignedUsIn() async throws {
         let client = MockAuthAPIClient(authStatus: AuthStatusResponse(
             authEnabled: true,
@@ -329,8 +297,6 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
 
     func testMissingPasswordFlagFallsThroughToPasswordLogin() async throws {
         let keychain = InMemoryKeychainStore()
-        // authEnabled true but passwordAuthEnabled nil (older server) must NOT be
-        // treated as passkey-only — the regression-safety rule from #255.
         let client = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: true, loggedIn: false))
         let manager = makeManager(keychain: keychain, store: CustomHeaderStore(), client: client)
 
@@ -357,12 +323,10 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
         )
         XCTAssertNotNil(keychain.scopedValue(.customHeaders, scope: "https://proxy.test"))
 
-        // Session-expiry keeps the headers so re-login behind the proxy still works.
         manager.handleAPIError(APIError.unauthorized)
         XCTAssertNotNil(keychain.scopedValue(.customHeaders, scope: "https://proxy.test"))
         XCTAssertEqual(store.snapshot().map(\.name), ["Authorization"])
 
-        // Full sign-out forgets the server and its scoped headers.
         await manager.signOut()
         XCTAssertNil(keychain.scopedValue(.customHeaders, scope: "https://proxy.test"))
         XCTAssertEqual(store.snapshot(), [])
@@ -376,8 +340,6 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
             store: store,
             client: MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false))
         )
-        // The editor is reachable only while signed in, so establish an active
-        // server first; headers then persist under that server's scoped key (#16).
         await manager.configure(serverURLString: "https://example.test", password: "")
 
         manager.updateCustomHeaders([
@@ -397,7 +359,6 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
     func testLaunchMigratesLegacyGlobalHeadersToActiveServerScope() throws {
         let keychain = InMemoryKeychainStore()
         let encoded = try XCTUnwrap([CustomHeader(name: "Authorization", value: "Bearer saved")].encodedForStorage())
-        // Pre-#16 state: one global header blob alongside the single saved server.
         try keychain.save(encoded, forKey: .customHeaders)
         try keychain.save("https://legacy.test", forKey: .serverURL)
         let store = CustomHeaderStore()
@@ -408,23 +369,12 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
             client: MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false))
         )
 
-        // On launch the blob is hydrated into the live snapshot, moved under the
-        // saved server's scoped key, and the global remnant is removed (#16).
         XCTAssertEqual(store.snapshot().map(\.value), ["Bearer saved"])
         XCTAssertNotNil(keychain.scopedValue(.customHeaders, scope: "https://legacy.test"))
         XCTAssertNil(keychain.savedValues[.customHeaders])
     }
 }
 
-// MARK: - Cross-origin redirect header stripping (#277)
-
-/// A `URLProtocol` that issues exactly one 3xx redirect for a configured source
-/// path, then serves a 200 for every other request — capturing the request of
-/// the hop *after* the redirect ("second hop") so a test can assert which headers
-/// survived. It carries the first request's headers onto the follow-up to mimic a
-/// server redirect; `URLSession` then consults the task's redirect delegate (the
-/// client's per-task `CrossOriginHeaderStripper`, the system under test), which is
-/// what must strip them.
 final class RedirectingMockURLProtocol: URLProtocol {
     struct Redirect {
         let fromPath: String
@@ -432,7 +382,6 @@ final class RedirectingMockURLProtocol: URLProtocol {
     }
 
     static var redirect: Redirect?
-    /// The request `URLSession` issued for the hop after the redirect.
     static var secondHopRequest: URLRequest?
 
     static func reset() {
@@ -481,10 +430,6 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Drives the production guard's redirect decision directly: hands it a
-    /// synthetic `newRequest` and returns the request the guard passes back to the
-    /// URL loading system (what it intends for the next hop), or nil when it refuses
-    /// the redirect. The guard invokes the completion handler synchronously.
     private func redirectOutcome(
         guardHeaders: [CustomHeader],
         destination: String,
@@ -509,7 +454,6 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         return try XCTUnwrap(result, "guard did not call the completion handler")
     }
 
-    // A 307 or 308 resends the body, so a POST is never followed off the origin.
     func testRefusesCrossOriginRedirectOfARequestWithABody() throws {
         let outgoing = try redirectOutcome(
             guardHeaders: [],
@@ -521,7 +465,6 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         XCTAssertNil(outgoing)
     }
 
-    // A proxy's trailing-slash 307 on the same origin still reaches the server.
     func testFollowsSameOriginRedirectOfARequestWithABody() throws {
         let outgoing = try redirectOutcome(
             guardHeaders: [],
@@ -533,7 +476,6 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         XCTAssertEqual(outgoing?.httpMethod, "POST")
     }
 
-    // AC2: same-origin → same-origin keeps the headers (e.g. a proxy path rewrite).
     func testKeepsCustomHeadersOnSameOriginRedirect() throws {
         let outgoing = try XCTUnwrap(redirectOutcome(
             guardHeaders: [CustomHeader(name: "X-Api-Key", value: "k1")],
@@ -544,8 +486,6 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         XCTAssertEqual(outgoing.value(forHTTPHeaderField: "X-Api-Key"), "k1")
     }
 
-    /// A mock-backed session built like the shared production sessions: no
-    /// session delegate, so only the client's per-task guard can strip headers.
     private func delegateLessRedirectingSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [RedirectingMockURLProtocol.self]
@@ -558,11 +498,6 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         })
     }
 
-    // AC4: end-to-end via a redirect-emitting URLProtocol — the production guard,
-    // attached per task, strips the custom header so the actual second hop on the
-    // wire (cross-origin) never carries it. Exercises the real `downloadData`
-    // path: the header is applied on the same-origin first hop and removed when
-    // the server redirects off-origin.
     func testStripsCustomHeaderEndToEndOnURLProtocolRedirect() async throws {
         RedirectingMockURLProtocol.redirect = .init(
             fromPath: "/api/media",
@@ -582,7 +517,6 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         XCTAssertNil(secondHop.value(forHTTPHeaderField: "X-Api-Key"))
     }
 
-    // Same guarantee on the JSON/multipart send path (`sendPreparedRequest`).
     func testStripsCustomHeaderEndToEndOnAPIRequestRedirect() async throws {
         RedirectingMockURLProtocol.redirect = .init(
             fromPath: "/health",
@@ -601,9 +535,6 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         XCTAssertNil(secondHop.value(forHTTPHeaderField: "X-Api-Key"))
     }
 
-    // #688: clients share the process-wide sessions (one connection pool per
-    // host, even across servers) instead of each opening a cold one. Those
-    // sessions have no delegate, which is why the guard above is per-task.
     func testDefaultClientsShareDelegateLessSessions() async {
         let first = APIClient(baseURL: baseURL)
         let second = APIClient(baseURL: URL(string: "https://other.test")!)

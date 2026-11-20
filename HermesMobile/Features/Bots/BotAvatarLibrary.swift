@@ -1,8 +1,3 @@
-// Silhouettes and eye positions from Open Bot Avatar, (c) Dominik Scholz, MIT license, at
-// 3a5119877844165eebafe57d3100da475f67d0a8. Curves are normalized to absolute M, L, Q, C and Z.
-
-/// Where a face's eyes sit in the 100 by 100 box. `x` and `y` are the center of the pair and
-/// `spacing` runs center to center. At scale 1 each eye is 4 wide and 11 tall.
 struct BotAvatarEyes: Equatable, Sendable {
     var x: Double
     var y: Double
@@ -11,8 +6,6 @@ struct BotAvatarEyes: Equatable, Sendable {
 }
 
 extension BotAvatarShape {
-    /// The stored path and eyes of a ready-made avatar; nil for the eight classic shapes, which
-    /// draw from `BotAvatarBody` with their own leaning eyes.
     var readyMade: (path: String, eyes: BotAvatarEyes)? {
         switch self {
         case .circle, .blob, .squircle, .pill, .triangle, .hexagon, .cloud, .drop: return nil

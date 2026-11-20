@@ -3,25 +3,12 @@ import Foundation
 import Security
 import UserNotifications
 
-// Shared by the app and `HermesNotificationService`. Everything here is Foundation,
-// CryptoKit and Security only: the extension links no networking, no SwiftData and
-// no third-party package, so nothing in this file may reach for one.
-
-/// The part of a relay banner the phone reads outside `aps`. Every field is
-/// optional: the relay and plugin ship on their own schedule, and a payload this
-/// build cannot read stays the content-free notification it arrived as.
 struct PushPayload: Equatable {
-    /// `sha256(install_key)`, lowercase hex: names the pairing, and so the server.
     var installHash: String?
     var sessionID: String?
-    /// The plugin's coarse source: `bot`, `webui` or `other`.
     var source: String?
     var kind: String?
-    /// Base64 of `nonce(12) || ciphertext || tag(16)`. Nil when the host could not
-    /// encrypt, the user turned previews off, or the blob would not fit in a push.
     var sealed: String?
-    /// The bot's Profile, written back by the extension once a preview opens. It
-    /// only exists inside the ciphertext, and a tap needs it to pick the bot.
     var profile: String?
 
     static let profileKey = "hermex_profile"
@@ -36,15 +23,12 @@ struct PushPayload: Equatable {
     }
 }
 
-/// The plaintext the plugin sealed on the user's host.
 struct PushPreview: Codable, Equatable {
     var title: String?
     var subtitle: String?
     var body: String?
     var profile: String?
     var requestID: String?
-    /// The name the bot roster shows for the bot. Plugins before 0.3.0 omit it, and
-    /// their English `title` is shown as sealed.
     var botName: String?
 
     private enum CodingKeys: String, CodingKey {
@@ -53,10 +37,6 @@ struct PushPreview: Codable, Equatable {
         case botName = "bot_name"
     }
 
-    /// Opens a sealed preview (AES-256-GCM, AAD `hermex-preview-v1:<sha256 hex of
-    /// install_key>`). Nil for any failure — a wrong key, a tampered or truncated
-    /// blob, plaintext that is not the expected JSON — so callers have exactly one
-    /// fallback: leave the notification as delivered.
     static func open(sealed: String, keys: PushPreviewKeys) -> PushPreview? {
         guard let blob = Data(base64Encoded: sealed),
               let rawKey = Data(base64Encoded: keys.previewKey), rawKey.count == 32,
@@ -68,8 +48,6 @@ struct PushPreview: Codable, Equatable {
     }
 }
 
-/// The two halves of a stored `PushPairing` the extension needs. It decodes the
-/// same Keychain JSON the app writes, and nothing else from it.
 struct PushPreviewKeys: Decodable, Equatable {
     let installKey: String
     let previewKey: String
@@ -78,20 +56,13 @@ struct PushPreviewKeys: Decodable, Equatable {
         SHA256.hash(data: Data(installKey.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// The AES-GCM associated data every sealed preview is bound to, so a blob only
-    /// opens under the install it was sealed for.
     var previewAAD: Data { Data("hermex-preview-v1:\(installHash)".utf8) }
 
-    /// The pairing a payload names. One phone can be paired with several servers,
-    /// and a preview must only ever be opened with its own server's key.
     static func matching(installHash: String?, in candidates: [PushPreviewKeys]) -> PushPreviewKeys? {
         guard let installHash, !installHash.isEmpty else { return nil }
         return candidates.first { $0.installHash == installHash }
     }
 
-    /// Every pairing in the shared push access group, read with Security directly
-    /// so the extension does not link KeychainAccess. The items are the generic
-    /// passwords `KeychainPushPairingStore` writes; anything unreadable is skipped.
     static func stored(bundle: Bundle = .main) -> [PushPreviewKeys] {
         guard let service = bundle.object(forInfoDictionaryKey: "HermesKeychainService") as? String,
               let accessGroup = bundle.object(forInfoDictionaryKey: "HermesKeychainAccessGroup") as? String,
@@ -115,12 +86,6 @@ struct PushPreviewKeys: Decodable, Equatable {
 }
 
 extension PushPreview {
-    /// The extension's whole job, kept here so it is testable without an extension
-    /// process. A preview that opens replaces the banner text, titled with the bot's
-    /// name in the phone's language when the plugin sealed one, and leaves its Profile
-    /// behind for the tap. Anything else — previews off, no pairing for this install,
-    /// a wrong key, a tampered blob — keeps the banner content-free and only puts the
-    /// relay's English placeholder into the phone's language.
     static func rewrite(_ content: UNMutableNotificationContent, candidates: [PushPreviewKeys]) {
         let payload = PushPayload(userInfo: content.userInfo)
         guard let sealed = payload.sealed,
@@ -140,10 +105,6 @@ extension PushPreview {
         }
     }
 
-    /// The banner title in the phone's language: the bot's name and what it is asking
-    /// for, picked by the cleartext `kind`. A reply is titled by the name alone. Nil
-    /// without a sealed `bot_name` or for a kind this build has no label for, so the
-    /// plugin's English title stays.
     func localizedTitle(kind: String?) -> String? {
         guard let name = botName, !name.isEmpty else { return nil }
         switch kind {

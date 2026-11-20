@@ -49,7 +49,6 @@ extension MarkdownMathFormatter {
         }
     }
 
-    // Fixed literal commands, longest first so prefix commands do not consume longer ones.
     private static let knownCommandReplacements: [(String, String)] = [
         (#"\left"#, ""),
         (#"\right"#, ""),

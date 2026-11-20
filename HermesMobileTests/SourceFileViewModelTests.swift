@@ -10,8 +10,6 @@ final class SourceFileViewModelTests: XCTestCase {
         return model
     }
 
-    /// Dark mode reports its appearance during the first body pass, while the rows
-    /// are still building off the main actor. That must not discard the rows.
     func testAppearanceChangeDuringLoadKeepsTheRows() async {
         let model = SourceFileViewModel(path: "a.json", serverLanguage: nil, highlighter: SourceHighlighter())
         let load = Task { await model.load(content: "{}\n{}\n{}") }
@@ -21,7 +19,6 @@ final class SourceFileViewModelTests: XCTestCase {
         XCTAssertEqual(model.rows.count, 3)
     }
 
-    /// A comment opened on the old rows cannot add once a refresh's new rows land.
     func testNewRowsDropTheSelectionAndOpenComment() async {
         let model = await loadedModel(lineCount: 3)
         model.selection.tap(rowID: SourceFileRows.rowID(forLineIndex: 0), fileID: SourceFileRows.fileID)

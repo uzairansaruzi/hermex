@@ -1,12 +1,9 @@
 import Foundation
 import SwiftData
 
-/// Opens the offline cache. Its rows name their server's URL, so the store lives in the app's own
-/// container, which no extension reads, not in the app group SwiftData picks by default (#1509).
 enum CacheContainer {
     static let configuration = ModelConfiguration(groupContainer: .none)
 
-    /// Called once at launch, before anything can open the store.
     static func open() -> ModelContainer {
         if let group = HermesShareDraft.containerURL() {
             moveStore(from: group.appending(path: "Library/Application Support/\(configuration.url.lastPathComponent)"),
@@ -19,15 +16,11 @@ enum CacheContainer {
         do {
             return try ModelContainer(for: CachedSession.self, CachedMessage.self, configurations: configuration)
         } catch {
-            // The cache refills from the server, so a store that won't open never blocks the app.
             return try! ModelContainer(for: CachedSession.self, CachedMessage.self,
                                        configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         }
     }
 
-    /// Moves a store and its SQLite sidecars, replacing any at `destination`. The store goes last,
-    /// so a move cut short runs again on the next launch. A file that can't move is deleted: the
-    /// cache refills from the server, and the URLs it holds must not stay behind.
     static func moveStore(from source: URL, to destination: URL, fileManager: FileManager = .default) {
         guard fileManager.fileExists(atPath: source.path) else { return }
         try? fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -68,11 +61,6 @@ enum CacheStore {
         return sessions
     }
 
-    /// One cached session on `serverURL` by id, for a label such as a fork's
-    /// "Forked from" row. Unlike `cachedSessions`, an expired row still counts
-    /// until the next save purges it: a stale title beats none. Archived
-    /// sessions are never cached, so an archived parent returns nil and the
-    /// caller falls back. Never crosses servers.
     @MainActor
     static func cachedSession(id sessionID: String, serverURL: URL, in context: ModelContext) throws -> SessionSummary? {
         let cacheKey = CachedSession.cacheKey(serverURLString: serverURL.absoluteString, sessionID: sessionID)
@@ -138,10 +126,6 @@ enum CacheStore {
             return CachedSession.cacheKey(serverURLString: serverURLString, sessionID: sessionID)
         })
 
-        // One server-scoped fetch serves both the upsert lookups and the stale
-        // sweep, mirroring `cacheMessages`. Inserted rows join the dictionary so a
-        // duplicate session in the response updates that row instead of inserting
-        // a second one with the same unique key.
         let descriptor = FetchDescriptor<CachedSession>(
             predicate: #Predicate { cachedSession in
                 cachedSession.serverURLString == serverURLString
@@ -220,11 +204,6 @@ enum CacheStore {
                 sortIndex: offset
             )
         })
-        // One session-scoped fetch serves both the upsert lookups below and the
-        // stale sweep at the end. `CachedMessage.cacheKey` already embeds the
-        // server and session, so this window holds every row a per-message
-        // lookup could have matched. Rows inserted below are absent from the
-        // snapshot, which is what the stale sweep wants: their keys are fresh.
         let descriptor = FetchDescriptor<CachedMessage>(
             predicate: #Predicate { cachedMessage in
                 cachedMessage.serverURLString == serverURLString
@@ -264,11 +243,6 @@ enum CacheStore {
         try saveAndTrim(context, now: cachedAt)
     }
 
-    /// Deletes only the cached sessions and messages belonging to `serverURL`,
-    /// leaving every other configured server's offline data intact (#18). Backs
-    /// the Settings "Clear Offline Cache" action (active server) and the purge
-    /// of a server's cache when it is removed, so a removed/reset server never
-    /// leaves orphaned rows behind. A Hermes chat's write already under way can't put them back.
     @MainActor
     static func clearCache(for serverURL: URL, in context: ModelContext) throws {
         revokeHermesWriters(serverURL: serverURL)
@@ -295,12 +269,6 @@ enum CacheStore {
         try context.save()
     }
 
-    /// Saves a cache write, then enforces the TTL and the message cap. The write
-    /// is saved first so the store-side delete and count below see exactly what
-    /// the context holds: a row this write just refreshed is no longer expired in
-    /// the store either. Maintenance never loads rows unless some must go: the
-    /// expiry delete runs in the store and eviction starts from a COUNT. Hermes
-    /// writes (`CacheStore+Hermes.swift`) end here too.
     @MainActor
     static func saveAndTrim(_ context: ModelContext, now: Date) throws {
         try context.save()
@@ -312,8 +280,6 @@ enum CacheStore {
         }
     }
 
-    /// Deletes the least recently cached messages above `CachePolicy.maxMessages`,
-    /// fetching only the overflow rows.
     @MainActor
     private static func evictOldestMessagesIfNeeded(in context: ModelContext) throws {
         let overflowCount = try context.fetchCount(FetchDescriptor<CachedMessage>()) - CachePolicy.maxMessages
@@ -345,8 +311,6 @@ enum CacheStore {
 }
 
 extension SessionSummary {
-    /// A cached row as the list shows it; a Hermes row (one with a `lineageRoot`) keeps its
-    /// identity, read mark and preview (#1054). A cached Bot Chat is never written.
     init(cachedSession: CachedSession) {
         sessionId = cachedSession.sessionID
         title = cachedSession.title

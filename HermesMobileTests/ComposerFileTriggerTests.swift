@@ -3,8 +3,6 @@ import XCTest
 @testable import HermesMobile
 
 final class ComposerFileTriggerTests: XCTestCase {
-    // MARK: - Detection
-
     func testDetectsTriggerAtStartOfDraft() {
         let trigger = ComposerFileTrigger.detect(in: "@src", selection: caret(4))
 
@@ -34,7 +32,6 @@ final class ComposerFileTriggerTests: XCTestCase {
     }
 
     func testTheTriggerEndsAtWhitespace() {
-        // The caret has moved past the reference, so there is nothing to complete.
         XCTAssertNil(ComposerFileTrigger.detect(in: "@src/main.swift now", selection: caret(19)))
         XCTAssertNil(ComposerFileTrigger.detect(in: "@src/main.swift ", selection: caret(16)))
     }
@@ -51,8 +48,6 @@ final class ComposerFileTriggerTests: XCTestCase {
             ComposerFileTrigger.detect(in: "@src", selection: NSRange(location: 1, length: 3))
         )
     }
-
-    // MARK: - Accepting a row
 
     func testApplyingReplacesOnlyTheTriggerAndLeavesTheCaretAfterIt() throws {
         let draft = "please read @src and stop"

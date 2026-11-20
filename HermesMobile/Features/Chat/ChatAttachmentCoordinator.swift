@@ -31,7 +31,6 @@ final class ChatAttachmentCoordinator {
     private(set) var localAttachmentPreviews: [String: [String: Data]] = [:]
     private var activeUploadCount = 0
     private var stagingIDs: Set<UUID> = []
-    /// Bytes of Hermes files still staging, so overlapping imports share the 50 MB total.
     private var stagingBytes = 0
     private(set) var uploadStartGeneration = 0
 
@@ -50,14 +49,8 @@ final class ChatAttachmentCoordinator {
     private let draftStore: ChatDraftStore?
     private let attachmentLease: ChatDraftAttachmentLease?
     private var reservedUploadFilenames: Set<String> = []
-    /// Names held by pasted text still staging, so a paste that starts before the
-    /// last one lands takes the next name (#1381).
     private var stagingPasteNames: Set<String> = []
-    /// Long pastes still staging, so `cancelPastedTextStaging()` can stop them.
     private var pasteTasks: [UUID: Task<PendingAttachment?, Never>] = [:]
-    /// A Hermes session (#1012): staging keeps only the local copy, under Bot Chat's
-    /// limits and image conversion, and Send or Queue uploads it
-    /// (`HermesChatTurnCoordinator`). A webui session uploads each file as it is staged.
     let uploadsOnSend: Bool
 
     init(
@@ -88,10 +81,6 @@ final class ChatAttachmentCoordinator {
         }
     }
 
-    /// Saves a durable app-owned copy, uploads it, and appends the result to the
-    /// pending strip. Staging stops if the durable copy cannot be established,
-    /// so every attachment shown in the composer is restorable from its draft.
-    /// A Hermes session only stages the copy (`stageForSend`).
     @discardableResult
     func uploadAttachment(data: Data, filename: String, previewData: Data? = nil,
                           isClipboardPaste: Bool = false) async -> PendingAttachment? {
@@ -133,11 +122,6 @@ final class ChatAttachmentCoordinator {
         return attachment
     }
 
-    /// Starts staging a long paste as a text file under the next free `pasted-text`
-    /// name (#1381). The name is held before the task starts, against the strip and
-    /// every paste still staging, and the paste counts as an upload while the text is
-    /// encoded, so Send waits for it. The chat stops it with `cancelPastedTextStaging()`
-    /// as it goes away.
     @discardableResult
     func stagePastedText(_ text: String) -> Task<PendingAttachment?, Never> {
         let filename = ComposerLargePaste.filename(avoiding: stagingPasteNames.union(pendingAttachments.map(\.name)))
@@ -150,7 +134,6 @@ final class ChatAttachmentCoordinator {
                 stagingPasteNames.remove(filename)
                 pasteTasks[id] = nil
             }
-            // Measured before encoding, so a paste over the file limit never copies its text.
             let data = await Task.detached { text.utf8.count <= limit ? Data(text.utf8) : nil }.value
             activeUploadCount = max(activeUploadCount - 1, 0)
             guard !Task.isCancelled else { return nil }
@@ -166,23 +149,16 @@ final class ChatAttachmentCoordinator {
         return task
     }
 
-    /// Stops every long paste still staging, so none lands after its chat is gone.
     func cancelPastedTextStaging() {
         pasteTasks.values.forEach { $0.cancel() }
     }
 
-    /// The text of a staged paste, read from its local copy for `StagedPasteSheet` (#1456).
-    /// Nil when the copy is gone or isn't UTF-8.
     func stagedPasteText(_ attachment: PendingAttachment) async -> StagedPasteText? {
         guard let file = attachment.draftFileName,
               let data = try? await draftAttachmentStore.data(named: file) else { return nil }
         return await Task.detached { StagedPasteText(data: data) }.value
     }
 
-    /// Puts edited text in place of a staged paste (#1456). The new copy is written first and
-    /// the draft saved before the old copy goes, so a failure at any step leaves the original
-    /// whole. The save counts as an upload, so Send waits for it. A tile removed or changed
-    /// meanwhile stays as it is. Returns why the edit did not save, or nil once it has.
     func replaceStagedPaste(_ attachment: PendingAttachment, with text: String) async -> String? {
         let isCurrent = { (staged: PendingAttachment, file: String?) in staged.id == attachment.id && staged.draftFileName == file }
         let notSaved = String(localized: "Your original text is unchanged. Try again shortly.")
@@ -203,7 +179,6 @@ final class ChatAttachmentCoordinator {
         stagingBytes += data.count
         defer { stagingBytes -= data.count }
 
-        // A failure is reported in the sheet, so the composer's banner stays as it was.
         let banner = uploadAttachmentErrorMessage
         guard let file = await saveDraftCopy(data, filename: attachment.name, attachmentID: attachment.id,
                                              maximumBytes: limit) else {
@@ -225,8 +200,6 @@ final class ChatAttachmentCoordinator {
         pendingAttachments[index] = edited
         let key = attachmentLease?.key
         if let key { draftStore?.replaceAttachmentRecord(ChatDraftAttachment(pending: edited), for: key) }
-        // Nothing else references the old copy now; an import freeing space must not take it
-        // before the save below decides whether the edit stands.
         attachmentLease?.files.insert(old)
         do {
             try await draftStore?.flush()
@@ -243,16 +216,10 @@ final class ChatAttachmentCoordinator {
         return nil
     }
 
-    /// Re-uploads a restored draft attachment from its durable local copy,
-    /// preserving the draft record's identity so the restored pending
-    /// attachment reconciles with the persisted draft instead of duplicating
-    /// it. Failures stay quiet (no banner, no delegate error): the caller
-    /// reports them in aggregate and keeps the record for a later retry.
     @discardableResult
     func reuploadDraftAttachment(data: Data, draftAttachment: ChatDraftAttachment) async -> PendingAttachment? {
         if let file = draftAttachment.file { attachmentLease?.filesByAttachmentID[draftAttachment.id] = file }
         if uploadsOnSend {
-            // A Hermes send uploads it later; restoring only shows the local copy again.
             let attachment = PendingAttachment(
                 id: draftAttachment.id, name: draftAttachment.name, path: "", mime: draftAttachment.mime,
                 size: draftAttachment.size, isImage: draftAttachment.isImage,
@@ -280,10 +247,6 @@ final class ChatAttachmentCoordinator {
         return attachment
     }
 
-    /// Keeps a durable local copy for a Hermes send to upload, under Bot Chat's rules:
-    /// eight files, 25 MB each and 50 MB in all; images re-encoded as JPEG, or PNG with
-    /// transparency (`BotAttachmentUpload.prepare`). Counts as an upload while it runs, so
-    /// the composer waits for it as it waits for a webui upload.
     private func stageForSend(data: Data, filename: String, isClipboardPaste: Bool) async -> PendingAttachment? {
         let stagingID = UUID()
         stagingIDs.insert(stagingID)
@@ -312,7 +275,6 @@ final class ChatAttachmentCoordinator {
         defer { stagingBytes -= prepared.data.count }
         guard let file = await saveDraftCopy(prepared.data, filename: prepared.name, attachmentID: stagingID,
                                              maximumBytes: BotAttachmentUpload.maximumFileBytes) else { return nil }
-        // A cancelled import (a paste whose chat went away) keeps no copy and no tile.
         guard !Task.isCancelled else {
             await deleteDraftCopy(named: file, attachmentID: stagingID)
             return nil
@@ -327,8 +289,6 @@ final class ChatAttachmentCoordinator {
         return attachment
     }
 
-    /// Saves the app-owned copy a staged attachment is restored from, or reports why it
-    /// could not and returns nil.
     private func saveDraftCopy(_ data: Data, filename: String, attachmentID: UUID,
                                maximumBytes: Int = PendingAttachment.maximumUploadBytes) async -> String? {
         let draftFileName: String
@@ -361,8 +321,6 @@ final class ChatAttachmentCoordinator {
         return draftFileName
     }
 
-    /// The staged files a Hermes Send or Queue uploads, in strip order, each read from its
-    /// local copy only when the send gets to it.
     func outgoingAttachments(_ attachments: [PendingAttachment]) -> [HermesChatTurnCoordinator.OutgoingAttachment] {
         attachments.map { attachment in
             HermesChatTurnCoordinator.OutgoingAttachment(
@@ -377,7 +335,6 @@ final class ChatAttachmentCoordinator {
         }
     }
 
-    /// Removes files a send carried from the strip and deletes their local copies.
     func consumeSentAttachments(_ sent: [PendingAttachment]) async {
         let ids = Set(sent.map(\.id))
         pendingAttachments.removeAll { ids.contains($0.id) }
@@ -392,12 +349,6 @@ final class ChatAttachmentCoordinator {
         await ImagePreviewDownsampler.previewDataAsync(from: data, maxPixelSize: ImagePreviewDownsampler.attachmentMaxPixelSize)
     }
 
-    /// Uploads a single file and returns it as a `PendingAttachment` *without*
-    /// adding it to `pendingAttachments`. The voice-note flow uses this: the clip
-    /// is sent as the sole attachment of its own message, so it must not sweep up
-    /// the user's typed draft or other staged attachments — and it is never part
-    /// of a persisted draft. Failures surface via `uploadAttachmentErrorMessage`
-    /// and the method returns nil.
     func uploadStandaloneAttachment(data: Data, filename: String) async -> PendingAttachment? {
         await performUpload(
             data: data,
@@ -512,7 +463,6 @@ final class ChatAttachmentCoordinator {
         await deleteUnreferencedCopy(fileName)
     }
 
-    /// Deletes a local copy unless a draft or a live owner still holds it.
     private func deleteUnreferencedCopy(_ fileName: String) async {
         if let draftStore {
             await draftStore.deleteAttachmentIfUnreferenced(fileName)
@@ -535,8 +485,6 @@ final class ChatAttachmentCoordinator {
         }
     }
 
-    /// Raw attachment bytes with no image downsampling — used by the inline
-    /// audio player, which needs the original encoded audio data intact.
     func attachmentRawData(path: String) async -> Data? {
         guard let sessionID = delegate?.attachmentSessionID else { return nil }
 
@@ -562,8 +510,6 @@ final class ChatAttachmentCoordinator {
         }
     }
 
-    /// Raw transcript media bytes for inline audio/video playback. Local paths
-    /// still require a real session ID so `/api/media` can authorize session media.
     func transcriptMediaData(for reference: TranscriptMediaReference) async -> Data? {
         guard let sessionID = delegate?.attachmentSessionID else { return nil }
 
@@ -636,7 +582,6 @@ final class ChatAttachmentCoordinator {
         localAttachmentPreviews[messageID] = nil
     }
 
-    /// A Hermes prompt row's thumbnails, by file name: its chips carry no path (#1012).
     func keepLocalPreviews(of attachments: [PendingAttachment], forMessageID messageID: String) {
         var previews: [String: Data] = [:]
         for attachment in attachments { previews[attachment.name] = attachment.thumbnailData }

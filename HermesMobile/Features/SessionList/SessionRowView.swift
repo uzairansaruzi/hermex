@@ -9,22 +9,12 @@ struct SessionRowView: View {
     var showsMessageCount = true
     var showsWorkspace = true
     var isViewingCachedData = false
-    /// The cached row shows while its list connects, so it isn't labelled Cached.
     var isCachedCopyProvisional = false
     var isUnread = false
-    /// The resolved attention state for this row, supplied by the screen that
-    /// polls the server (`SessionListViewModel`). Screens that do not poll pass
-    /// nothing and the row falls back to what the session itself reports.
     var attentionState: SessionRowAttentionState?
-    /// `attentionState` is only the last one known (#1374): drawn secondary, read "Last known".
     var isAttentionStale = false
-    /// Set only while a remote content search is showing this row, so the row
-    /// can say why it matched.
     var searchExcerpt: SessionSearchExcerpt?
-    /// Labels an archived row "Archived": set on the Sessions list, where only a Hermes search
-    /// shows one (#1053), and not on the Archived screen, whose rows all are.
     var labelsArchived = false
-    /// The Profile the row belongs to, tagged on a Hermes list of every Profile's sessions (#709).
     var profileTag: String?
 
     var body: some View {
@@ -47,7 +37,6 @@ struct SessionRowView: View {
         .accessibilityLabel(accessibilitySummary)
     }
 
-    /// The row's title; an untitled Hermes row shows its first prompt (`preview`, #1046).
     static func displayTitle(for session: SessionSummary) -> String {
         let title = [session.title, session.hermes?.preview]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -72,13 +61,6 @@ struct SessionRowView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
 
-    /// The state the row actually shows: what the polling screen resolved, or —
-    /// for screens that do not poll — whatever the session alone can say.
-    ///
-    /// The fallback is off while the row is showing cached data: a cached
-    /// summary keeps whatever `isStreaming`/`activeStreamId` it was captured
-    /// with, so an offline row would otherwise claim the agent is still
-    /// working. Cached rows fall back to their relative time instead.
     static func effectiveAttentionState(
         for session: SessionSummary,
         attentionState: SessionRowAttentionState?,
@@ -209,17 +191,11 @@ struct SessionRowView: View {
         }
     }
 
-    /// One line, one meaning: the attention state when the session wants
-    /// something, otherwise the relative time. Never both, so the row keeps its
-    /// height in every state. Only the time text ticks, once a minute, so an
-    /// idle list stays current without re-rendering whole rows.
     @ViewBuilder
     private var trailingStatusSlot: some View {
         if let effectiveAttentionState {
             attentionStateText(effectiveAttentionState)
         } else if Self.lastActivityDate(for: session) != nil {
-            // The timeline is only the once-a-minute trigger. `context.date` is the
-            // minute's start, so a mid-minute render would read "in 38s".
             TimelineView(.everyMinute) { _ in
                 relativeDateText(Self.relativeDateLabel(for: session, now: .now) ?? "")
             }
@@ -276,8 +252,6 @@ struct SessionRowView: View {
             .accessibilityHidden(true)
     }
 
-    /// One-line "why this row matched", with the query bolded. Hidden from
-    /// VoiceOver because `accessibilitySummary` already reads it in order.
     private func excerptText(_ excerpt: SessionSearchExcerpt) -> some View {
         Text(excerpt.highlighted)
             .font(AppFont.caption())
@@ -353,7 +327,6 @@ struct SessionRowView: View {
     }
 
     private var visibleStateBadges: [SessionRowStateBadgeKind] {
-        // Streaming has no badge: the trailing "Working" label already says it.
         var badges: [SessionRowStateBadgeKind] = []
 
         if isViewingCachedData && !isCachedCopyProvisional {
@@ -404,9 +377,6 @@ struct SessionRowView: View {
         dynamicTypeSize.isAccessibilitySize ? 8 : 7
     }
 
-    /// The row's "2h ago" text measured against `now`: the wall clock at each
-    /// `TimelineView` tick for the visible label, render time for VoiceOver.
-    /// Nil without a timestamp.
     static func relativeDateLabel(for session: SessionSummary, now: Date) -> String? {
         guard let lastActivity = lastActivityDate(for: session) else { return nil }
         return SessionRelativeDateFormatter.shared.localizedString(for: lastActivity, relativeTo: now)
@@ -443,8 +413,6 @@ struct SessionRowView: View {
             parts.append(metadataLabel)
         }
 
-        // Render time, not the minute tick: the label can lag until the row
-        // next re-renders (#876 Decision 6).
         if let relativeDate = Self.relativeDateLabel(for: session, now: Date()) {
             parts.append(relativeDate)
         }
@@ -453,17 +421,11 @@ struct SessionRowView: View {
     }
 }
 
-/// What one session row is asking of the user, shown where the relative time
-/// otherwise sits. `nil` means no attention is pending: the row shows its
-/// time, with an unread dot when a newer settled reply exists.
 enum SessionRowAttentionState: String, Equatable {
     case approval
     case input
     case working
 
-    /// Precedence: approval → input → working → ready. Pure by design — the
-    /// caller decides which sessions are worth asking the server about, so a
-    /// pending flag on a non-streaming session still resolves here.
     static func resolve(
         session: SessionSummary,
         hasPendingApproval: Bool,
@@ -556,8 +518,6 @@ private struct SessionSourceBadge: View {
     }
 }
 
-/// A row's Profile on a list of every Profile's sessions (#709). A Profile name is the user's own
-/// text, never a catalog key.
 private struct SessionProfileTag: View {
     let profile: String
 
@@ -593,7 +553,6 @@ private func nonEmpty(_ value: String?) -> String? {
     return trimmed.isEmpty ? nil : trimmed
 }
 
-/// Shared "2h ago" formatter for session and Bot rows.
 enum SessionRelativeDateFormatter {
     static let shared: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -605,20 +564,12 @@ enum SessionRelativeDateFormatter {
 enum SessionRowDisplaySettings {
     static let showMessageCountKey = "sessionRow.showMessageCount"
     static let showWorkspaceKey = "sessionRow.showWorkspace"
-    // Cron and CLI sessions default to shown; delegated subagents default to
-    // hidden. Each kind has an independent visibility control.
     static let showCronSessionsKey = "sessionRow.showCronSessions"
     static let showSubagentSessionsKey = "sessionRow.showSubagentSessions"
     static let defaultShowsSubagentSessions = false
-    // Legacy global CLI-sessions key. Since #19 the CLI toggle is stored
-    // per-server (it mirrors the server's own `show_cli_sessions` setting, and a
-    // value adopted from server A must not leak to server B); this key survives
-    // only as the migration seed for servers with no per-server value yet.
     static let showCliSessionsKey = "sessionRow.showCliSessions"
     static let showClaudeCodeSessionsKey = "sessionRow.showClaudeCodeSessions"
 
-    /// Per-server storage key for the CLI-sessions toggle (#19). Keyed by the
-    /// active server's absolute URL, matching how the offline cache scopes rows.
     static func showCliSessionsKey(for server: URL) -> String {
         "\(showCliSessionsKey)|\(server.absoluteString)"
     }
@@ -627,9 +578,6 @@ enum SessionRowDisplaySettings {
         "\(showClaudeCodeSessionsKey)|\(server.absoluteString)"
     }
 
-    /// Effective CLI-sessions visibility for `server`: the per-server value if
-    /// one was ever stored, else the pre-#19 global value, else shown-by-default
-    /// like every other session-row toggle.
     static func showsCliSessions(for server: URL, in defaults: UserDefaults = .standard) -> Bool {
         if let perServer = defaults.object(forKey: showCliSessionsKey(for: server)) as? Bool {
             return perServer
@@ -642,8 +590,6 @@ enum SessionRowDisplaySettings {
         return true
     }
 
-    /// Claude Code visibility is new and per-server, with no legacy global
-    /// value. Omission defaults to shown for compatibility with older servers.
     static func showsClaudeCodeSessions(
         for server: URL,
         in defaults: UserDefaults = .standard

@@ -1,8 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// Settings > Appearance's themes. Each has a light and a dark palette, and a user can pick a
-/// different theme for each mode. Default is the app's system colors, untouched.
 enum ColorTheme: String, CaseIterable, Identifiable {
     case `default`
     case paper
@@ -26,7 +24,6 @@ enum ColorTheme: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Text color for drawing outside the view hierarchy, where no trait reaches, such as math images.
     func resolvedText(isDark: Bool) -> UIColor {
         palette(isDark: isDark).text.resolvedColor(with: UITraitCollection(userInterfaceStyle: isDark ? .dark : .light))
     }
@@ -50,14 +47,12 @@ enum ColorTheme: String, CaseIterable, Identifiable {
     }
 }
 
-/// One theme's colors in one mode. A class, because every token read passes one through the trait.
 final class ThemePalette {
     let canvas, surface, raised, groupedCanvas, groupedSurface, groupedRaised: UIColor
     let text, textSecondary, textTertiary, placeholder: UIColor
     let separator, fill, fillSecondary, fillTertiary: UIColor
     let accent, onAccent, link, code, inlineCode, userBubble: UIColor
 
-    /// Today's colors. Dynamic, so one palette serves both modes and elevated sheets.
     static let system = ThemePalette(
         canvas: .systemBackground, surface: .secondarySystemBackground, raised: .tertiarySystemBackground,
         groupedCanvas: .systemGroupedBackground, groupedSurface: .secondarySystemGroupedBackground,
@@ -112,9 +107,6 @@ final class ThemePalette {
         self.userBubble = userBubble
     }
 
-    /// A theme's palette, from the seven colors that define it. The rest follow the same rules
-    /// in every theme, with fill strengths matching iOS's own. Tertiary text and placeholders are
-    /// the muted color at full strength: anything fainter misses the contrast floor.
     private convenience init(isDark: Bool, canvas: Int, surface: Int, text: Int, muted: Int, border: Int, accent: Int, code: Int) {
         let canvas = UIColor(rgb: canvas)
         let surface = UIColor(rgb: surface)
@@ -134,7 +126,6 @@ final class ThemePalette {
         )
     }
 
-    /// This palette with a user's accent, moved just far enough to stay readable on it.
     func withAccent(_ accent: UIColor, isDark: Bool) -> ThemePalette {
         let traits = UITraitCollection(userInterfaceStyle: isDark ? .dark : .light)
         let readable = accent.adjustedForContrast(
@@ -152,14 +143,11 @@ final class ThemePalette {
     }
 }
 
-/// The theme and accent a user picked. It's the value of one trait on the window scene, so a
-/// change recolors SwiftUI, UIKit, sheets and the app lock without re-running view bodies.
 struct AppAppearance: Equatable {
     static let `default` = AppAppearance(lightTheme: .default, darkTheme: .default, accentHex: nil)
 
     let lightTheme: ColorTheme
     let darkTheme: ColorTheme
-    /// Nil uses each theme's own accent.
     let accentHex: String?
     private let lightPalette: ThemePalette
     private let darkPalette: ThemePalette
@@ -177,7 +165,6 @@ struct AppAppearance: Equatable {
 
     func palette(isDark: Bool) -> ThemePalette { isDark ? darkPalette : lightPalette }
 
-    /// For caches of baked images, which a new theme or accent has to redraw.
     var cacheKey: String { "\(lightTheme.rawValue)|\(darkTheme.rawValue)|\(accentHex ?? "")" }
 
     func theme(for colorScheme: ColorScheme) -> ColorTheme { colorScheme == .dark ? darkTheme : lightTheme }
@@ -211,13 +198,9 @@ extension EnvironmentValues {
         set { self[AppAppearanceKey.self] = newValue }
     }
 
-    /// Whether this mode shows a theme, rather than Default's system colors. Only for what a
-    /// color token can't do alone, such as hiding a list's own background.
     var isAppThemed: Bool { appAppearance.theme(for: colorScheme) != .default }
 }
 
-/// Where Settings > Appearance keeps its theme and accent, for all servers. Applied like
-/// `AppTextSize`: when a scene connects, before its first frame, and when the setting changes.
 enum AppAppearanceSettings {
     static let lightThemeKey = "appearance.lightTheme"
     static let darkThemeKey = "appearance.darkTheme"
@@ -242,9 +225,6 @@ enum AppAppearanceSettings {
     }
 }
 
-/// The app's color tokens. Each follows the scene's theme, accent and mode wherever it's drawn.
-/// In SwiftUI: `Color(.appCanvas)`. Status colors and syntax highlighting aren't tokens: they
-/// stay fixed in every theme.
 extension UIColor {
     static let appCanvas = token { $0.canvas }
     static let appSurface = token { $0.surface }
@@ -261,13 +241,9 @@ extension UIColor {
     static let appFillSecondary = token { $0.fillSecondary }
     static let appFillTertiary = token { $0.fillTertiary }
     static let appAccent = token { $0.accent }
-    /// Text and icons on a solid `appAccent` fill.
     static let appOnAccent = token { $0.onAccent }
-    /// Links in Markdown replies.
     static let appLink = token { $0.link }
-    /// Behind code blocks.
     static let appCode = token { $0.code }
-    /// Behind inline code in prose.
     static let appInlineCode = token { $0.inlineCode }
     static let appUserBubble = token { $0.userBubble }
 
@@ -287,7 +263,6 @@ extension UIColor {
         )
     }
 
-    /// Nil unless `rawValue` is a six-digit hex color.
     convenience init?(hexRGB rawValue: String) {
         guard let hex = HeaderLogoColor.normalizedHex(rawValue),
               let value = Int(hex.dropFirst(), radix: 16) else { return nil }
@@ -295,7 +270,6 @@ extension UIColor {
     }
 }
 
-/// WCAG contrast, which the themes and any accent pick must meet.
 enum ColorContrast {
     static let minimum = 4.5
 
@@ -317,12 +291,10 @@ private extension UIColor {
         return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
     }
 
-    /// White or black, whichever reads better on this color. The better one always clears 4.5:1.
     var readableForeground: UIColor {
         ColorContrast.ratio(.white, self) >= ColorContrast.ratio(.black, self) ? .white : .black
     }
 
-    /// This color, mixed toward `target` in small steps until it reaches `minimum` on every background.
     func adjustedForContrast(_ minimum: Double, on backgrounds: [UIColor], toward target: UIColor) -> UIColor {
         var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
         getRed(&red, green: &green, blue: &blue, alpha: &alpha)
@@ -343,10 +315,6 @@ private extension UIColor {
     }
 }
 
-/// Text levels for SwiftUI: `.foregroundStyle(.appSecondary)`. On Default these are SwiftUI's own
-/// levels, which keep their vibrancy on glass. On a theme they're its text colors, which meet the
-/// contrast floor where iOS's translucent levels don't. Text with no style of its own stays iOS's
-/// label color: a foreground style set at the app root would also repaint every button's label.
 struct AppTextStyle: ShapeStyle {
     enum Level { case primary, secondary, tertiary }
 
@@ -368,16 +336,11 @@ extension ShapeStyle where Self == AppTextStyle {
     static var appTertiary: AppTextStyle { AppTextStyle(level: .tertiary) }
 }
 
-/// What a themed list draws behind its rows.
 enum ThemedListRows {
-    /// Cards on the canvas, as in an inset grouped list.
     case grouped
-    /// Rows directly on the canvas.
     case plain
 }
 
-/// A `List` that follows the theme. On Default it's an ordinary `List`: nothing here applies, so
-/// rows keep iOS's own backgrounds and highlights. Rows never draw dividers between them.
 struct AppList<Content: View>: View {
     var rows = ThemedListRows.grouped
     @ViewBuilder let content: Content
@@ -388,7 +351,6 @@ struct AppList<Content: View>: View {
     }
 }
 
-/// `AppList` for a `Form`.
 struct AppForm<Content: View>: View {
     @ViewBuilder let content: Content
 
@@ -398,8 +360,6 @@ struct AppForm<Content: View>: View {
     }
 }
 
-/// Gives every row the theme's background and hides its separators. A row with its own
-/// `listRowBackground` keeps it.
 private struct ThemedListContent<Content: View>: View {
     let rows: ThemedListRows
     let content: Content
@@ -429,8 +389,6 @@ private struct ThemedScrollBackground: ViewModifier {
     }
 }
 
-/// `.borderedProminent` with a readable label. iOS always draws it white, which a theme's light
-/// dark-mode accent can't carry, so a theme or accent pick uses `appOnAccent`.
 struct AppProminentButtonStyle: PrimitiveButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         Prominent(configuration: configuration)
@@ -455,8 +413,6 @@ extension PrimitiveButtonStyle where Self == AppProminentButtonStyle {
     static var appProminent: AppProminentButtonStyle { AppProminentButtonStyle() }
 }
 
-/// A material on Default. A theme draws its surface instead: iOS's materials wash its colors out
-/// to gray. `.background(.appMaterial(.bar))`.
 struct AppMaterialStyle: ShapeStyle {
     let material: Material
 
@@ -470,9 +426,6 @@ extension ShapeStyle where Self == AppMaterialStyle {
 }
 
 extension View {
-    /// Fills a page, pushed or in a sheet, with the theme's canvas. iOS paints a page with no
-    /// background of its own in the system color, and nothing above the page can change that.
-    /// Draws nothing on Default.
     func themedPageBackground() -> some View {
         modifier(ThemedPageBackground())
     }

@@ -1,12 +1,6 @@
 import SwiftUI
 
-/// First launch, and a webui server signing in again (#1540): one welcome page whose "Add your
-/// server" opens the Add Server sheet (`AddServerView`, entry `.onboarding`), with the setup
-/// prompt and private-network pages behind "I don't have one yet". Given a saved server, the
-/// sheet opens at once with its address filled in.
 struct OnboardingView: View {
-    /// Height of the fade the bottom bar paints over the pager. Pages that end in a control
-    /// pad their scroll content past it so the control can scroll clear of the fade.
     static let bottomFadeHeight: CGFloat = 50
 
     @Bindable var authManager: AuthManager
@@ -16,7 +10,6 @@ struct OnboardingView: View {
     @State private var currentPage = 0
     @State private var shownSetupPrompt = OnboardingFlowPolicy.initialSetupPrompt
     @State private var copiedSetupPrompts: Set<OnboardingSetupPrompt> = []
-    /// The prompts whose copy reminder Continue Anyway skipped.
     @State private var bypassedSetupPrompts: Set<OnboardingSetupPrompt> = []
     @State private var isShowingCopyReminder = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -24,7 +17,6 @@ struct OnboardingView: View {
     init(authManager: AuthManager, savedServer: URL? = nil) {
         self.authManager = authManager
         self.savedServer = savedServer
-        // A known server means a sign-in again, not first-run setup.
         _isAddingServer = State(initialValue: savedServer != nil)
     }
 
@@ -40,7 +32,6 @@ struct OnboardingView: View {
         }
     }
 
-    /// "I don't have one yet": the setup prompt, then joining a private network, then the sheet.
     private var setupPages: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -107,7 +98,6 @@ struct OnboardingView: View {
             )
             .frame(height: Self.bottomFadeHeight)
             .offset(y: -Self.bottomFadeHeight)
-            // The fade overlaps the page above it; let taps reach the page's controls.
             .allowsHitTesting(false),
             alignment: .top
         )
@@ -141,7 +131,6 @@ struct OnboardingView: View {
         currentPage = oldPage
     }
 
-    /// The next setup page, or the Add Server sheet after the last.
     private func advance() {
         guard let next = OnboardingFlowPolicy.page(after: currentPage) else {
             isAddingServer = true

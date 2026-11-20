@@ -2,8 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class APIClientSessionExportTests: APIClientTestCase {
-    // MARK: - Endpoint construction
-
     func testExportEndpointBuildsPathAndQuery() {
         let url = Endpoint.exportSession(sessionID: "abc-123", format: .html)
             .url(relativeTo: URL(string: "https://example.test")!)
@@ -19,16 +17,12 @@ final class APIClientSessionExportTests: APIClientTestCase {
         )
     }
 
-    // MARK: - Download
-
     func testExportSessionReturnsBytesAndHeaderDerivedFilename() async throws {
         let html = Data("<html><body>hi</body></html>".utf8)
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/session/export")
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertNil(request.httpBody)
-            // The response is a file download, so the export request must not
-            // claim it only accepts JSON.
             XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "*/*")
 
             let response = HTTPURLResponse(
@@ -49,8 +43,6 @@ final class APIClientSessionExportTests: APIClientTestCase {
         XCTAssertEqual(file.filename, "hermes-abc-123.html")
     }
 
-    // MARK: - Filename derivation
-
     func testFilenameParsesUnquotedToken() {
         let filename = SessionExportFile.filename(
             contentDisposition: "attachment; filename=export.json",
@@ -68,7 +60,6 @@ final class APIClientSessionExportTests: APIClientTestCase {
             sessionID: "s1",
             format: .html
         )
-        // Only the last path component survives; traversal segments are gone.
         XCTAssertEqual(filename, "passwd")
     }
 

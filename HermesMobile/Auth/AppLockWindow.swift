@@ -1,21 +1,11 @@
 import SwiftUI
 import UIKit
 
-/// Puts `AppLock`'s window on the app's one window scene (#885). `PushAppDelegate` names
-/// this class in the scene configuration; SwiftUI still creates and owns the app window and
-/// forwards the scene's lifecycle calls here.
-///
-/// The window sits above alerts, so it also covers sheets, full-screen covers, alerts and
-/// menus, which an overlay on `ContentView` would sit under. It appears in the same call
-/// that reports the phase, before the first frame of a cold launch and before the app
-/// switcher snapshot, with no animation.
 @MainActor final class AppLockSceneDelegate: NSObject, UIWindowSceneDelegate {
     private let lock = AppLock.shared
     private var lockWindow: UIWindow?
     private var lockHost: UIHostingController<AppLockView>?
-    /// The app window that was key when the lock appeared; it is key again when the lock goes.
     private weak var coveredKeyWindow: UIWindow?
-    /// The text input that last had the keyboard behind the lock; it gets it back after.
     private weak var coveredTextInput: UIResponder?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -28,7 +18,6 @@ import UIKit
         host.view.backgroundColor = .appCanvas
         window.tintColor = .appAccent
         window.rootViewController = host
-        // VoiceOver reads only the lock while it is up.
         window.accessibilityViewIsModal = true
         lockWindow = window
         lockHost = host
@@ -57,7 +46,6 @@ import UIKit
         update()
     }
 
-    /// Follows changes that don't come with a scene call: an unlock, Continue, or the toggle.
     private func followLock() {
         withObservationTracking {
             _ = lock.showsLockWindow
@@ -69,12 +57,8 @@ import UIKit
         }
     }
 
-    /// Something behind the lock took the keyboard after it appeared, such as the composer of
-    /// a new chat an App Intent or share opened: it goes until the lock does, like one that was
-    /// focused before, so no keys (⌘↩ included) reach the hidden app.
     @objc private func textInputDidBeginEditing(_ notification: Notification) {
         guard let window = lockWindow, !window.isHidden, let input = notification.object as? UIResponder else { return }
-        // On the next turn: resigning inside the begin-editing call leaves UIKit half done.
         Task { @MainActor [weak self, weak input] in
             guard let self, let input, input.isFirstResponder,
                   let window = lockWindow, !window.isHidden else { return }
@@ -89,18 +73,15 @@ import UIKit
         if lock.showsLockWindow {
             if window.isHidden {
                 coveredKeyWindow = scene.keyWindow
-                // The keyboard sits above every window, so it goes until the lock does.
                 if let input = UIResponder.currentFirstResponder, input is UIKeyInput {
                     coveredTextInput = input
                     input.resignFirstResponder()
                 }
-                // The icon can change in Settings, which SwiftUI doesn't observe.
                 lockHost?.rootView = AppLockView(lock: lock, icon: .current)
                 window.overrideUserInterfaceStyle = Self.themeStyle
                 window.isHidden = false
                 UIAccessibility.post(notification: .screenChanged, argument: nil)
             }
-            // SwiftUI may make its own window key after ours appears on a cold launch.
             if !window.isKeyWindow { window.makeKey() }
         } else if !window.isHidden {
             window.isHidden = true
@@ -116,7 +97,6 @@ import UIKit
         }
     }
 
-    /// The Color Scheme setting, which the app window gets through `preferredColorScheme`.
     private static var themeStyle: UIUserInterfaceStyle {
         switch AppTheme.storedValue(UserDefaults.standard.string(forKey: AppTheme.storageKey) ?? "") {
         case .system: .unspecified
@@ -129,7 +109,6 @@ import UIKit
 private extension UIResponder {
     private static weak var found: UIResponder?
 
-    /// The key window's first responder, found by sending an action to no target.
     static var currentFirstResponder: UIResponder? {
         found = nil
         UIApplication.shared.sendAction(#selector(hermexRecordFirstResponder), to: nil, from: nil, for: nil)
@@ -141,13 +120,8 @@ private extension UIResponder {
     }
 }
 
-/// The lock window's content: the lock or the "can't lock" note while the scene is active, and
-/// the app icon alone whenever it's covered, locked or not, so the app switcher never shows the
-/// Unlock button. The icon stays in the same spot, so switching needs no motion.
-/// Static: nothing animates or repaints.
 struct AppLockView: View {
     let lock: AppLock
-    /// The user's chosen app icon, read each time the window appears.
     let icon: AppIconChoice
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -158,7 +132,6 @@ struct AppLockView: View {
                 VStack(spacing: 0) {
                     AppLockIcon(choice: icon)
 
-                    // Covered, it's the icon alone.
                     if !lock.isCovered {
                         if lock.isPasscodeMissing {
                             passcodeMissing
@@ -218,7 +191,6 @@ struct AppLockView: View {
 }
 
 extension AppLockCapability.Method {
-    /// The glyph beside Unlock and on the Settings toggle.
     var systemImage: String {
         switch self {
         case .faceID: "faceid"
@@ -228,7 +200,6 @@ extension AppLockCapability.Method {
     }
 }
 
-/// The user's chosen app icon, as the Settings icon picker previews it.
 private struct AppLockIcon: View {
     let choice: AppIconChoice
 
@@ -252,7 +223,6 @@ private struct AppLockIcon: View {
     }
 }
 
-/// Settings' button look, sized to its title rather than the full width.
 private struct AppLockButton: View {
     let title: String
     let systemImage: String?

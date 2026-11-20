@@ -1,22 +1,13 @@
 import XCTest
 @testable import HermesMobile
 
-/// Serve Every Profile (#1611) against a scripted Webapp whose replies are the shapes the pinned
-/// gateway (2bd378ed) answered on `scripts/local-hermes --gateway`: the migrate plan, the `.env`
-/// removal, and the migration's start.
 @MainActor final class ServeEveryProfileTests: XCTestCase {
-    /// The owner's case: `dev` holds `default`'s Telegram token. Keeping the bot on `dev` removes
-    /// it from `default` only, the cleared plan offers the migration, and the wait ends once the
-    /// restarted gateway serves every Profile.
     func testADuplicateBotIsRemovedFromTheChosenProfileThenEveryProfileIsServed() async throws {
         var plans = 0, cleared = false
-        // From Settings: no one Profile's socket to check once the gateway is back.
         let model = Self.model(profile: nil) { request in
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/api/gateway/migrate/plan"?):
                 plans += 1
-                // Blocked until the removal. After the migration starts, the flag is on a read before
-                // the restarted gateway records serving both Profiles.
                 let blockers: [BotJSON] = cleared ? [] : [.string(HermesGatewayTests.duplicateBots.components(separatedBy: "; ")[0])]
                 return .json(200, .object(["blockers": .array(blockers), "already_multiplexed": .bool(plans >= 3),
                                            "live_served": .array(plans >= 4 ? [.string("default"), .string("dev")] : []),
@@ -52,9 +43,6 @@ import XCTest
         XCTAssertEqual(served, 1)
     }
 
-    /// A plan read that finds every Profile already served, as Check Again does after a slow
-    /// restart, ends the fix the way the migration does, so the chat behind it reloads. The flag
-    /// alone, on before the gateway restarts, is not served yet.
     func testAPlanThatAlreadyServesEveryProfileEndsTheFix() async {
         var restarted = false
         let model = Self.model(profile: nil) { request in
@@ -75,9 +63,6 @@ import XCTest
         XCTAssertEqual(served, 1)
     }
 
-    /// A duplicate the removal can't clear, as when the token lives in config.yaml and the `.env`
-    /// lacks the key (404), joins the blockers the fix doesn't handle, and Check Again never
-    /// offers the same removal again.
     func testADuplicateTheRemovalCantClearBecomesABlockerTheFixDoesntHandle() async {
         let blocker = HermesGatewayTests.duplicateBots.components(separatedBy: "; ")[0]
         let model = Self.model { request in
@@ -99,9 +84,6 @@ import XCTest
         XCTAssertEqual(plan.otherBlockers, [blocker])
     }
 
-    /// A blocker Hermex doesn't recognize offers no removal, only the host's words. Its recovery chat
-    /// opens on the Profile the gateway serves, never New Session's, carrying the unserved Profile
-    /// and the host's words for the agent.
     func testAnUnrecognizedBlockerOffersARecoveryChatOnTheServedProfile() async throws {
         let blocker = "Profile 'ops' enables whatsapp, which binds its own port and has no /p/ops/ ingress on the default listener yet; "
             + "the multiplexer would skip the whole profile. Disable it there (platforms.whatsapp.enabled: false) or add a "

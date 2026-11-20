@@ -1,12 +1,9 @@
 import SwiftUI
 
-/// One third-party license notice bundled in the app's `ThirdPartyNotices/` folder (#1411).
 struct AcknowledgementNotice: Hashable {
     let name: String
     let url: URL
 
-    /// The bundle's notices sorted by name. Reads file names only; a notice's text is read when its
-    /// page opens. `NOTICE.txt` is the folder's index, not a notice.
     static func loadAll(bundle: Bundle = .main) -> [AcknowledgementNotice] {
         let urls = bundle.urls(forResourcesWithExtension: "txt", subdirectory: "ThirdPartyNotices") ?? []
         return urls
@@ -15,7 +12,6 @@ struct AcknowledgementNotice: Hashable {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    /// The project's home page, from `Package.resolved` (Lucide is a bundled asset, not a package).
     var projectURL: URL? {
         switch name {
         case "DM Sans": URL(staticString: "https://github.com/googlefonts/dm-fonts")
@@ -35,7 +31,6 @@ struct AcknowledgementNotice: Hashable {
         }
     }
 
-    /// `MarkdownUI-LICENSE.txt` → "MarkdownUI".
     private static func displayName(for url: URL) -> String {
         var name = url.deletingPathExtension().lastPathComponent
         for suffix in ["-LICENSE", "-COPYING"] where name.hasSuffix(suffix) {
@@ -50,7 +45,6 @@ struct AcknowledgementNotice: Hashable {
     }
 }
 
-/// About → Acknowledgements: the bundled notices, each pushing its license text.
 struct SettingsAcknowledgementsPage: View {
     private static let notices = AcknowledgementNotice.loadAll()
 
@@ -66,7 +60,6 @@ struct SettingsAcknowledgementsPage: View {
     }
 }
 
-/// One notice's verbatim, selectable license text, read off the main actor when the page opens.
 private struct AcknowledgementNoticePage: View {
     let notice: AcknowledgementNotice
     @State private var text: Result<String, any Error>?

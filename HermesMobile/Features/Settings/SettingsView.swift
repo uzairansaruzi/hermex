@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Settings' index (#1252): the configured servers, then one row per page. The Hermex pages
-/// apply on this iPhone to every server; a server's own settings live on its page. Nothing
-/// here waits on the network, so the index opens instantly.
 struct SettingsView: View {
     @Bindable var authManager: AuthManager
     let server: URL
@@ -20,7 +17,6 @@ struct SettingsView: View {
 
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
     @State private var isPresentingAddServer = false
-    /// Read from the Keychain on each appear, so it follows a change made on the page.
     @State private var isPushOn = false
 
     var body: some View {
@@ -127,8 +123,6 @@ struct SettingsView: View {
     }
 }
 
-/// A server on the index: avatar, name, then its kind and host, or where it moved (B3, #1218).
-/// The active server carries a checkmark.
 private struct SettingsServerRow: View {
     let account: ServerAccount
     let isActive: Bool
@@ -150,7 +144,6 @@ private struct SettingsServerRow: View {
         )
     }
 
-    /// The kind is a product name, so it stays untranslated.
     private var detail: String {
         if let movedTo { return String(localized: "Moved to \(movedTo)") }
         return (account.kind == .hermes ? "Hermes" : "webui") + " · " + hostFallback

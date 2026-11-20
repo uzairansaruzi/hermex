@@ -2,19 +2,12 @@
 import QuartzCore
 import SwiftUI
 
-/// Rolling one-second hitch statistics from display-link frames. A frame is a
-/// hitch when it arrives more than half a frame late: the gap since the previous
-/// frame exceeds 1.5 × the duration that frame promised
-/// (`targetTimestamp − timestamp`). The late time is how far past that promise
-/// it landed.
 struct HitchAccumulator {
     struct Reading: Equatable {
         let hitchMillisecondsPerSecond: Double
         let hitchCount: Int
-        /// The refresh rate the display link reports, not the delivered frame rate.
         let hertz: Double
 
-        /// `33.3 ms/s · 1 hitch · 60 Hz`
         var summary: String {
             let hitches = hitchCount == 1 ? "hitch" : "hitches"
             let milliseconds = String(format: "%.1f", hitchMillisecondsPerSecond)
@@ -33,8 +26,6 @@ struct HitchAccumulator {
     private var frames: [Frame] = []
     private var previous: (timestamp: CFTimeInterval, targetTimestamp: CFTimeInterval)?
 
-    /// Adds one display-link callback: `timestamp` is when the last frame was
-    /// shown, `targetTimestamp` when the next one should be.
     mutating func record(timestamp: CFTimeInterval, targetTimestamp: CFTimeInterval) {
         var lateness: CFTimeInterval?
         if let previous {
@@ -63,13 +54,9 @@ struct HitchAccumulator {
     }
 }
 
-/// Feeds `HitchAccumulator` from a `CADisplayLink` in `.common` mode, so it keeps
-/// measuring while a scroll view is tracking, and publishes a readout at most
-/// twice a second so the meter never repaints every frame.
 @MainActor
 @Observable
 final class HitchMeter: NSObject {
-    /// Launch with `--hitch-meter` to show the overlay (`DEVELOPMENT.md`).
     static let isEnabled = ProcessInfo.processInfo.arguments.contains("--hitch-meter")
 
     private(set) var readout = HitchAccumulator().reading.summary
@@ -85,7 +72,6 @@ final class HitchMeter: NSObject {
         displayLink = link
     }
 
-    /// Invalidates the display link, which also releases its hold on `self`.
     func stop() {
         displayLink?.invalidate()
         displayLink = nil
@@ -103,9 +89,6 @@ final class HitchMeter: NSObject {
     }
 }
 
-/// The debug readout pinned to the top-leading safe area. It never takes a
-/// touch and VoiceOver skips it. It stops while the scene is not active, so time
-/// in the background never counts as a hitch.
 struct HitchMeterOverlay: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var meter = HitchMeter()

@@ -370,7 +370,6 @@ private actor StaleEditorClient: KanbanDataClient {
     private var firstContinuation: CheckedContinuation<KanbanCardDetailEnvelope, Never>?
     private(set) var editCallCount = 0
 
-    /// Fulfilled once the first detail read is held, so the test can act while it waits.
     nonisolated let firstReadStarted = XCTestExpectation(description: "the first detail read is held")
 
     func finishFirstRead(with detail: KanbanCardDetailEnvelope) {

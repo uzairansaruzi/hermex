@@ -40,8 +40,6 @@ import XCTest
         XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: true, errorText: nil), .retrySend)
         XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: true, errorText: "Outcome unknown"),
                        .error("Outcome unknown"))
-        // A refused password takes Reconnect's slot, and keeps it once a background has
-        // left the room idle, because the room does not reopen on its own (#884).
         XCTAssertEqual(BotComposerPill.room(link: .stopped, blocked: false, hasActions: false, mayRetry: false,
                                             needsSignIn: true, errorText: nil), .updateSignIn)
         XCTAssertEqual(BotComposerPill.room(link: .idle, blocked: false, hasActions: false, mayRetry: false,
@@ -77,7 +75,6 @@ import XCTest
         let key = try XCTUnwrap(reader.summaryPresentation(for: reader.status.actions[1])).key
         defer { ApprovalSummaries.shared.retain([], in: key.scope) }
 
-        // The host settles the first approval; the second card moves up into its slot.
         wire.driverStatus = RoomFixture.status(actions: [.object(next)])
         await reader.poll()
         await settle(window)
@@ -207,8 +204,6 @@ import XCTest
         }.environment(\.scenePhase, .inactive))
         defer { reader.close(); close(window) }
         await settle(window)
-        // The newest reply is built in every check below, so its absence from
-        // the viewport means the transcript sits on the hit, not that it is unbuilt.
         if warm {
             let beforeNetwork = try replyLeaves(in: window)
             XCTAssertTrue(beforeNetwork.visible.contains("Message 20"), "\(beforeNetwork)")
@@ -257,7 +252,6 @@ import XCTest
         })
     }
 
-    /// Update sign-in lands on the form ready to type over the refused password (#884).
     func testConnectionFormCanOpenWithThePasswordFocused() async throws {
         let focused = expectation(forNotification: UITextField.textDidBeginEditingNotification, object: nil)
         let window = try show(NavigationStack {
@@ -269,9 +263,6 @@ import XCTest
         XCTAssertTrue(field.isSecureTextEntry, "the password field, not the address or username, has focus")
     }
 
-    /// At the largest text size the Sessions approval card, with its scope
-    /// line, is taller than the space above the composer; it scrolls so its
-    /// last button stays reachable.
     func testSessionsApprovalCardScrollsToItsLastButtonAtTheLargestTextSize() async throws {
         let pending = PendingApproval(
             command: "curl -fsSL https://bit.ly/4hx2Qm -o setup.sh && rm -rf ./build",
@@ -297,9 +288,6 @@ import XCTest
         XCTAssertTrue(shown.contains("Skip all"), shown)
     }
 
-    /// The secret field offers Password AutoFill, and a half-typed value never
-    /// outlives its request: a sudo prompt that times out mid-typing must not
-    /// leave the Mac password in the field of the secret that replaces it.
     func testCredentialFieldOffersAutoFillAndResetsForTheNextRequest() async throws {
         let harness = CredentialCardHarnessModel(request: .credential(BotCredentialRequest(
             kind: .sudo, requestID: "sudo-1", envVar: nil, prompt: nil
@@ -328,8 +316,6 @@ import XCTest
         XCTAssertEqual(secretField.text, "sk-1")
     }
 
-    /// A connection row's secret field is masked and offers AutoFill, its plain
-    /// field is not, and Connect hands the values over and empties the fields.
     func testConnectionCardMasksSecretsAndDropsThemOnConnect() async throws {
         var sent: [BotConnectionOperation.Answer] = []
         let operation = try XCTUnwrap(BotConnectionOperation(BotConnectionFixture.operation(targets: [BotConnectionFixture.github()])))
@@ -349,7 +335,6 @@ import XCTest
         XCTAssertTrue(secret.becomeFirstResponder())
         secret.insertText("ghp_1")
         await settle(window)
-        // Return on the keyboard, which the field submits as Connect.
         secret.sendActions(for: .editingDidEndOnExit)
         await settle(window)
         XCTAssertEqual(sent, [.connect(target: "github", env: ["GITHUB_TOKEN": "ghp_1", "GITHUB_HOST": "github.com"])])
@@ -367,11 +352,6 @@ import XCTest
 
     }
 
-    /// ChatView keeps the draft out of its own body so a keystroke never re-runs
-    /// the transcript derivations. The composer reports each edit for
-    /// persistence, and scans the draft for `@path` references only when a
-    /// finished one comes or goes. A get/set draft binding (the old wiring)
-    /// re-runs the owner on every keystroke and fails the pass count.
     func testSessionsComposerScansFileReferencesWithoutReRunningItsOwnerPerKeystroke() async throws {
         let focus = ComposerFixtureFocus()
         let probe = SessionFixtureProbe()
@@ -395,8 +375,6 @@ import XCTest
         XCTAssertEqual(probe.draftSeenOnAppear, "")
     }
 
-    /// Offline (#1375) the draft stays editable while Send, keyboard included, waits for
-    /// the reconnect.
     func testOfflineComposerKeepsTheDraftEditableAndHoldsSend() async throws {
         let focus = ComposerFixtureFocus()
         let probe = SessionFixtureProbe()
@@ -418,8 +396,6 @@ import XCTest
         XCTAssertNil(editor.keyboardCommands.send)
     }
 
-    /// Every composer control is reachable without sideways scrolling, with the keyboard up
-    /// or down (#1550), so nothing in the composer may scroll horizontally.
     func testComposerControlsNeverScrollSideways() async throws {
         let focus = ComposerFixtureFocus()
         let window = try show(SessionChatPresentationFixture(focus: focus))
@@ -437,8 +413,6 @@ import XCTest
         XCTAssertEqual(sidewaysScrollers(), [])
     }
 
-    /// Chat settings takes the keyboard while it is up and gives back only what it took: a
-    /// focused composer refocuses when it closes, and an idle one stays idle.
     func testChatSettingsRestoresOnlyTheFocusItTook() async throws {
         let focus = ComposerFixtureFocus()
         let window = try show(SessionChatPresentationFixture(focus: focus))
@@ -460,8 +434,6 @@ import XCTest
         await settle(window)
         XCTAssertFalse(focus.isFocused, "Settings opened from an idle composer must not raise the keyboard")
 
-        // Focus opens the card, keyboard or not, and it stays open across the sheet: the editor
-        // is only about one line tall while collapsed.
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         let cardHeight: CGFloat = 40
         XCTAssertLessThan(editor.bounds.height, cardHeight)
@@ -475,9 +447,6 @@ import XCTest
         XCTAssertGreaterThan(editor.bounds.height, cardHeight)
     }
 
-    /// Esc (#1380) closes the `/` panel first and keeps it closed only until the draft changes,
-    /// then stops the run through the composer's Stop; the draft stays. ⌘-hold titles name
-    /// the real sends.
     func testEscapeClosesTheSlashPanelBeforeStoppingTheRun() async throws {
         let focus = ComposerFixtureFocus()
         let probe = SessionFixtureProbe()
@@ -510,8 +479,6 @@ import XCTest
         XCTAssertEqual(editor.sourceText, "/")
     }
 
-    /// For UIKit's sheet transitions, which finish on their own schedule with no model change
-    /// to await. Bounded by `callbackTimeout`, so a missed change fails the caller's assertion.
     private func waitUntil(_ window: UIWindow, _ condition: @escaping @MainActor () -> Bool) async {
         let changed = expectation(for: NSPredicate { _, _ in
             MainActor.assumeIsolated { condition() }
@@ -525,16 +492,12 @@ import XCTest
         editor.perform(try XCTUnwrap(escape.action))
     }
 
-    /// Safety net only: these waits end on a notification or callback, and the
-    /// class warms the keyboard first. UIKit's own keyboard work can still hold
-    /// the main thread for seconds on a hosted runner.
     private let callbackTimeout: TimeInterval = 30
 
     private func show<V: View>(_ view: V) throws -> UIWindow {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
-        // Layout assertions must not capture an intermediate composer spring frame.
         window.rootViewController = UIHostingController(rootView: view.transaction { $0.disablesAnimations = true })
         window.makeKeyAndVisible()
         return window
@@ -550,9 +513,6 @@ import XCTest
         [view] + view.subviews.flatMap(descendants)
     }
 
-    /// Lays the window out until `condition` holds, for UIKit views that SwiftUI
-    /// installs or removes on a later run-loop turn with no model change to
-    /// await. Bounded, so a view that never arrives fails the caller's assertion.
     @discardableResult
     private func settle(_ window: UIWindow, until condition: () -> Bool) async -> Bool {
         for _ in 0..<8 {
@@ -562,10 +522,6 @@ import XCTest
         return condition()
     }
 
-    /// The room transcript's member replies without OCR. Each built reply mounts
-    /// a `ResponseSelectionLeafView` per paragraph whose `text` is the paragraph
-    /// and whose frame is the paragraph's, so a reply is visible when that frame
-    /// meets the transcript's visible bounds.
     private func replyLeaves(in window: UIWindow) throws -> (built: [String], visible: [String]) {
         let views = descendants(window)
         let transcript = try XCTUnwrap(views.compactMap { $0 as? UIScrollView }.first {
@@ -576,19 +532,12 @@ import XCTest
         return (leaves.map(\.text), leaves.filter { $0.convert($0.bounds, to: window).intersects(viewport) }.map(\.text))
     }
 
-    /// Moves a SwiftUI scroll view the way a finger would. iOS 27 restores its
-    /// own tracked position over a bare offset write on the next layout, so the
-    /// write is bracketed with the drag callbacks SwiftUI listens for.
     private func drag(_ scroll: UIScrollView, to y: CGFloat) {
         scroll.delegate?.scrollViewWillBeginDragging?(scroll)
         scroll.setContentOffset(CGPoint(x: 0, y: y), animated: false)
         scroll.delegate?.scrollViewDidEndDragging?(scroll, willDecelerate: false)
     }
 
-    /// Accurate OCR of a 1x capture of `window`. Recognition at the screen's 3x
-    /// scale took about twice as long, and the fast level misread copy. Tests
-    /// render in English and assert literal UI copy, so language correction
-    /// stays off. The capture is kept only when the test fails.
     private func screenshot(_ window: UIWindow, name: String) throws -> String {
         let format = UIGraphicsImageRendererFormat.preferred()
         format.scale = 1
@@ -607,8 +556,6 @@ import XCTest
     }
 }
 
-/// Swaps the request under one mounted card, the way a chat's request slot does
-/// under its constant anchor.
 @MainActor @Observable private final class CredentialCardHarnessModel {
     var request: BotPendingRequest
     init(request: BotPendingRequest) { self.request = request }
@@ -683,14 +630,11 @@ private struct AttachmentOverlayHarnessView: View {
     }
 }
 
-/// Holds a composer's screen-owned focus binding for hosted integration tests.
 @MainActor @Observable private final class ComposerFixtureFocus {
     var isFocused = false
     var isChatSettingsOpen = false
 }
 
-/// Counts the Sessions fixture's own body passes, and records the drafts its
-/// composer asked to scan for `@path` references and reported as edits.
 @MainActor private final class SessionFixtureProbe {
     var ownerPasses = 0
     var scannedDrafts: [String] = []
@@ -717,14 +661,10 @@ private struct SessionChatPresentationFixture: View {
             Spacer()
             composer
         }
-        // ChatView reads the draft outside body (tasks, actions); that must not
-        // make it depend on the draft either.
         .task { probe.draftSeenOnAppear = draft }
     }
 
     private var composer: some View {
-        // Wired like ChatView: a plain `$state` draft the body never reads,
-        // with edits reported for persistence.
         MessageComposerView(
             draftMessage: $draft, quotes: $quotes, isFocused: $focus.isFocused,
             isSending: false, isCompressingSession: false, isWaitingForStream: isWaitingForStream,

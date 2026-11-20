@@ -1,10 +1,6 @@
 import Foundation
 
-/// `model.options` projected into the shared native picker: providers the host has not
-/// authenticated, models it marks unavailable, and providers left with none are left out. A
-/// Hermes chat's composer (#1015) reads it; no webui transport participates.
 struct HermesModelCatalog {
-    // Accepted by the pinned host's parse_reasoning_effort; "off" is a display command.
     static let effortLevels = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
     let groups: [ModelCatalogGroup]
     let active: ModelCatalogOption?
@@ -25,7 +21,6 @@ struct HermesModelCatalog {
                 capabilities[option.favoriteKey] = row["capabilities"][id]
                 return option
             }
-            // As webui's catalog does, a provider with nothing to pick gets no section.
             guard !options.isEmpty else { return nil }
             return ModelCatalogGroup(id: provider, name: row["name"].text ?? provider,
                                      providerID: provider, models: options)
@@ -36,8 +31,6 @@ struct HermesModelCatalog {
         } else { active = nil }
     }
 
-    /// The host parses a flag string, not shell quoting. Reject tokens that could
-    /// change scope; always send --session, even when the host persists picks by default.
     static func sessionModelValue(_ option: ModelCatalogOption) -> String? {
         func safe(_ value: String) -> Bool {
             !value.isEmpty && !value.contains(where: { $0.isWhitespace })

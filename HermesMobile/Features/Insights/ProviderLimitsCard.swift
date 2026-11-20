@@ -1,17 +1,8 @@
 import SwiftUI
 
-/// The "Limits" group at the top of the Usage screen (#415): one card per
-/// provider that reported a usable quota, or a placeholder card while the first
-/// probes are still running. The caller omits the group entirely when there are
-/// no cards and nothing is loading, which is how a provider with nothing to
-/// show stays out of sight.
 struct ProviderLimitsSection: View {
     let cards: [ProviderLimitCard]
-    /// Drives the placeholder, and only while `cards` is empty: a refresh with
-    /// cards already on screen keeps them rather than blanking the group.
     let isLoading: Bool
-    /// The last refresh failed for at least one card, which still shows the
-    /// values loaded before it (#1408). Each card's own footer says how old.
     let refreshFailed: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -40,8 +31,6 @@ struct ProviderLimitsSection: View {
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: refreshFailed)
     }
 
-    /// Styled as `ProvidersView`'s refresh-failure banner, so the app says this
-    /// one way.
     private var refreshFailureNotice: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -64,12 +53,6 @@ struct ProviderLimitsSection: View {
     }
 }
 
-/// Holds the Limits slot open while the first quota probes are in flight, so the
-/// real cards replace a reserved space instead of appearing above the analytics
-/// and pushing the screen down a second after it settles (#415).
-///
-/// The sample text is redacted and never spoken; its only job is to be about as
-/// tall as one account-limits card. Nothing here animates or repaints.
 private struct ProviderLimitsPlaceholderCard: View {
     var body: some View {
         SectionCard {
@@ -93,7 +76,6 @@ private struct ProviderLimitsPlaceholderCard: View {
         .accessibilityValue(Text("Loading"))
     }
 
-    /// Mirrors `ProviderLimitRowView`: an amount line, the bar, and a caption.
     private var row: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -115,16 +97,12 @@ private struct ProviderLimitsPlaceholderCard: View {
     }
 }
 
-/// One provider's card: a header, a row per limit window, and a footer saying
-/// how old the numbers are. Every relative time is computed while the body runs
-/// — nothing here ticks, animates, or repaints on its own.
 struct ProviderLimitsCard: View {
     let card: ProviderLimitCard
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        // One `Date()` for the whole card so its rows and footer agree.
         let now = Date()
 
         SectionCard {
@@ -156,8 +134,6 @@ struct ProviderLimitsCard: View {
 
         Group {
             if dynamicTypeSize.isAccessibilitySize {
-                // Two lines at accessibility sizes: the capsule would otherwise
-                // squeeze the provider name to a couple of characters.
                 VStack(alignment: .leading, spacing: 6) {
                     title
                     planCapsule
@@ -189,8 +165,6 @@ struct ProviderLimitsCard: View {
     }
 }
 
-/// One limit row: the label, the bold remaining amount, the bar, and either a
-/// reset countdown or a static usage note.
 private struct ProviderLimitRowView: View {
     let row: ProviderLimitRow
     let now: Date
@@ -272,8 +246,6 @@ private struct ProviderLimitRowView: View {
         }
     }
 
-    /// Spoken as one phrase, with the countdown spelled out — VoiceOver reads
-    /// the on-screen "23h 35m" as letters, so the wide form is substituted here.
     private var accessibilityLabel: String {
         [
             row.label,
@@ -285,9 +257,6 @@ private struct ProviderLimitRowView: View {
     }
 }
 
-/// The remaining-balance bar. Deliberately unanimated: it is redrawn only when
-/// a load replaces the card, so there is nothing for Reduce Motion to suppress
-/// and nothing repainting between loads.
 private struct ProviderLimitBar: View {
     let fraction: Double
     let tint: ProviderLimitTint

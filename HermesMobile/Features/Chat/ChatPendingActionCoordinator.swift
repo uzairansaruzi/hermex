@@ -7,8 +7,6 @@ private let chatPendingActionCoordinatorLogger = Logger(
     category: "ChatPendingActionCoordinator"
 )
 
-/// Friendly stand-in for the server's 409 `{"stale": true}` respond rejection:
-/// the prompt already expired, so the card is dismissed instead of erroring (issue #25).
 struct PendingPromptExpiredError: LocalizedError, Equatable {
     enum Prompt: Equatable {
         case approval
@@ -44,12 +42,8 @@ final class ChatPendingActionCoordinator {
     private(set) var isRespondingToApproval = false
     private(set) var approvalErrorMessage: String?
     private(set) var isSessionApprovalBypassEnabled = false
-    /// A write from Model settings' YOLO switch in flight.
     private(set) var isChangingApprovalBypass = false
-    /// Why that switch's last write failed. Cleared by the next one.
     private(set) var approvalBypassErrorMessage: String?
-    /// Bumped as each bypass write starts and as it answers, so a read sent before the answer
-    /// can't overwrite it.
     private var approvalBypassWrites = 0
 
     private(set) var clarificationPrompt: ClarificationPromptState?
@@ -111,10 +105,8 @@ final class ChatPendingActionCoordinator {
                 renderApprovalPromptForCurrentSession()
             }
         } catch {
-            // Approval bypass state is advisory UI; failures should not block chat.
         }
 
-        // A pending approval can outlive the chat stream, including across navigation.
         guard !Task.isCancelled, !isSessionApprovalBypassEnabled else { return }
         await refreshApprovalPending(sessionID: sessionID)
     }
@@ -137,16 +129,6 @@ final class ChatPendingActionCoordinator {
                 approvalID: prompt.pending.approvalId
             )
 
-            // The protective refusals answer HTTP 200 with `{"ok": false}`
-            // (`_handle_approval_respond` → `j(handler, {"ok": ok, …})`,
-            // `api/routes.py:24549` @ 399cd7ab, and `j()` defaults to 200), so
-            // only a non-2xx status threw and a deliberate refusal read as
-            // success: the card was cleared, the user was told nothing, and the
-            // agent stayed blocked. `stale_cleared` is the one false that still
-            // means "this card is finished".
-            //
-            // Only an explicit success may clear a live card. A missing `ok`
-            // is unknown and must fail closed.
             guard response.ok == true || response.staleCleared == true else {
                 approvalErrorMessage = String(localized: "The server did not accept that response. The request is still waiting.")
                 await refreshApprovalPending(sessionID: prompt.sessionID)
@@ -160,8 +142,6 @@ final class ChatPendingActionCoordinator {
             return true
         } catch {
             if (error as? APIError)?.indicatesExpiredPendingPrompt == true {
-                // The prompt already expired server-side: dismiss the stale card and
-                // explain, instead of leaving a stuck card behind a generic failure.
                 approvalStateGeneration &+= 1
                 approvalPendingBySession[prompt.sessionID] = nil
                 approvalPrompt = nil
@@ -203,9 +183,6 @@ final class ChatPendingActionCoordinator {
         }
     }
 
-    /// Model settings' YOLO switch. Turning it on releases a waiting approval on the server.
-    /// Turning it off asks again for any approval the server holds and resumes watching, since
-    /// the empty update that released one also ended the monitoring.
     func setApprovalBypass(_ enabled: Bool) async {
         guard let sessionID = delegate?.pendingActionSessionID, !isChangingApprovalBypass,
               enabled != isSessionApprovalBypassEnabled else { return }
@@ -244,8 +221,6 @@ final class ChatPendingActionCoordinator {
     }
 
     func stopMonitoringForStreamTransition(clearClarification: Bool) {
-        // A pending approval belongs to the server, not to the chat transport.
-        // The approval event can arrive after chat completion on its own SSE stream.
         if delegate?.pendingActionIsStreamConnectionSuspended == true {
             stopApprovalMonitoring(clearPrompt: false)
         }
@@ -263,7 +238,6 @@ final class ChatPendingActionCoordinator {
         } else if update.pendingCount == 0 {
             approvalPendingBySession[sessionID] = nil
         } else {
-            // An unrecognized SSE payload is not a server-confirmed clear.
             return
         }
 
@@ -309,8 +283,6 @@ final class ChatPendingActionCoordinator {
             return true
         } catch {
             if (error as? APIError)?.indicatesExpiredPendingPrompt == true {
-                // The prompt already expired server-side: dismiss the stale card and
-                // explain, instead of leaving a stuck card behind a generic failure.
                 clarificationPendingBySession[prompt.sessionID] = nil
                 clarificationPrompt = nil
                 delegate?.pendingActionCoordinatorDidFailAction(PendingPromptExpiredError(prompt: .clarification))
@@ -400,8 +372,6 @@ final class ChatPendingActionCoordinator {
                     else { break pollingLoop }
 
                     await self.refreshApprovalPending(sessionID: sessionID)
-                    // An empty snapshot cannot rule out a later approval. Keep
-                    // polling while this chat is open if its SSE connection failed.
                 }
 
                 guard !Task.isCancelled else { break }
@@ -422,7 +392,6 @@ final class ChatPendingActionCoordinator {
                   approvalStateGeneration == generation else { return }
             applyApprovalUpdate(response, sessionID: sessionID)
         } catch {
-            // The web UI also ignores degraded-mode polling failures.
             chatPendingActionCoordinatorLogger.debug(
                 "Approval polling failed category=\(APIError.privacySafeLogCategory(for: error), privacy: .public)"
             )
@@ -527,7 +496,6 @@ final class ChatPendingActionCoordinator {
             let response = try await client.clarifyPending(sessionID: sessionID)
             applyClarificationUpdate(response, sessionID: sessionID)
         } catch {
-            // The web UI also ignores degraded-mode polling failures.
             chatPendingActionCoordinatorLogger.debug(
                 "Clarification polling failed category=\(APIError.privacySafeLogCategory(for: error), privacy: .public)"
             )

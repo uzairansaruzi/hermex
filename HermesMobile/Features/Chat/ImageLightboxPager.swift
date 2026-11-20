@@ -1,16 +1,11 @@
 import SwiftUI
 
-/// The images one lightbox pages through: a message's images in message order, opened at
-/// the one the user tapped. A single image is a gallery of one.
 struct ImageLightboxGallery<Item: Identifiable>: Identifiable {
     let items: [Item]
     let startID: Item.ID
 
     var id: Item.ID { startID }
 
-    /// Keeps the images among `siblings`, in order and without repeating an id. Built when
-    /// the user taps, never on a streaming body pass. A tapped item that is not among them
-    /// opens alone.
     init(tapped: Item, siblings: [Item], isImage: (Item) -> Bool) {
         var seen = Set<Item.ID>()
         let images = siblings.filter { isImage($0) && seen.insert($0.id).inserted }
@@ -19,44 +14,25 @@ struct ImageLightboxGallery<Item: Identifiable>: Identifiable {
     }
 }
 
-/// Which pages exist: the selected one and its immediate neighbours, so a swipe lands on a
-/// loaded image without a long gallery fetching them all.
 enum ImageLightboxAdmission {
     static func admits(index: Int, selectedIndex: Int) -> Bool {
         abs(index - selectedIndex) <= 1
     }
 }
 
-/// What one lightbox page gets from its pager.
 struct ImageLightboxPage {
-    /// The page's place in a gallery of more than one; nil shows no counter.
     let position: (index: Int, count: Int)?
-    /// One tap hides the chrome for every page, so comparing images keeps them uncovered.
     let showsChrome: Binding<Bool>
     let onZoomChange: (Bool) -> Void
-    /// Moves to the next (+1) or previous (-1) page; VoiceOver's adjustable action.
     let onStep: ((Int) -> Void)?
 }
 
-/// A horizontal pager around lightbox pages. Each page is a whole `ImageLightboxView`
-/// host with its own loader, retry, and actions, so a failed neighbour stays on its own
-/// page. Paging stops while the selected image is zoomed, so a sideways drag pans it.
-/// A gallery of one is drawn without the pager, exactly as before galleries.
-///
-/// The stack is not lazy: a page in the admission window keeps its host, loaded or still
-/// loading, while it is off screen. A page that leaves the window becomes plain black,
-/// which drops its host with its loader and image; coming back builds a fresh host that
-/// loads again.
 struct ImageLightboxPager<Item: Identifiable, Page: View>: View {
     private let items: [Item]
     private let page: (Item, ImageLightboxPage) -> Page
-    /// Opens on the tapped page: across n pages, page i sits at unit point i / (n - 1). The
-    /// starting `scrollPosition` id alone does not move a stack that is not lazy.
     private let startAnchor: UnitPoint
 
     @State private var selectedID: Item.ID?
-    /// Every live page that is zoomed: both neighbours keep their hosts, so VoiceOver can
-    /// step between zoomed images.
     @State private var zoomedIDs: Set<Item.ID> = []
     @State private var showsChrome = true
 
@@ -87,9 +63,6 @@ struct ImageLightboxPager<Item: Identifiable, Page: View>: View {
         }
     }
 
-    /// The pager runs edge to edge so every image is full-bleed, which takes the safe area
-    /// away from its pages; each page gets the screen's back so its chrome clears the
-    /// Dynamic Island and the home indicator.
     private var pager: some View {
         let selectedIndex = items.firstIndex { $0.id == selectedID } ?? 0
 
@@ -108,8 +81,6 @@ struct ImageLightboxPager<Item: Identifiable, Page: View>: View {
                             }
                         }
                         .containerRelativeFrame(.horizontal)
-                        // VoiceOver reads only the page on screen; the neighbours are
-                        // laid out but are not where the user is.
                         .accessibilityHidden(index != selectedIndex)
                     }
                 }
@@ -120,8 +91,6 @@ struct ImageLightboxPager<Item: Identifiable, Page: View>: View {
             .defaultScrollAnchor(startAnchor, for: .initialOffset)
             .scrollIndicators(.hidden)
             .scrollDisabled(selectedID.map(zoomedIDs.contains) ?? false)
-            // VoiceOver can step away from a zoomed image; once its page is dropped, it comes
-            // back at fit scale.
             .onChange(of: selectedIndex) { _, selectedIndex in
                 let admitted = items.indices
                     .filter { ImageLightboxAdmission.admits(index: $0, selectedIndex: selectedIndex) }

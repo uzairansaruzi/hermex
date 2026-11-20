@@ -57,8 +57,6 @@ final class SSEClientTests: XCTestCase {
             }
         }
 
-        // Generous deadline: CI runners under parallel-clone load have blown a
-        // 1s budget on wall-clock chunk delays that finish in ~0.3s locally (#76).
         await fulfillment(of: [liveEvent], timeout: 5)
         XCTAssertFalse(receivedEvents.contains { event in
             if case .done = event { return true }
@@ -113,11 +111,6 @@ final class SSEClientTests: XCTestCase {
         client.stop()
     }
 
-    /// A long-lived monitor stream (approval, clarify) that loses its socket must
-    /// tell its consumer, or the consumer keeps believing the stream is attached
-    /// and never falls back to polling or reopens it. LDSwiftEventSource skips
-    /// `onError` when the connection-error handler answers `.shutdown`, so the
-    /// client has to deliver the error itself.
     func testSSEClientReportsTransportErrorWhenAnOpenStreamDrops() async {
         DelayedSSEURLProtocol.configure(
             chunks: [DelayedSSEChunk(text: ": heartbeat\n\n", delayNanoseconds: 0)],
@@ -146,8 +139,6 @@ final class SSEClientTests: XCTestCase {
         client.stop()
     }
 
-    /// A tunnel or server that closes a quiet stream cleanly must reach the
-    /// consumer too, so it can resume instead of waiting on a dead stream.
     func testSSEClientReportsTransportErrorWhenServerClosesStream() async {
         DelayedSSEURLProtocol.configure(chunks: [DelayedSSEChunk(text: ": heartbeat\n\n", delayNanoseconds: 0)])
         let configuration = URLSessionConfiguration.ephemeral
@@ -586,7 +577,6 @@ final class SSEClientTests: XCTestCase {
     }
 
     func testAppErrorEventDecodesPinnedUpstreamMessageShape() {
-        // Pinned upstream `_provider_error_payload`: {message, type, hint, details, session, …}.
         let event = SSEEventDecoder.decode(
             eventType: "apperror",
             data: #"{"message": "Provider exploded", "type": "no_response", "hint": "Check the provider keys.", "details": "Provider exploded", "session_id": "session-abc", "session": {"session_id": "session-abc"}}"#
@@ -596,7 +586,6 @@ final class SSEClientTests: XCTestCase {
     }
 
     func testAppErrorEventDecodesDocsErrorShape() {
-        // API docs describe the payload as {error, type, session, terminal_state?}.
         let event = SSEEventDecoder.decode(
             eventType: "apperror",
             data: #"{"error": "Terminal failure", "type": "tool_limit_reached", "terminal_state": "tool_limit_reached"}"#
@@ -635,10 +624,6 @@ private final class DelayedSSEURLProtocol: URLProtocol {
 
     private var loadingTask: Task<Void, Never>?
 
-    /// `keepOpen` leaves the response open after the chunks instead of finishing
-    /// it, so a test can end it with `failActiveConnection(with:)` at a moment it
-    /// controls. A finished response is a clean server close, which the client
-    /// reports as a transport error; a failure is a dropped connection.
     static func configure(chunks: [DelayedSSEChunk], keepOpen: Bool = false) {
         lock.lock()
         self.chunks = chunks
@@ -657,8 +642,6 @@ private final class DelayedSSEURLProtocol: URLProtocol {
         lock.unlock()
     }
 
-    /// Ends the open response as URLSession reports a reset socket (a server
-    /// restart, a VPN re-key): the task completes with `error`.
     static func failActiveConnection(with error: Error) {
         lock.lock()
         let instance = activeInstance

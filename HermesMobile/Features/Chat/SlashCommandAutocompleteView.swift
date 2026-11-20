@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct SlashCommandAutocompleteView: View {
-    // Row height tracks Dynamic Type so the panel is never taller or shorter
-    // than the rows it actually draws.
     @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 48
     @ScaledMetric(relativeTo: .subheadline) private var emptyPanelHeight: CGFloat = 64
 
@@ -14,15 +12,10 @@ struct SlashCommandAutocompleteView: View {
     let personalitySuggestions: [String]
     let skillSuggestions: [SkillSlashSuggestion]
     let agentCommands: [AgentCommand]
-    /// Whether the trigger is mid-sentence, where only a skill can run on send,
-    /// so command and agent-command rows would insert text nothing executes.
     let skillsOnly: Bool
     let selectedReasoningEffort: String?
-    /// The commands this chat knows: webui's, or a Hermes chat's and its host's (#1036).
     var scope: SlashCommandScope = .webui
-    /// The `/reasoning` levels to offer.
     var reasoningLevels = SlashCommandCatalog.reasoningLevels
-    /// The host's suggestions for a host command's argument (#1036).
     var hostCompletion: HermesSlashCompletion?
     let onSelectCommand: (SlashCommand) -> Void
     let onSelectSkillCommand: (SkillSlashSuggestion) -> Void
@@ -31,7 +24,6 @@ struct SlashCommandAutocompleteView: View {
     let onSelectSubArg: (String) -> Void
     var onSelectHostArgument: (HermesSlashCompletion.Item) -> Void = { _ in }
 
-    /// The last completed background ranking pass, or `nil` before the first one lands.
     @State private var cachedResults: SlashAutocompleteResults?
 
     private var parsed: ParsedSlashQuery {
@@ -61,23 +53,11 @@ struct SlashCommandAutocompleteView: View {
         .composerPanelHeight(panelHeight(for: results, parsed: parsed))
         .task(id: rankingInput) {
             let ranked = await rankingInput.rankedResults()
-            // A background pass does not inherit this task's cancellation, so
-            // one started for an older query can still finish last. Drop it
-            // rather than let it overwrite newer rows.
             guard !Task.isCancelled else { return }
             cachedResults = ranked
         }
     }
 
-    /// The results to draw, which always describe what the user has typed unless
-    /// the catalog is large enough that re-ranking here would cost a frame.
-    ///
-    /// The background pass usually lands first and its results are used as they
-    /// are. When they do not match — the first frame, a trigger change, a
-    /// keystroke the pass has not caught up with — a small catalog simply ranks
-    /// again, because at that size it costs microseconds. Only a large catalog
-    /// holds the previous rows for the same trigger, and only because the
-    /// alternative is collapsing the panel to an empty box mid-sentence.
     private var currentResults: SlashAutocompleteResults {
         let input = rankingInput
 
@@ -92,9 +72,6 @@ struct SlashCommandAutocompleteView: View {
     private var rankingInput: SlashAutocompleteRanking {
         let parsed = parsed
 
-        // Mid-sentence a skill is the only thing that works, so the panel ranks
-        // skills against the whole trigger word and never enters a sub-argument
-        // list — a command there would be inserted text nothing executes.
         if skillsOnly {
             return SlashAutocompleteRanking(
                 mode: .skillsOnly,
@@ -150,9 +127,6 @@ struct SlashCommandAutocompleteView: View {
     @ViewBuilder
     private func commandList(_ results: SlashAutocompleteResults) -> some View {
         if results.hasNoCommandRows {
-            // Unreachable while open mid-sentence: the composer closes the
-            // panel when no skill matches, so an empty pass here only means a
-            // stale frame before the newer rows land.
             Text("No commands or skills match \"\(parsed.commandName)\"")
                 .font(AppFont.subheadline())
                 .foregroundStyle(.appSecondary)
@@ -238,8 +212,6 @@ struct SlashCommandAutocompleteView: View {
         .buttonStyle(.plain)
     }
 
-    /// How a row renders its name and hint. Commands are typed literally, so
-    /// they are monospaced; a skill's category is prose.
     private enum RowStyle {
         case command
         case skill
@@ -264,8 +236,6 @@ struct SlashCommandAutocompleteView: View {
         }
     }
 
-    /// One autocomplete row: the thing you type, then its supporting copy on the
-    /// same line. The name keeps its width and the detail truncates.
     private func rowContent(
         name: String,
         hint: String?,
@@ -337,8 +307,6 @@ struct SlashCommandAutocompleteView: View {
         }
     }
 
-    /// The skill trigger says why it is empty: no catalog at all reads
-    /// differently from a query nothing matched.
     @ViewBuilder
     private var skillSubArgEmptyText: some View {
         if skillSuggestions.isEmpty {
@@ -402,7 +370,6 @@ struct SlashCommandAutocompleteView: View {
         switch command.subArgs {
         case .models:
             let allModels = modelGroups.flatMap(\.allModels).map(\.id)
-            // Deduplicate while preserving order
             var seen = Set<String>()
             return allModels.filter { seen.insert($0).inserted }
         case .workspaces:
@@ -423,7 +390,6 @@ struct SlashCommandAutocompleteView: View {
         }
     }
 
-    /// A host command's argument suggestions (#1036), as `complete.slash` lists them.
     private func hostArgumentList(_ items: [HermesSlashCompletion.Item]) -> some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 0) {
@@ -477,11 +443,9 @@ struct ParsedSlashQuery {
 
     var isSubArgMode: Bool {
         guard let command, command.subArgs != .none else { return false }
-        // The typed name, not the canonical one: the lookup above ignores case.
         return hasArgument(after: commandName)
     }
 
-    /// The query is past a host command's name (#1036): the host completes its argument.
     var isHostArgumentMode: Bool {
         command == nil && scope.completesOnHost(commandName) && hasArgument(after: commandName)
     }

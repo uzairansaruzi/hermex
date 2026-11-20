@@ -1,10 +1,6 @@
 import SwiftUI
 
-/// Which edges of a horizontal scroller currently hide content. A fade is
-/// only ever shown on an edge with something behind it, so a fade never reads
-/// as a disabled control. Pure so the rule is unit-testable.
 struct HorizontalOverflowEdgeFades: Equatable {
-    /// Offsets this close to an edge count as sitting on it.
     static let scrollEpsilon: CGFloat = 4
 
     let leading: Bool
@@ -15,11 +11,6 @@ struct HorizontalOverflowEdgeFades: Equatable {
         self.trailing = trailing
     }
 
-    /// - Parameters:
-    ///   - offset: horizontal content offset as the scroll view reports it, measured
-    ///     from the left edge regardless of layout direction.
-    ///   - layoutDirection: in right-to-left layouts the visual start of the content
-    ///     is at the right, so the raw offset is flipped before comparing.
     init(
         offset: CGFloat,
         contentWidth: CGFloat,
@@ -33,19 +24,12 @@ struct HorizontalOverflowEdgeFades: Equatable {
     }
 }
 
-/// How `horizontalOverflowFades(_:)` draws an edge that hides content.
 enum HorizontalOverflowFadeStyle {
-    /// Alpha mask: the content itself fades, so any surface behind it (glass)
-    /// shows through. Costs an offscreen pass, so keep it to fixed chrome.
     case mask
-    /// A gradient from clear to the host's background colour drawn over the
-    /// edge. No offscreen pass, so it suits views in a scrolling transcript.
     case overlay(Color)
 }
 
 extension View {
-    /// Fades the edges of a `ScrollView(.horizontal)` while they hide content.
-    /// Apply it to the scroll view itself.
     func horizontalOverflowFades(_ style: HorizontalOverflowFadeStyle) -> some View {
         modifier(HorizontalOverflowFadesModifier(style: style))
     }
@@ -86,8 +70,6 @@ private struct HorizontalOverflowFadesModifier: ViewModifier {
         }
     }
 
-    /// Opaque everywhere except an edge that hides content, which fades over
-    /// `fadeWidth` so the surface behind shows through.
     private var fadeMask: some View {
         HStack(spacing: 0) {
             LinearGradient(
@@ -108,8 +90,6 @@ private struct HorizontalOverflowFadesModifier: ViewModifier {
         }
     }
 
-    /// Clear everywhere except an edge that hides content, which blends into
-    /// `color` over `fadeWidth`. Never takes touches.
     private func fadeOverlay(_ color: Color) -> some View {
         HStack(spacing: 0) {
             LinearGradient(colors: [color, color.opacity(0)], startPoint: .leading, endPoint: .trailing)

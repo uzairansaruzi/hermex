@@ -28,13 +28,8 @@ enum ProjectCreationPalette {
     }
 }
 
-/// The folder a Hermes project is made on (#1052): its primary, where the sessions it holds
-/// work. The field offers the host's own folders as the user types.
 struct ProjectFolderField {
-    /// What the field starts with, such as the working folder of the session being moved.
     var initialPath: String
-    /// The host's folders that complete a typed path, each ending in `/`, and whether to ask
-    /// for more of the name.
     var complete: (String) async -> HermesFolderCompletion.Suggestions
 }
 
@@ -43,13 +38,10 @@ struct ProjectCreationSheet: View {
     let folder: ProjectFolderField?
     let errorMessage: String?
     let onCancel: () -> Void
-    /// The name, the color and, with a `folder` field, the folder.
     let onSave: (String, String, String?) -> Void
 
     private let initialColor: ProjectColorOption
 
-    /// `folder` adds the required folder field a Hermes project needs; `errorMessage` is the
-    /// server's reason for refusing the last save.
     init(
         existingProjectCount: Int,
         isSaving: Bool,
@@ -84,7 +76,6 @@ struct ProjectCreationSheet: View {
 struct ProjectRenameSheet: View {
     let project: ProjectSummary
     let isSaving: Bool
-    /// The server's reason for refusing the last save.
     var errorMessage: String?
     let onCancel: () -> Void
     let onSave: (String, String?) -> Void
@@ -105,7 +96,6 @@ struct ProjectRenameSheet: View {
 }
 
 private struct ProjectFormSheet: View {
-    /// The most host folders the folder field offers at once.
     private static let folderSuggestionLimit = 8
 
     let title: String
@@ -213,9 +203,6 @@ private struct ProjectFormSheet: View {
         folderPath.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The folder field and, under it, the host's folders that complete what is typed, or a hint
-    /// to type more when the host's listing ran out before any folder. A pick fills the field and
-    /// lists that folder's own folders next.
     private func folderSection(_ folder: ProjectFolderField) -> some View {
         Section {
             TextField(text: $folderPath, prompt: Text(verbatim: "~/Projects/app")) {
@@ -230,7 +217,6 @@ private struct ProjectFormSheet: View {
                 Button {
                     folderPath = suggestion
                 } label: {
-                    // A host folder's name is the user's own text, never a catalog key.
                     Label {
                         Text(verbatim: suggestion.split(separator: "/").last.map(String.init) ?? suggestion)
                     } icon: {
@@ -253,7 +239,6 @@ private struct ProjectFormSheet: View {
             Text("Sessions working in this folder belong to the project.")
         }
         .task(id: folderPath) {
-            // Waits for a pause in typing, and a newer path cancels this one.
             guard (try? await Task.sleep(for: .milliseconds(250))) != nil else { return }
             let suggestions = await folder.complete(trimmedFolderPath)
             guard !Task.isCancelled else { return }

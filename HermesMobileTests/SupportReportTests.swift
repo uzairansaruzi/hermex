@@ -1,10 +1,7 @@
 import XCTest
 @testable import HermesMobile
 
-/// About's support details and the prefilled Report a Problem link (#1396).
 @MainActor final class SupportReportTests: XCTestCase {
-    /// Hermes servers name the tested Hermes release; a webui server never does, and a release it
-    /// never cached reads unknown. No address or name reaches the text.
     func testReportNamesTheTestedReleaseOnlyForHermes() {
         let hermes = SupportReport(server: Self.account(kind: .hermes, serverVersion: "0.21.4"))
         let hermesLines = hermes.text.components(separatedBy: "\n")
@@ -25,9 +22,6 @@ import XCTest
         }
     }
 
-    /// The link opens the bug form with its three version inputs filled in, decoded the way
-    /// GitHub reads a query (`+` is a space), and carries nothing else from the report. Without the
-    /// install's version it opens the template chooser instead.
     func testIssueURLPrefillsTheThreeVersionInputs() throws {
         let report = SupportReport(appVersion: "2.0.1", build: "412 & co", channel: .release, iOSVersion: "27.0",
                                    device: "iPhone", serverKind: .hermes, serverRelease: "0.21.4+canary.ü")
@@ -50,9 +44,6 @@ import XCTest
         XCTAssertEqual(unversioned.issueURL, AppConfig.reportProblemURL)
     }
 
-    /// The active server's current Hermes connection adds its latest attempt (#1395): when it
-    /// started and each stage's outcome, with no host or account. Another server's report, and
-    /// this one's once the connection is retired, has none.
     func testReportCarriesOnlyTheActiveServersCurrentAttempt() async throws {
         defer { HermesHostFixture.reset() }
         let connections = HermesConnections(configuration: { HermesHostFixture.configuration { request in

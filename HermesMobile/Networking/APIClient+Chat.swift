@@ -35,8 +35,6 @@ extension APIClient {
         try await send(endpoint: .chatCancel(streamID: streamID), method: "GET")
     }
 
-    /// Status probes run inside the reconnect retry budget (#537), so they use a
-    /// short explicit timeout instead of the 60s session default.
     private static let chatStreamStatusTimeout: TimeInterval = 10
 
     func chatStreamStatus(streamID: String) async throws -> ChatStreamStatusResponse {
@@ -95,8 +93,6 @@ extension APIClient {
         )
     }
 
-    /// Steers the session's active run and reports what became of the hint.
-    /// Never throws: a failed request is a refusal carrying its error.
     func steerChat(sessionID: String, text: String) async -> ChatSteerOutcome {
         let response: ChatSteerResponse
         do {
@@ -112,7 +108,6 @@ extension APIClient {
         if response.accepted == true {
             return .delivered
         }
-        // Fallback codes from `_handle_chat_steer` (api/streaming.py).
         switch response.fallback {
         case "gateway_steer_queued":
             return .serverQueued

@@ -1,14 +1,9 @@
 import Foundation
 
-/// What the Tasks screens call, so one set of screens runs on either kind of server: a webui
-/// server's `/api/crons/*` (`APIClient`) or a Hermes host's `/api/cron/*` (`HermesCronClient`,
-/// #1040). Mutations and run reads name the job's Profile, which a Hermes host routes by and
-/// webui ignores; `cronFeatures` says which parts of the screens the server backs.
 protocol CronDataClient: Sendable {
     var cronFeatures: CronFeatures { get }
     func cronJobs() async throws -> CronJobList
     func cronRecent() async throws -> CronRecentCompletionsResponse
-    /// Delivery targets, for one Profile where the server scopes them.
     func cronDeliveryOptions(profile: String?) async throws -> CronDeliveryOptionsResponse
     func createCron(
         prompt: String, schedule: String, name: String?, deliver: String?, skills: [String],
@@ -22,42 +17,19 @@ protocol CronDataClient: Sendable {
     func pauseCron(jobID: String, profile: String?, reason: String?) async throws -> CronMutationResponse
     func resumeCron(jobID: String, profile: String?) async throws -> CronMutationResponse
     func deleteCron(jobID: String, profile: String?) async throws -> CronMutationResponse
-    /// The latest runs' output, newest first. Only webui is asked: a Hermes host's latest output
-    /// is its newest finished run's reply (`cronRunDetail`, #1042).
     func cronOutput(jobID: String, limit: Int?) async throws -> CronOutputResponse
-    /// One page of the Task's runs, newest first. A server with a single page (a Hermes host's
-    /// newest 100) answers it for any `limit`, with no `total`, so there is no next page.
     func cronHistory(jobID: String, profile: String?, offset: Int, limit: Int) async throws -> CronRunHistoryResponse
-    /// One run's full output, read by its `filename`. A Hermes host's script-only run is its
-    /// row's `scriptOutput`, with no request.
     func cronRunDetail(jobID: String, profile: String?, run: CronRunHistoryItem) async throws -> CronRunDetailResponse
-    /// The Task editor's sources. `profile` scopes the models and skills where the server
-    /// keeps them per Profile.
     func cronModelGroups(profile: String?) async throws -> [ModelCatalogGroup]
     func cronProfiles() async throws -> [ProfileSummary]
     func cronSkills(profile: String?) async throws -> [SkillSummary]
 }
 
-/// The parts of Tasks one server backs. A webui server backs all of them. A Hermes host
-/// (#1040) keeps every Task in a Profile, reports running state and recent runs in its list,
-/// runs a Task on demand only before it replies (#1041), keeps each run as a session (#1042),
-/// and has no toast setting.
 struct CronFeatures: Equatable, Sendable {
-    /// Each Task belongs to one Profile: rows name it, the editor's sources follow it, and
-    /// editing can't move a Task to another.
     let isProfileScoped: Bool
     let hasToastNotifications: Bool
-    /// `/api/crons/recent`. Without it, recent runs come with the list.
     let hasRecentRunsFeed: Bool
-    /// Run Now answers once the run has finished rather than when it starts: a Hermes host's
-    /// trigger (#1041). The screens follow the run on the list until the host's outcome. The
-    /// host also resumes a paused Task as it runs it, and refuses a completed one.
     let runNowWaitsForRun: Bool
-    /// Each run is the session it runs in, listed from the moment it starts, and the host keeps
-    /// one outcome per Task, on the job its list reads (a Hermes host, #1042). So a run can still
-    /// be running, the Task's last outcome and latest output are the newest finished run's, and
-    /// the detail reads the job again from the list. A script-only run has no session and is
-    /// only its row (#1342). Without it, each run is an output file a finished run wrote.
     let runsAreSessions: Bool
 
     static let webui = CronFeatures(isProfileScoped: false, hasToastNotifications: true, hasRecentRunsFeed: true,
@@ -65,42 +37,30 @@ struct CronFeatures: Equatable, Sendable {
     static let hermes = CronFeatures(isProfileScoped: true, hasToastNotifications: false, hasRecentRunsFeed: false,
                                      runNowWaitsForRun: true, runsAreSessions: true)
 
-    /// Whether the screens offer Run Now for `job`: everywhere but a completed Task on a
-    /// Hermes host, which refuses it.
     func offersRunNow(for job: CronJob) -> Bool {
         !(runNowWaitsForRun && job.state == "completed")
     }
 
-    /// Whether Run Now also resumes `job`, which the screens ask about first: a paused Task on
-    /// a Hermes host, which stays resumed.
     func runNowResumes(_ job: CronJob) -> Bool {
         runNowWaitsForRun && job.enabled == false
     }
 }
 
-/// One read of the Tasks list.
 struct CronJobList: Equatable {
     var jobs: [CronJob]
-    /// The running jobs by id, each with the seconds it has been running.
     var runningJobs: [String: Double]
-    /// Recent completions, when they come with the list (a Hermes host); nil when the
-    /// server has its own feed.
     var recentRuns: [CronRecentCompletion]?
 }
 
 extension APIClient: CronDataClient {
     nonisolated var cronFeatures: CronFeatures { .webui }
 
-    /// `/api/crons` and `/api/crons/status`, read together.
     func cronJobs() async throws -> CronJobList {
         async let jobs = crons()
         async let status = cronStatus()
         let (jobsResult, statusResult) = try await (jobs, status)
         return CronJobList(jobs: jobsResult.jobs ?? [], runningJobs: statusResult.runningJobs ?? [:], recentRuns: nil)
     }
-
-    // webui lists the same delivery targets, models and skills for every Profile, and finds
-    // a job by its id alone.
 
     func cronDeliveryOptions(profile _: String?) async throws -> CronDeliveryOptionsResponse {
         try await cronDeliveryOptions()
@@ -210,8 +170,6 @@ extension APIClient {
         try await send(endpoint: .cronDeliveryOptions, method: "GET")
     }
 
-    /// Each job's most recent completion. Unordered on the wire; see
-    /// `CronRecentCompletionsResponse.completions`.
     func cronRecent() async throws -> CronRecentCompletionsResponse {
         try await send(endpoint: .cronRecent, method: "GET")
     }
@@ -256,16 +214,10 @@ extension APIClient {
         try await send(endpoint: .cronOutput(jobID: jobID, limit: limit), method: "GET")
     }
 
-    /// One page of a job's run history, newest first.
-    ///
-    /// Callers advance `offset` by the `limit` they passed, not by
-    /// `response.runs.count`: see `CronRunHistoryResponse`.
     func cronHistory(jobID: String, offset: Int, limit: Int) async throws -> CronRunHistoryResponse {
         try await send(endpoint: .cronHistory(jobID: jobID, offset: offset, limit: limit), method: "GET")
     }
 
-    /// One past run's full output. The GET twin of `runCron`'s POST on the same
-    /// path.
     func cronRunDetail(jobID: String, filename: String) async throws -> CronRunDetailResponse {
         try await send(endpoint: .cronRunDetail(jobID: jobID, filename: filename), method: "GET")
     }

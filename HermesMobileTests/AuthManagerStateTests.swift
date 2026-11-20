@@ -7,8 +7,6 @@ final class AuthManagerStateTests: XCTestCase {
 
     private static let sessionExpiredMessage = "Your session expired. Sign in again."
 
-    // These tests assert against the global HTTPCookieStorage; reset it on both
-    // sides so pre-existing cookies or a mid-test failure can't leak across tests.
     nonisolated override func setUp() {
         super.setUp()
         Self.clearSharedCookies()
@@ -89,14 +87,11 @@ final class AuthManagerStateTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .unconfigured)
         XCTAssertNil(keychain.savedValues[.serverURL])
-        // Server-side logout is still attempted best-effort when reachable.
         XCTAssertEqual(client.logoutCallCount, 1)
     }
 
     func testSignOutClearsLocalAuthWhenServerLogoutFails() async throws {
         let keychain = InMemoryKeychainStore()
-        // Server unreachable: the best-effort logout throws, but local sign-out
-        // must still succeed so the user can reach onboarding (issue #249).
         let client = MockAuthAPIClient(
             authStatus: AuthStatusResponse(authEnabled: true, loggedIn: false),
             logoutBehavior: .fail(APIError.network(underlying: URLError(.notConnectedToInternet)))
@@ -116,8 +111,6 @@ final class AuthManagerStateTests: XCTestCase {
 
     func testSignOutCompletesWhenServerLogoutHangs() async throws {
         let keychain = InMemoryKeychainStore()
-        // Server accepts the connection but never responds: sign-out must still
-        // finish once the bounded logout times out, not hang indefinitely.
         let client = MockAuthAPIClient(
             authStatus: AuthStatusResponse(authEnabled: true, loggedIn: false),
             logoutBehavior: .hang
@@ -136,21 +129,16 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(client.logoutCallCount, 1)
     }
 
-    // MARK: - Per-server isolation (#16)
-
     func testSignOutClearsOnlyActiveServerCookies() async throws {
         let keychain = InMemoryKeychainStore()
         let serverA = try XCTUnwrap(URL(string: "https://a.test"))
         let serverB = try XCTUnwrap(URL(string: "https://b.test"))
         let manager = try await makeLoggedInManager(keychain: keychain, serverURLString: "https://a.test")
-        // Both servers hold a session cookie in the shared jar (which both APIClient
-        // and SSEClient stream against).
         HTTPCookieStorage.shared.setCookie(try makeSessionCookie(for: serverA, value: "a-cookie"))
         HTTPCookieStorage.shared.setCookie(try makeSessionCookie(for: serverB, value: "b-cookie"))
 
         await manager.signOut()
 
-        // A's cookie is cleared; B (a different host) is untouched.
         XCTAssertTrue(HTTPCookieStorage.shared.cookies(for: serverA)?.isEmpty ?? true)
         XCTAssertEqual(HTTPCookieStorage.shared.cookies(for: serverB)?.map(\.value), ["b-cookie"])
     }
@@ -165,7 +153,6 @@ final class AuthManagerStateTests: XCTestCase {
 
         manager.handleAPIError(APIError.unauthorized)
 
-        // Only the active server's auth is affected by its 401.
         XCTAssertEqual(manager.state, .loggedOut(server: serverA))
         XCTAssertTrue(HTTPCookieStorage.shared.cookies(for: serverA)?.isEmpty ?? true)
         XCTAssertEqual(HTTPCookieStorage.shared.cookies(for: serverB)?.map(\.value), ["b-cookie"])
@@ -174,13 +161,11 @@ final class AuthManagerStateTests: XCTestCase {
     func testSignOutLeavesOtherServerHeadersAndRegistryIntact() async throws {
         let keychain = InMemoryKeychainStore()
         let registry = ServerRegistry.inMemory()
-        // Pre-seed server B: a registry entry plus its scoped custom headers.
         let serverB = try XCTUnwrap(URL(string: "https://b.test"))
         registry.activate(url: serverB)
         let bHeaders = try XCTUnwrap([CustomHeader(name: "X-B", value: "b-token")].encodedForStorage())
         try keychain.save(bHeaders, forKey: .customHeaders, scope: "https://b.test")
 
-        // Sign in to server A as the active server, with its own scoped headers.
         let client = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false))
         let manager = AuthManager(
             keychain: keychain,
@@ -197,13 +182,10 @@ final class AuthManagerStateTests: XCTestCase {
 
         await manager.signOut()
 
-        // A's scoped headers + registry entry are gone; B's are untouched.
         XCTAssertNil(keychain.scopedValue(.customHeaders, scope: "https://a.test"))
         XCTAssertNotNil(keychain.scopedValue(.customHeaders, scope: "https://b.test"))
         XCTAssertEqual(registry.servers.map(\.id), ["https://b.test"])
     }
-
-    // MARK: - Multi-server switch / remove / identity (#17)
 
     func testSwitchActiveServerMakesItActiveAndOptimisticallyLoggedIn() async throws {
         let keychain = InMemoryKeychainStore()
@@ -297,8 +279,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: serverB))
     }
 
-    /// The shared Bot connection signs in with the active server's saved credentials, so
-    /// each change here retires it at once, not when the next Bot screen looks it up.
     func testServerAndBotCredentialChangesRetireTheSharedBotConnectionAtOnce() async throws {
         let serverA = try XCTUnwrap(URL(string: "https://a.test"))
         let saved = BotConnection(id: UUID(), name: "Host", address: try XCTUnwrap(URL(string: "https://hermes.example")),
@@ -495,7 +475,6 @@ final class AuthManagerStateTests: XCTestCase {
         )
 
         XCTAssertEqual(outcome, .failed(serverAnswered: true))
-        // The active server, its state, registry, and live headers are untouched.
         XCTAssertEqual(manager.state, .loggedIn(server: try XCTUnwrap(URL(string: "https://a.test"))))
         XCTAssertEqual(manager.servers.map(\.id), ["https://a.test"])
         XCTAssertEqual(manager.currentCustomHeaders.map(\.name), ["X-A"])
@@ -525,18 +504,14 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(updated.displayName, "Work")
         XCTAssertEqual(updated.initials, "WK")
         XCTAssertEqual(updated.headerLogoColorHex, "#5B7CFF")
-        // The active server's identity is mirrored into the global defaults.
         XCTAssertEqual(defaults.string(forKey: SessionIdentitySettings.displayNameKey), "Work")
         XCTAssertEqual(defaults.string(forKey: HeaderLogoColor.storageKey), "#5B7CFF")
     }
 
-    /// Builds a manager with two registered servers: `a.test` signed in + active,
-    /// `b.test` present but inactive. Returns the manager and both accounts.
     private func makeTwoServerManager(
         keychain: InMemoryKeychainStore,
         registry: ServerRegistry
     ) async throws -> (AuthManager, ServerAccount, ServerAccount) {
-        // Pre-seed B (becomes inactive once A signs in), then sign in to A.
         registry.activate(url: try XCTUnwrap(URL(string: "https://b.test")))
         let manager = AuthManager(
             keychain: keychain,
@@ -574,12 +549,9 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(manager.state, .loggedIn(server: try XCTUnwrap(URL(string: "https://example.test"))))
     }
 
-    // MARK: - Hermes servers (#899)
-
     private let hermesServer = URL(string: "https://hermes.example")!
     private let webuiServer = URL(string: "https://a.test")!
 
-    /// Each way the active server changes hands back the Bot Screen holds on the one being left.
     func testAddingOrSwitchingServersHandsBackTheDepartingServersScreens() async throws {
         let manager = try await makeHermesManager()
         var handedBack: [URL] = []
@@ -599,8 +571,6 @@ final class AuthManagerStateTests: XCTestCase {
                       hermesVersion: "0.21.5")
     }
 
-    /// The webui server `a.test` signed in, then the Hermes server added, which makes it
-    /// active. `connections` stands in for the app's shared Hermes connections.
     private func makeHermesManager(
         keychain: InMemoryKeychainStore = InMemoryKeychainStore(),
         registry: ServerRegistry? = nil,
@@ -641,7 +611,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(keychain.savedValues[.serverURL], hermesServer.absoluteString)
         XCTAssertTrue(headers.snapshot().isEmpty, "The webui server's headers never go to a Hermes server")
 
-        // The id is the address as the Hermes connection form normalizes it.
         let unnormalized = BotConnection(id: UUID(), name: "Other", address: URL(string: "https://Other.Example:9119/")!,
                                          username: "me", password: "secret")
         XCTAssertTrue(manager.addHermesServer(unnormalized))
@@ -659,7 +628,6 @@ final class AuthManagerStateTests: XCTestCase {
         }
         XCTAssertEqual(manager.servers.map(\.id), [webuiServer.absoluteString, hermesServer.absoluteString])
 
-        // Nor can onboarding sign a webui server in at a Hermes server's address.
         await manager.configure(serverURLString: hermesServer.absoluteString, password: "")
         XCTAssertEqual(manager.kind(of: hermesServer), .hermes)
         XCTAssertEqual(manager.lastErrorMessage, "This server is already configured.")
@@ -680,9 +648,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(withoutRecord.state, .loggedOut(server: hermesServer))
     }
 
-    /// The host answers the login step with 401: on the active Hermes server's shared
-    /// connection that shows the server's sign-in form; on a webui server's own Hermes
-    /// connection it changes nothing here (#884's per-screen flag handles it).
     func testOnlyAHermesServersRefusedLoginSignsItOut() async throws {
         defer { HermesHostFixture.reset() }
         let connections = HermesConnections(configuration: { HermesHostFixture.configuration { request in
@@ -698,13 +663,11 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(manager.lastErrorMessage, "Hermes didn't accept the username or password.")
         XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 1)
 
-        // A changed record saved from the sign-in form signs the server back in.
         try BotConnectionStore(keychain: keychain).save(hermesRecord(password: "changed"), server: hermesServer)
         manager.hermesSignInSaved(server: hermesServer)
         XCTAssertEqual(manager.state, .loggedIn(server: hermesServer))
         XCTAssertNil(manager.lastErrorMessage)
 
-        // A webui server's own Hermes connection refused the same way leaves it signed in.
         let webui = try XCTUnwrap(manager.servers.first { $0.id == webuiServer.absoluteString })
         manager.switchActiveServer(to: webui)
         let side = BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "secret")
@@ -712,12 +675,8 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(manager.state, .loggedIn(server: webuiServer))
     }
 
-    /// A sign-in records which gateway the Hermes server reached, for the usage report (#1724);
-    /// a webui server's own Hermes connection records nothing on the webui server.
     func testASignInRecordsTheGatewayOnlyOnTheHermesServer() async throws {
         defer { HermesHostFixture.reset() }
-        // A Webapp names its install only to a caller signed in (#1606): the first status, read
-        // signed out, leaves it out.
         var statuses = 0
         let connections = HermesConnections(configuration: { HermesHostFixture.configuration { request in
             guard request.url?.path == "/api/status" else { return nil }
@@ -738,8 +697,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertNil(manager.servers.first { $0.id == webuiServer.absoluteString }?.hermesGateway)
     }
 
-    /// The host refusing a browser sign-in's refresh token (#708) shows the server's sign-in
-    /// form saying the sign-in expired, not that a password was wrong.
     func testAnExpiredBrowserSignInSignsAHermesServerOutAsExpired() async throws {
         defer { HermesHostFixture.reset() }
         let keychain = InMemoryKeychainStore()
@@ -777,12 +734,10 @@ final class AuthManagerStateTests: XCTestCase {
     func testWebuiAndHermesSignOutsStayWithTheirOwnServer() async throws {
         let manager = try await makeHermesManager()
 
-        // A late webui 401, such as from a screen a switch left behind, is not about the Hermes server.
         manager.handleAPIError(APIError.unauthorized)
         XCTAssertEqual(manager.state, .loggedIn(server: hermesServer))
         XCTAssertNil(manager.lastErrorMessage)
 
-        // A refused Hermes sign-in for a server that is not active changes nothing.
         let webui = try XCTUnwrap(manager.servers.first { $0.id == webuiServer.absoluteString })
         manager.switchActiveServer(to: webui)
         manager.hermesSignInRejected(server: hermesServer)
@@ -819,8 +774,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(forgottenPush, [hermesServer], "this iPhone stops getting the host's pushes")
     }
 
-    /// A Bots inbox left on screen keeps reading over the old connection while sign-out or
-    /// removal awaits push teardown. A roster it saves meanwhile is deleted with the rest (#1403).
     func testSignOutAndRemovalLeaveNoCachedBotRoster() async throws {
         let paths: [(String, URL, (AuthManager) async -> Void)] = [
             ("Hermes sign-out", hermesServer, { await $0.signOut() }),
@@ -852,8 +805,6 @@ final class AuthManagerStateTests: XCTestCase {
         }
     }
 
-    /// Removing a paired Hermes server tears down its push pairing, as a webui server's
-    /// removal does; `PushRegistrar.forget` keeps a relay device another entry still holds.
     func testRemovingAHermesServerForgetsItsPushPairing() async throws {
         var forgottenPush: [URL] = []
         let manager = try await makeHermesManager(forgetPush: { forgottenPush.append($0) })
@@ -864,8 +815,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(forgottenPush, [hermesServer])
     }
 
-    /// The Hermes server shares the webui server's host on another port, where cookies
-    /// would collide: its removal leaves the webui server's cookie, record and headers.
     func testRemovingAHermesServerDeletesOnlyItsRecord() async throws {
         let keychain = InMemoryKeychainStore()
         let manager = try await makeHermesManager(keychain: keychain)
@@ -907,10 +856,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertTrue(headers.snapshot().isEmpty)
     }
 
-    // MARK: - Adding a Hermes server from the connect form (#900)
-
-    /// A manager with Bot Mode (beta) off, which adding a Hermes server never needs (#712),
-    /// whose webui double answers without auth.
     private func makeFormManager(keychain: InMemoryKeychainStore, headerStore: CustomHeaderStore = CustomHeaderStore()) -> AuthManager {
         let webui = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false))
         return AuthManager(keychain: keychain, clientFactory: { _ in webui }, probeClientFactory: { _, _ in webui },
@@ -918,7 +863,6 @@ final class AuthManagerStateTests: XCTestCase {
                            hermesConnections: HermesConnections(), preferences: .ephemeral())
     }
 
-    /// The connect form for `entry` against the scripted Hermes host, whose gateway opens `socket`.
     private func makeForm(entry: OnboardingViewModel.Entry, moveSource: OnboardingViewModel.MoveSource? = nil,
                           socket: @escaping () -> BotScriptedSocket = { BotScriptedSocket() },
                           host script: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> OnboardingViewModel {
@@ -958,8 +902,6 @@ final class AuthManagerStateTests: XCTestCase {
         }
     }
 
-    /// A host that signs in over HTTP but fails the live check, here with a `gateway.ready` that
-    /// names no replay epoch, is named on the form, and nothing is saved (#1598, #1606).
     func testAddServerSavesNothingAfterAFailedLiveCheck() async throws {
         defer { HermesHostFixture.reset() }
         HermesHostFixture.reset()
@@ -980,9 +922,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: hermesServer))
     }
 
-    /// Opened from Move to Hermes (#1266), the normal form offers the webui server's headers as
-    /// one tap that fills in exactly those, leaves the address blank, and adds the Hermes server
-    /// without switching to it or offering a move; a webui address is refused.
     func testTheFormOpenedFromAMoveAddsTheHermesServerWithoutSwitching() async throws {
         defer { HermesHostFixture.reset() }
         HermesHostFixture.reset()
@@ -1032,8 +971,6 @@ final class AuthManagerStateTests: XCTestCase {
 
     func testASavedSignInIsOfferedOnlyAtExactlyTheSameAddress() async throws {
         defer { HermesHostFixture.reset() }
-        // Every host reports the side connection's install id, as any host can, and offers
-        // both sign-ins, so copying a sign-in must keep the Password | Browser picker.
         let status = BotJSON.object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
                                      "auth_flows": .array([.string("native_pkce")]),
                                      "version": .string("0.21.5"), "install_id": .string("install-1")])
@@ -1080,11 +1017,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 1)
     }
 
-    // MARK: - Replacing a webui server with a Hermes server (#1027)
-
-    /// The host at a saved webui server's address now runs the dashboard. Connect offers
-    /// Replace without signing in; a refused Replace keeps the webui server; a confirmed one
-    /// signs in once and swaps the servers, keeping the webui server's name.
     func testADashboardAtASavedWebuiAddressReplacesItOnlyAfterItsSignInSucceeds() async throws {
         defer { HermesHostFixture.reset() }
         for entry in [OnboardingViewModel.Entry.onboarding, .addServer] {
@@ -1096,7 +1028,6 @@ final class AuthManagerStateTests: XCTestCase {
                                     customHeaders: [CustomHeader(name: "X-Webui", value: "token")])
             let webui = try XCTUnwrap(manager.activeServer)
             manager.updateServerIdentity(webui, displayName: "Studio Mac", initials: "SM", headerLogoColorHex: "#34C759")
-            // Onboarding shows for the webui server once its session is refused.
             if entry == .onboarding { manager.handleAPIError(APIError.unauthorized) }
             var refusesSignIn = true
             let form = makeForm(entry: entry) { request in
@@ -1158,9 +1089,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: hermesServer)?.password, "secret")
     }
 
-    /// Onboarding shows for a webui server whose session was refused, and the user types the
-    /// address of a Hermes server saved beside it. Connect opens that server without a probe: its
-    /// home when its sign-in is saved, its own sign-in form when not (#1331).
     func testOnboardingOpensASavedHermesServer() async throws {
         defer { HermesHostFixture.reset() }
         for isSignedIn in [true, false] {
@@ -1188,8 +1116,6 @@ final class AuthManagerStateTests: XCTestCase {
 
     func testASavedPasswordLeavesTheFormWhenTheAddressChanges() async throws {
         defer { HermesHostFixture.reset() }
-        // The second row changes only the scheme the dashboard is reached at: the webui path
-        // reads both texts as https://hermes.local:9119, the Hermes parser does not.
         let rows: [(saved: String, typed: String, edited: String)] = [
             ("https://hermes.example", "hermes.example", "other.example"),
             ("http://hermes.local:9119", "hermes.local:9119", "https://hermes.local:9119")
@@ -1253,7 +1179,6 @@ final class AuthManagerStateTests: XCTestCase {
         let side = BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "saved",
                                  headers: [CustomHeader(name: "CF-Access-Client-Secret", value: "secret.access")])
         try BotConnectionStore(keychain: keychain).save(side, server: webuiServer)
-        // Only the first status read finds the dashboard; a webui answers the next one.
         var statusReads = 0
         let form = makeForm(entry: .addServer) { request in
             guard request.url?.path == "/api/status" else { return nil }
@@ -1263,7 +1188,6 @@ final class AuthManagerStateTests: XCTestCase {
         form.serverURLString = "hermes.example"
         await form.connect(authManager: manager)
         form.useSavedSignIn(try XCTUnwrap(form.savedSignIns.first))
-        // A header edit makes the next Add read the status again.
         form.customHeaders.append(CustomHeader(name: "X-Extra", value: "1"))
         let webuiLogins = webui.loginPasswords
 

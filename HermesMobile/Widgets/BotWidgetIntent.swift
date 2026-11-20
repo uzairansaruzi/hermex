@@ -2,8 +2,6 @@ import AppIntents
 import Foundation
 import WidgetKit
 
-/// One bot a Bot widget can be configured with (#1643). The id is `<serverKey>|<profile>`, so equal
-/// Profile names on two servers are two choices. Shared by the app and the widget.
 struct BotWidgetEntity: AppEntity {
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Bot"
     static let defaultQuery = BotWidgetEntityQuery()
@@ -13,7 +11,6 @@ struct BotWidgetEntity: AppEntity {
 
     var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(title)") }
 
-    /// The server digest and Profile the id names, or nil for an id this build can't read.
     var destination: BotWidgetDestination? {
         guard let split = id.firstIndex(of: "|") else { return nil }
         let key = String(id[..<split]), profile = String(id[id.index(after: split)...])
@@ -27,9 +24,6 @@ struct BotWidgetEntity: AppEntity {
     }
 }
 
-/// The bot picker. It reads only the app's snapshot (`BotWidgetSnapshotFile`): no network, no
-/// Keychain, so it answers the same in the app and the widget extension, whichever the system runs
-/// it in. Bots are grouped by server once more than one server has bots.
 struct BotWidgetEntityQuery: EntityQuery {
     private func snapshot() -> BotWidgetSnapshot { BotWidgetSnapshotFile.shared?.read() ?? BotWidgetSnapshot() }
 
@@ -48,9 +42,6 @@ struct BotWidgetEntityQuery: EntityQuery {
     }
 }
 
-/// A Bot widget's configuration: the one bot a small widget opens, or the bots a medium (up to 4) or
-/// large (up to 8) widget shows in order, each opening its own chat. The picker shows only the
-/// setting the widget's size uses. Kept out of Shortcuts.
 struct BotWidgetConfigurationIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Choose Bot"
     static let description = IntentDescription("Opens this bot's chat in Hermex.")
@@ -77,7 +68,6 @@ struct BotWidgetConfigurationIntent: WidgetConfigurationIntent {
         self.bots = bots
     }
 
-    /// Every bot this widget names, for rendering only the avatars some widget shows.
     var destinations: [BotWidgetDestination] {
         ([bot].compactMap { $0 } + (bots ?? [])).compactMap(\.destination)
     }

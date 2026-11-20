@@ -2,17 +2,7 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// Edit, Regenerate, `/retry` and `/undo` in a Hermes session (#1049), over #901's socket-level
-/// host and a scripted transcript page. A rewind is one truncating `prompt.submit` addressed by
-/// the prompt's REST row id; `/undo` is `session.undo`. Shapes are the pinned handlers'
-/// (`tui_gateway/methods_prompt.py` `prompt.submit`, `methods_session.py` `session.undo`).
 @MainActor final class HermesHistoryRewindTests: XCTestCase {
-    // MARK: Menu
-
-    /// A saved prompt offers Edit and its reply Regenerate. A turn the host compacted, a turn
-    /// whose prompt carried a file, or one the host has not saved yet, offers neither: the host
-    /// cuts only at live rows, a text-only resend would drop the file, and an unsaved row has no
-    /// id to cut at. Every saved row offers Fork From Here, which copies compacted rows too (#1051).
     func testTheMenuRewindsOnlyAtSavedPromptsWithoutAttachments() async throws {
         let chat = await openChat([
             row(5, "user", "Read the logs", active: false), row(6, "assistant", "Read.", active: false),
@@ -37,19 +27,12 @@ import Observation
         XCTAssertEqual(try menu(chat, at: 7), [.listen])
     }
 
-    /// The discard warning counts the rows after the prompt, so it shows before a cut that
-    /// drops any.
     func testTheDiscardWarningCountsTheRowsAfterThePrompt() async throws {
         let chat = await openChat(threeTurns)
         XCTAssertEqual(chat.model.transcriptMessagesAfter(try context(chat, at: 2)), 3)
         XCTAssertEqual(chat.model.transcriptMessagesAfter(try context(chat, at: 5)), 0)
     }
 
-    // MARK: Edit and Regenerate
-
-    /// Editing the second of three prompts sends one truncating submit at that prompt's row id
-    /// with the edited text. The later turns go once the host takes it, the reply streams, and
-    /// the newest-page re-read at its end gives the turn its saved rows.
     func testEditCutsAtThePromptsRowAndTheTurnTakesItsSavedRows() async throws {
         let chat = await openChat(threeTurns)
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming"), "user_row_id": .number(7)])))
@@ -81,7 +64,6 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit").count, 1)
     }
 
-    /// Regenerate resends the prompt before the reply, cut at that prompt's row.
     func testRegenerateResendsThePromptBeforeTheReply() async throws {
         let chat = await openChat(threeTurns)
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -94,9 +76,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.map(\.content), ["First", "First answer.", "Second"])
     }
 
-    /// A host that guards deep cuts (#1300) refuses one past later prompts until it is confirmed
-    /// (4033). A cut the chat asked to discard later messages for goes again, confirmed; regenerating
-    /// the last reply drops no other prompt, so a 4033 there is a chat out of date and is not resent.
     func testADeepCutIsConfirmedOnlyWhenTheHostAsksAndTheChatAskedFirst() async throws {
         for (index, deep) in [(3, true), (5, false)] {
             let chat = await openChat(threeTurns)
@@ -116,8 +95,6 @@ import Observation
         }
     }
 
-    /// A skill turn's row holds the expanded skill and shows the typed line; regenerating resends
-    /// that line, which the host expands again.
     func testASkillTurnResendsItsInvocation() async throws {
         let skill = "[IMPORTANT: The user has invoked the \"demo-skill\" skill, indicating they want you to follow its "
             + "instructions. The full skill content is loaded below.]\n\n---\nname: demo-skill\n---\nSay hello.\n\n"
@@ -131,9 +108,6 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("/demo-skill do it")])
     }
 
-    /// A busy host (4009), a row it can no longer cut (4018) and a failed write (5008, in the
-    /// host's words) each show their copy, cut nothing and send nothing again. The edit's text
-    /// goes back to the composer.
     func testRefusalsShowTheirCopyAndCutNothing() async throws {
         let chat = await openChat(threeTurns)
         let refusals: [(Int, String, String)] = [
@@ -156,8 +130,6 @@ import Observation
         }
     }
 
-    /// An answer this build can't read may mean the host cut: the edit is never sent again
-    /// (#508), Send waits, and the reattach's newest-page read shows what the host did.
     func testAnUnconfirmedRewindIsNeverSentAgain() async throws {
         let chat = await openChat(threeTurns)
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("something new")])))
@@ -174,9 +146,6 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit").count, 1)
     }
 
-    // MARK: Slash commands
-
-    /// `/retry` regenerates the last reply: the last prompt again, cut at its row.
     func testRetryResendsTheLastPrompt() async {
         let chat = await openChat(threeTurns)
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -189,7 +158,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.map(\.content), ["First", "First answer.", "Second", "Second answer.", "Third"])
     }
 
-    /// `/retry` on a prompt that carried a file refuses, as its reply offers no Regenerate.
     func testRetryRefusesAPromptWithAttachments() async {
         let chat = await openChat([row(1, "user", "Use these\n\n@file:/a/notes.txt"), row(2, "assistant", "Read them.")])
 
@@ -200,12 +168,6 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit"), [])
     }
 
-    // MARK: Canonical hosts (#1603)
-
-    /// On a canonical host an edit is two steps (#1341, decision 5): a fenced `rewind` of the
-    /// prompt's row, then the edited text as a plain send. When the host refuses the send after the
-    /// cut, the later rows are gone, the chat says so plainly, and the edited text waits for the
-    /// composer.
     func testACanonicalEditRewindsThenSendsAndARefusedSendKeepsTheText() async throws {
         let rewound = try canonicalMutation("rewind")["result"]
         let chat = await openChat(threeTurns, canonical: true)
@@ -228,9 +190,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2])
     }
 
-    /// While an Edit is under way, a Regenerate or `/retry` sends nothing: on a canonical host each
-    /// is a rewind and a send of its own, so a second one could share the first one's rewind and
-    /// run the agent twice.
     func testASecondHistoryActionWaitsForTheOneUnderWay() async throws {
         let chat = await openChat(threeTurns, canonical: true)
         let rewinding = expectation(description: "the edit's rewind is on the wire")
@@ -247,9 +206,6 @@ import Observation
         edit.cancel()
     }
 
-    /// A canonical `/undo` rewinds the last saved prompt. One the host refuses because the session
-    /// moved on (recorded `stale_generation`) changes nothing here, and the next try carries the
-    /// fences the refusal named.
     func testACanonicalUndoRewindsTheLastPromptAndAStaleOneChangesNothing() async throws {
         let stale = try canonicalMutation("stale_generation")["error"]
         let chat = await openChat(threeTurns, canonical: true)
@@ -271,7 +227,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4])
     }
 
-    /// `/undo` is `session.undo` on the runtime; the newest page re-read drops the exchange.
     func testUndoRemovesTheLastExchange() async {
         let chat = await openChat(threeTurns)
         chat.host.always("session.undo", .init(result: .object(["removed": .number(2)])))
@@ -285,9 +240,6 @@ import Observation
         XCTAssertEqual(chat.writes("slash.exec"), [], "never the host's own /undo")
     }
 
-    /// A whole-tree `/rollback` restore that rewound the newest turn (`history_removed`) re-reads
-    /// the newest rows, as `/undo` does (#1728), on either host; one that removed none leaves
-    /// the transcript.
     func testARollbackThatRewindsTheNewestTurnReplacesTheTranscript() async throws {
         let file = Self.fixtures.appendingPathComponent("slash-commands.json")
         guard let data = try? Data(contentsOf: file) else { throw XCTSkip("The source tree is not present (physical device or remote runner).") }
@@ -309,8 +261,6 @@ import Observation
         }
     }
 
-    /// Send waits while a whole-tree `/rollback` restore is out, as for `/undo`: a prompt sent
-    /// meanwhile would race the host's rewind of the newest turn.
     func testSendWaitsWhileAWholeTreeRollbackIsOut() async throws {
         let file = Self.fixtures.appendingPathComponent("slash-commands.json")
         guard let data = try? Data(contentsOf: file) else { throw XCTSkip("The source tree is not present (physical device or remote runner).") }
@@ -330,8 +280,6 @@ import Observation
         restore.cancel()
     }
 
-    /// `/undo` takes the plan of the exchange it removes, its saved row not yet known: the plan
-    /// is not drawn under the earlier prompt that is now last.
     func testUndoTakesTheUndoneTurnsPlan() async {
         let chat = await openChat(threeTurns)
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -354,9 +302,6 @@ import Observation
         XCTAssertNil(chat.model.hermesActivity?.settledPlan, "the plan went with its exchange")
     }
 
-    /// An `/undo` the host took whose newest-page read then fails still shows the exchange, so
-    /// it is not reported done: Send waits, and the reattach's read shows it gone. A retried
-    /// `/undo` would remove another exchange for good.
     func testAnUndoWhoseReadFailsHoldsSendUntilTheReattachShowsIt() async {
         let chat = await openChat(threeTurns)
         chat.host.always("session.undo", .init(result: .object(["removed": .number(2)])))
@@ -372,8 +317,6 @@ import Observation
         XCTAssertEqual(chat.writes("session.undo").count, 1)
     }
 
-    /// Each `/undo` removes an exchange for good, so a second one while the first is out is
-    /// refused, never sent.
     func testASecondUndoIsRefusedWhileTheFirstIsOut() async {
         let chat = await openChat(threeTurns)
         chat.host.always("session.undo", .init(result: .object(["removed": .number(2)])))
@@ -388,11 +331,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4])
     }
 
-    // MARK: Retry on a failed turn (#1139)
-
-    /// Retry on the outcome row resends the host's raw prompt (`inflight.user`) once, cut at the
-    /// failed prompt's saved row, from a tap: a second tap while it runs sends nothing, and the
-    /// draft is never touched. The failed turn's rows give way to the retried prompt.
     func testRetryResendsTheHostsRawPromptOnceAtTheFailedPromptsRow() async throws {
         let chat = await openChat(threeTurns)
         try await failTurn(chat, prompt: "Fourth")
@@ -412,9 +350,6 @@ import Observation
         XCTAssertNotNil(chat.model.activeStreamID)
     }
 
-    /// A failure whose `message.complete` names no saved row, as an agent that failed to start
-    /// sends it, still offers Retry: the host saved the prompt at submit, so the chat finds it in
-    /// the newest rows, dated from the failed turn's start, and cuts there.
     func testRetryAfterAFailureWithNoReceiptCutsAtThePromptTheHostSaved() async throws {
         let chat = await openChat(threeTurns)
         try await failTurn(chat, prompt: "Fourth", receipt: false)
@@ -424,9 +359,6 @@ import Observation
                        [[.string(Self.rawFailedPrompt), .number(7)]])
     }
 
-    /// Retry on a turn another client started, whose prompt this chat never showed, cuts at that
-    /// prompt's saved row on the host; the earlier exchange the chat shows last is not that
-    /// turn's, so it stays, and the retried prompt follows it.
     func testRetryOfATurnWhosePromptTheChatNeverShowedKeepsTheEarlierExchange() async {
         let chat = await openChat(threeTurns)
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -456,9 +388,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.map(\.content), shown + ["Elsewhere"], "the earlier exchange stays")
     }
 
-    /// The failure read can name a later turn than this chat's own failed send, one another client
-    /// started. Retry cuts at that turn's row on the host; the chat's own prompt, saved earlier as
-    /// row 7, is not that turn's, so it stays.
     func testRetryOfALaterTurnThanTheChatsOwnKeepsItsPrompt() async {
         let chat = await openChat(threeTurns)
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -490,8 +419,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.map(\.content), shown + ["Elsewhere"], "the chat's own prompt stays")
     }
 
-    /// Retry on a failed skill turn replaces the typed line the chat showed, though the host kept
-    /// the expanded skill, which reads nothing like it: the prompt is the failed turn's own.
     func testRetryOfAFailedSkillTurnLeavesOnePrompt() async throws {
         let chat = await openChat(threeTurns)
         await waitUntil("the catalog") { chat.model.hermesSlashCommands?.catalog.skills.isEmpty == false }
@@ -511,8 +438,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.count, 4, "one prompt for the retried turn")
     }
 
-    /// A busy host (4009) says to wait and changes nothing; Retry stays. A row the host can no
-    /// longer cut (4018) hides Retry for that row, and the chat reads the session again.
     func testARetryRefusalSaysWhyAndA4018HidesRetry() async throws {
         let chat = await openChat(threeTurns)
         try await failTurn(chat, prompt: "Fourth")
@@ -536,8 +461,6 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit").count, 3)
     }
 
-    // MARK: Fixture
-
     private static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .appendingPathComponent("Fixtures/HermesAgent")
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -548,8 +471,6 @@ import Observation
          row(4, "assistant", "Second answer."), row(5, "user", "Third"), row(6, "assistant", "Third answer.")]
     }
 
-    /// The session's transcript as its pages serve it: one short page, so every read is the whole
-    /// session. The next `failingReads` reads fail with a 502.
     private final class Transcript: @unchecked Sendable {
         private let lock = NSLock()
         private var stored: [BotJSON]
@@ -563,7 +484,6 @@ import Observation
             get { lock.withLock { failing } }
             set { lock.withLock { failing = newValue } }
         }
-        /// True when this read fails, counting it.
         func takeFailure() -> Bool {
             lock.withLock {
                 guard failing > 0 else { return false }
@@ -586,10 +506,6 @@ import Observation
         }
     }
 
-    /// A chat attached to an idle session `tip` on runtime `runtime`, whose settled rows are `rows`
-    /// and whose host lists one skill, `demo-skill`.
-    /// `canonical` attaches over a canonical socket (#1603) to session `tip`, whose id is its
-    /// runtime, at revision 2 and generation 1.
     private func openChat(_ rows: [BotJSON], canonical: Bool = false) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
@@ -611,7 +527,6 @@ import Observation
             if transcript.takeFailure() { return .json(502, .object(["detail": .string("Bad Gateway")])) }
             return .json(200, .object(["session_id": .string("tip"), "messages": .array(transcript.rows)]))
         }
-        // A failed attach tries again at once, not after the 1, 2, 4 s backoff a slow runner sat through.
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: .session(profile: "default", key: "tip"), wire: client,
                                         reconnectDelay: { _ in })
@@ -626,15 +541,10 @@ import Observation
         return Chat(model: model, host: host, client: client, transcript: transcript)
     }
 
-    /// The prompt a failed turn's host kept (`inflight.user`): what it received, file reference included.
     private static let rawFailedPrompt = "Fourth\n\n@file:/a/notes.txt"
-    /// What the host received for `/demo-skill do it`: the expanded skill (`command.dispatch`).
     private static let skillPrompt = "[IMPORTANT: The user has invoked the \"demo-skill\" skill.]\n\nSay hello.\n\n"
         + "The user has provided the following instruction alongside the skill invocation: do it"
 
-    /// Sends `prompt`, a `/` line as a slash command, and fails its turn on a rate limit: the host
-    /// received it as `raw`, saved that as row 7 and keeps the failure, which the chat reads once
-    /// the turn settles. Without a `receipt` the failure's `message.complete` names no saved row.
     private func failTurn(_ chat: Chat, prompt: String, raw: String = rawFailedPrompt, receipt: Bool = true) async throws {
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
         if prompt.hasPrefix("/") {
@@ -666,7 +576,6 @@ import Observation
         XCTAssertTrue(chat.model.mayRetryHermesTurn)
     }
 
-    /// One of the recorded canonical edits (`scripts/capture-hermes-fixtures --local --gateway`).
     private func canonicalMutation(_ name: String) throws -> BotJSON {
         let file = Self.fixtures.appendingPathComponent("canonical-mutations.json")
         guard let data = try? Data(contentsOf: file) else { throw XCTSkip("The source tree is not present (physical device or remote runner).") }
@@ -677,7 +586,6 @@ import Observation
         try XCTUnwrap(chat.model.actionContext(for: chat.model.messages[index], visibleIndex: index))
     }
 
-    /// The long-press menu of the row at `index`, by kind.
     private func menu(_ chat: Chat, at index: Int) throws -> [ChatMessageActionItem.Kind] {
         ChatMessageActionMenu(
             context: try context(chat, at: index), listeningMessageID: nil, isViewingCachedData: false,
@@ -686,8 +594,6 @@ import Observation
         ).items.map(\.kind)
     }
 
-    /// One display row as the transcript handler returns it: a live row, or one compaction
-    /// archived (`active` 0, `compacted` 1).
     private func row(_ id: Int, _ role: String, _ content: String, active: Bool = true) -> BotJSON {
         .object(["id": .number(Double(id)), "session_id": .string("tip"), "role": .string(role), "content": .string(content),
                  "timestamp": .number(1_790_000_000 + Double(id)), "active": .number(active ? 1 : 0),

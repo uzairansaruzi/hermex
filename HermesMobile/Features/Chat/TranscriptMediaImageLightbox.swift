@@ -2,16 +2,12 @@ import SwiftUI
 import UIKit
 
 extension TranscriptMediaReference {
-    /// Known to be a picture before anything is fetched. An extensionless remote URL may
-    /// turn out to be audio or video, so it keeps the preview sheet.
     var opensInImageLightbox: Bool {
         isRasterImageCandidate && !isExtensionlessRemoteMediaCandidate
     }
 }
 
 extension ImageLightboxGallery where Item == TranscriptMediaPreviewItem {
-    /// The images among a reply's media, opened at the tapped one. A reference the reply
-    /// names twice is one page.
     init(tapped: TranscriptMediaReference, in replyMedia: [TranscriptMediaReference]) {
         self.init(
             tapped: TranscriptMediaPreviewItem(reference: tapped),
@@ -21,17 +17,12 @@ extension ImageLightboxGallery where Item == TranscriptMediaPreviewItem {
     }
 }
 
-/// The transcript's viewer for an image. Audio, video, and unsupported media keep
-/// `TranscriptMediaPreviewView`, which can only tell them apart after the bytes arrive;
-/// an image is known to be an image before anything is fetched, so it can open straight
-/// into the full-bleed lightbox. `page` ties it to its gallery's pager.
 struct TranscriptMediaImageLightbox: View {
     let onAPIError: (Error) -> Void
 
     private let item: TranscriptMediaPreviewItem
     private let page: ImageLightboxPage
     @State private var viewModel: TranscriptMediaPreviewViewModel
-    /// The file the share sheet is offering. Clearing it when the sheet closes deletes it.
     @State private var sharedFile: QuickLookTemporaryFile?
     @State private var isPreparingShare = false
     @State private var isSavingToPhotos = false
@@ -162,8 +153,6 @@ struct TranscriptMediaImageLightbox: View {
         }
     }
 
-    /// Writes the full-size media under its own filename and offers it to the share
-    /// sheet, which also covers Save to Files.
     private func shareMedia() async {
         isPreparingShare = true
         defer { isPreparingShare = false }

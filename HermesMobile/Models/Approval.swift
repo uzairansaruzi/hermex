@@ -155,30 +155,12 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
     }
 }
 
-/// The one line an approval card shows above its buttons, saying what Allow
-/// session and Always allow will cover. Bot Chat and the Sessions overlay both
-/// build it from the request on screen.
-///
-/// A raw pattern key never reaches the screen. A shell key is the host's own
-/// danger description (`detect_dangerous_command` returns it as the key), so it
-/// is quoted as sent; the other shapes hermes-agent `ca678285` writes get a
-/// plain label, and anything else is "every action like this one". Each case is
-/// one whole-sentence catalog string, so only host text is interpolated, and a
-/// tool or action identifier is marked as code so it renders monospaced.
 enum ApprovalScope {
-    /// Whose allowlist the choices write, which fixes the nouns and whether
-    /// Always keeps a security finding session-only.
     enum Host: Equatable {
-        /// Bot Chat on Hermes. Session means this chat; Always writes the
-        /// Profile's `command_allowlist` and downgrades Tirith findings to the
-        /// session. Only the choices the host offered are described.
         case hermes(offersSession: Bool, offersAlways: Bool)
-        /// The Sessions overlay on webui, which always offers both. Always
-        /// writes the server's allowlist, Tirith findings included.
         case webui
     }
 
-    /// What one set of keys allowlists, in the terms the line can name.
     private enum Subject: Equatable {
         case shell(String)
         case pluginTool(String)
@@ -190,15 +172,8 @@ enum ApprovalScope {
         case other
     }
 
-    /// Keys whose prompts grant every allow choice for one call only and save
-    /// nothing: MCP trust and elicitation consent (`_consent` in
-    /// `tools/approval_prompt.py`) and protected instruction file writes
-    /// (`tools/file_tools_write_guards.py`).
     private static let oneTimeKeys: Set<String> = ["mcp_elicitation", "protected_instruction_file"]
 
-    /// Nil when Allow session isn't offered (a smart-denied prompt, or a room
-    /// approval's once and deny), the host sent no keys to allowlist, or the
-    /// prompt is a one-time confirmation with no scope to describe.
     static func line(
         keys: [String], description: String?, command: String?, toolName: String?, host: Host
     ) -> AttributedString? {
@@ -213,8 +188,6 @@ enum ApprovalScope {
         }
     }
 
-    /// A command prompt carries at most one Tirith finding and one shell key
-    /// (`check_all_command_guards`); every other gate sends a single key.
     private static func subject(
         of keys: [String], description: String?, command: String?, toolName: String?
     ) -> Subject {
@@ -245,15 +218,10 @@ enum ApprovalScope {
         if let match = key.wholeMatch(of: /cua:([^:]+):([^:]+)/) {
             return .computerUse(action: String(match.1), mode: String(match.2))
         }
-        // A shell key is one `; `-joined part of the description. Checked last:
-        // the `execute_code` description also mentions its key.
         let parts = description?.components(separatedBy: "; ").map { $0.trimmingCharacters(in: .whitespaces) }
         return parts?.contains(key) == true ? .shell(key) : .other
     }
 
-    /// The tool from the default `<tool>:<sha12>` rule key, else the host's
-    /// `tool_name`, else the `<tool>` the command shows. A custom rule key
-    /// names no tool, and the rule key itself is never a label.
     private static func pluginTool(rule: Substring, command: String?, toolName: String?) -> String? {
         if let match = rule.wholeMatch(of: /(.+):[0-9a-f]{12}/) { return String(match.1) }
         if let toolName = toolName?.trimmingCharacters(in: .whitespacesAndNewlines), !toolName.isEmpty {
@@ -262,7 +230,6 @@ enum ApprovalScope {
         return command.flatMap { $0.prefixMatch(of: /<([^<>\s]+)>/) }.map { String($0.1) }
     }
 
-    /// Hermes with both choices offered.
     private static func profileSentence(_ subject: Subject) -> AttributedString {
         switch subject {
         case .shell(let label):
@@ -278,15 +245,12 @@ enum ApprovalScope {
         case .shellAndSecurityFinding(let label):
             return AttributedString(localized: "Allow session covers “\(label)” and this security finding in this chat; Always allow covers “\(label)” for this Profile from now on. The security finding stays allowed for this chat only.")
         case .securityFinding:
-            // Hermes keeps a finding session-only under Always too.
             return chatSentence(subject)
         case .other:
             return AttributedString(localized: "Allow session covers every action like this one in this chat; Always allow covers it for this Profile from now on.")
         }
     }
 
-    /// Hermes with Allow session but no Always: at the pin, only a prompt whose
-    /// keys are all Tirith findings (`permanent_capable` is false).
     private static func chatSentence(_ subject: Subject) -> AttributedString {
         if subject == .securityFinding {
             return AttributedString(localized: "Allow session covers this security finding in this chat.")
@@ -294,7 +258,6 @@ enum ApprovalScope {
         return AttributedString(localized: "Allow session covers every action like this one in this chat.")
     }
 
-    /// webui, where both choices are always offered and Always persists every key.
     private static func serverSentence(_ subject: Subject) -> AttributedString {
         switch subject {
         case .shell(let label):
@@ -316,7 +279,6 @@ enum ApprovalScope {
         }
     }
 
-    /// A host identifier, shown raw and monospaced.
     private static func code(_ identifier: String) -> AttributedString {
         var text = AttributedString(identifier)
         text.inlinePresentationIntent = .code
@@ -327,11 +289,8 @@ enum ApprovalScope {
 struct ApprovalRespondResponse: Decodable, Equatable {
     let ok: Bool?
     let choice: ApprovalChoice?
-    /// Server cleared a stale card whose approval already resolved (benign 200; issue #25).
     let staleCleared: Bool?
-    /// The respond was relayed to a gateway-managed run rather than resolved locally.
     let relayed: Bool?
-    /// The prompt already expired (paired with a 409 on the docs' respond contract).
     let stale: Bool?
 
     enum CodingKeys: String, CodingKey {

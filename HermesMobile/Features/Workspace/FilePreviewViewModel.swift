@@ -1,17 +1,13 @@
 import Foundation
 import UniformTypeIdentifiers
 
-/// One workspace file's preview and export, read through the chat's `WorkspaceFileClient`.
-/// A nil client is a chat without a session to read from.
 @Observable
 final class FilePreviewViewModel {
     private let files: (any WorkspaceFileClient)?
     private let path: String
-    /// The listing's byte count, when known; a file over the Quick Look cap skips the download.
     private let knownSize: Int?
 
     private(set) var preview: FilePreviewContent?
-    /// Lazy-render chunks for a large Markdown preview; nil renders the file as one document.
     private(set) var markdownChunks: [MarkdownPreviewChunk]?
     private(set) var isLoading = false
     private(set) var isExporting = false
@@ -21,7 +17,6 @@ final class FilePreviewViewModel {
     private var exportData: Data?
     private var loadGeneration = 0
 
-    /// A text fetch the file tree started on press-down; consumed by the first `load()`.
     private var prefetchedFile: Task<FileResponse, Error>?
 
     init(
@@ -36,23 +31,18 @@ final class FilePreviewViewModel {
         self.prefetchedFile = prefetchedFile
     }
 
-    /// True for paths the preview renders as Markdown rather than as source.
     static func isMarkdownPath(_ path: String) -> Bool {
         ["md", "markdown", "mdown", "mkd"].contains(pathExtension(of: path))
     }
 
-    /// True for paths the preview renders as a web page rather than as source.
     static func isHTMLPath(_ path: String) -> Bool {
         ["html", "htm"].contains(pathExtension(of: path))
     }
 
-    /// True for paths that load through `WorkspaceFileClient.file` as text rather than as image or raw bytes.
     static func loadsTextPreview(forPath path: String) -> Bool {
         !rasterImageExtensions.contains(pathExtension(of: path)) && BinaryFilePreview(path: path) == nil
     }
 
-    /// The workspace-relative path Copy Path puts on the pasteboard; nil for an empty,
-    /// absolute, home-relative, or `..`-escaping path, so a host path is never copied.
     var copyablePath: String? {
         guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !path.hasPrefix("/"), !path.hasPrefix("~"),
@@ -126,7 +116,6 @@ final class FilePreviewViewModel {
                 if file.isBinary {
                     preview = .unavailable(String(localized: "Preview is not available for this file type."))
                 } else {
-                    // A preview-only text is not the file: export downloads it instead.
                     exportData = file.isPreviewOnly ? nil : Data((file.content ?? "").utf8)
                     markdownChunks = Self.isMarkdownPath(path)
                         ? MarkdownPreviewChunker.chunks(for: file.content ?? "")
@@ -136,7 +125,6 @@ final class FilePreviewViewModel {
             }
         } catch BotArtifactFailure.folder {
             guard generation == loadGeneration, !Task.isCancelled else { return }
-            // A symlinked folder a Hermes host lists as a file (#1112): nothing to preview or retry.
             preview = .unavailable(String(localized: "Preview is not available for this file type."))
         } catch {
             guard generation == loadGeneration, !Task.isCancelled else { return }
@@ -215,20 +203,13 @@ final class FilePreviewViewModel {
     }
 }
 
-/// One slice of a large Markdown preview, laid out lazily. `topSpacing` is the gap
-/// the whole document would have drawn above this chunk's first block.
 struct MarkdownPreviewChunk: Identifiable, Equatable {
     let id: Int
     let text: String
     let topSpacing: CGFloat
 }
 
-/// Splits a large Markdown file once, on load, at the streaming splitter's safe block
-/// boundaries (blank lines, headings, closed fences), so the preview lays out and
-/// highlights only the chunks near the screen instead of the whole file on open.
 enum MarkdownPreviewChunker {
-    /// Returns nil when the file should render as one document: at or under the
-    /// splitter's chunk size, or without a safe boundary to split on.
     static func chunks(for content: String) -> [MarkdownPreviewChunk]? {
         guard content.utf8.count > StreamingMarkdownBlockSplitter.stableChunkTargetUTF8Count else { return nil }
         let segments = StreamingMarkdownBlockSplitter.split(content)
@@ -247,9 +228,6 @@ enum MarkdownPreviewChunker {
         }
     }
 
-    /// MarkdownUI drops a document's outer block margins, so each seam restores the gap
-    /// one document would draw: the larger of the previous block's bottom margin and the
-    /// next block's top margin. Values mirror `MarkdownUI.Theme.chat` in MarkdownRenderer.
     static func seamSpacing(after previous: String, before next: String) -> CGFloat {
         max(bottomMargin(ofLastBlockIn: previous), topMargin(ofFirstBlockIn: next))
     }
@@ -259,7 +237,6 @@ enum MarkdownPreviewChunker {
         guard let lastIndex = lines.lastIndex(where: { !$0.isEmpty }) else { return 16 }
         let last = lines[lastIndex]
         if isFenceDelimiter(last) { return 12 }
-        // `---` directly under text is a setext heading underline, not a rule.
         let isRule = isThematicBreak(last) && (lastIndex == 0 || lines[lastIndex - 1].isEmpty)
         return isRule ? 24 : 16
     }
@@ -296,7 +273,6 @@ enum FilePreviewContent {
     case text(FileResponse)
     case image(ImageFilePreview)
     case audio(Data)
-    /// Shown by Quick Look; releasing the content deletes the file.
     case quickLook(QuickLookTemporaryFile)
     case unavailable(String)
 }

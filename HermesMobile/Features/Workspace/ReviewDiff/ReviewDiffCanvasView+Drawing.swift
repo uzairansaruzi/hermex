@@ -1,8 +1,5 @@
 import UIKit
 
-/// Drawing for `ReviewDiffCanvasView`. Everything is CoreGraphics on the character
-/// grid of the resolved monospaced font: row backgrounds, the solid add bar and striped
-/// delete bar, word-diff highlights, the selection overlay, and the file header card.
 extension ReviewDiffCanvasView {
     struct FileHeaderInteractiveRects {
         let chevron: CGRect
@@ -51,14 +48,11 @@ extension ReviewDiffCanvasView {
         }
     }
 
-    // MARK: - File header
-
     func fileHeaderInteractiveRects(cardRect: CGRect) -> FileHeaderInteractiveRects {
         let centerY = cardRect.midY
         let padding = style.fileHeaderHorizontalPadding
         let chevron = CGRect(x: cardRect.minX + padding, y: centerY - 10, width: 20, height: 20)
         let icon = CGRect(x: chevron.maxX + 8, y: centerY - 10, width: 20, height: 20)
-        // The checkbox hit target is generous; the drawn box is inset from it.
         let checkbox = CGRect(x: cardRect.maxX - padding - 32, y: centerY - 22, width: 44, height: 44)
         return FileHeaderInteractiveRects(chevron: chevron, icon: icon, checkbox: checkbox)
     }
@@ -177,8 +171,6 @@ extension ReviewDiffCanvasView {
         context.restoreGState()
     }
 
-    // MARK: - Hunk, notice, code rows
-
     private func drawHunkRow(_ text: String, fileID: String, rect: CGRect, context: CGContext) {
         theme.hunkBackground.setFill()
         context.fill(rect)
@@ -241,7 +233,6 @@ extension ReviewDiffCanvasView {
             context.fill(barRect)
         }
 
-        // The number sits on the first visual line, so a wrapped row keeps it at the top.
         if let number = line.displayLineNumber {
             drawRightAlignedText(
                 "\(number)",
@@ -270,10 +261,6 @@ extension ReviewDiffCanvasView {
         context.restoreGState()
     }
 
-    /// Code text with optional syntax colour runs, split into visual lines of
-    /// `wrapColumns` characters when the layout wraps. Only the characters this pass can
-    /// show are typeset: the reachable columns of an unwrapped row, or the visual lines
-    /// of a wrapped row inside `dirtyRect`, so a minified 400 KB line draws like a short one.
     private func drawCodeText(
         _ line: ReviewDiffLine,
         rowID: String,
@@ -300,7 +287,6 @@ extension ReviewDiffCanvasView {
                 drawText(String(visualLine), at: point, color: color, font: style.codeFont)
                 continue
             }
-            // Runs are UTF-16 offsets into the whole line; shift them onto this slice.
             let lineRange = NSRange(visualLine.startIndex..<visualLine.endIndex, in: text)
             let attributed = NSMutableAttributedString(
                 string: String(visualLine),
@@ -329,7 +315,6 @@ extension ReviewDiffCanvasView {
         }
         let height = max(4, min(style.metrics.rowHeight - 4, style.codeFont.lineHeight))
         let firstLineY = rowRect.minY + (style.metrics.rowHeight - height) / 2
-        // Unwrapped, every range sits on one line; wrapped, a range splits at each wrap.
         let wrapColumns = layout.wrapColumns ?? Int.max
         fill.setFill()
         for range in line.wordDiffRanges where !range.isEmpty {
@@ -363,7 +348,6 @@ extension ReviewDiffCanvasView {
         }
     }
 
-    /// Alternating 1 pt stripes so a deletion reads without relying on red alone.
     private func drawDeleteStripes(rect: CGRect, dirtyRect: CGRect, context: CGContext) {
         theme.deleteTint.setFill()
         for y in Self.deleteStripeOrigins(bar: rect, dirtyRect: dirtyRect) {
@@ -371,17 +355,12 @@ extension ReviewDiffCanvasView {
         }
     }
 
-    /// The y of each stripe of a delete bar that `dirtyRect` shows. A wrapped deletion can be
-    /// thousands of points tall, so only the visible stripes are drawn; they keep the phase
-    /// of the bar's top so scrolling never shifts the pattern.
     static func deleteStripeOrigins(bar: CGRect, dirtyRect: CGRect) -> StrideTo<CGFloat> {
         let minY = max(bar.minY, dirtyRect.minY)
         let maxY = min(bar.maxY, dirtyRect.maxY)
         let first = bar.minY + ((minY - bar.minY) / 2).rounded(.down) * 2
         return stride(from: first, to: max(first, maxY), by: 2)
     }
-
-    // MARK: - Glyphs
 
     private func drawDisclosureChevron(rect: CGRect, color: UIColor, collapsed: Bool, context: CGContext) {
         context.saveGState()
@@ -472,8 +451,6 @@ extension ReviewDiffCanvasView {
         context.fillEllipse(in: CGRect(x: rect.midX - 1, y: rect.maxY - rect.height * 0.30, width: 2, height: 2))
         context.restoreGState()
     }
-
-    // MARK: - Text
 
     private func drawText(_ text: String, at point: CGPoint, color: UIColor, font: UIFont) {
         (text as NSString).draw(at: point, withAttributes: [.font: font, .foregroundColor: color, .ligature: 0])

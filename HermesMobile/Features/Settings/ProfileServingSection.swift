@@ -1,19 +1,11 @@
 import SwiftUI
 
-/// The active Hermes server's Profiles section while its gateway's Webapp serves only one
-/// Profile (#1611): how many it serves, why in plain words, the host's own words, and the way to
-/// serve every Profile (`ServeEveryProfileView`). Shows nothing until `serving` reports a reason,
-/// so the page reads it (`read(connection:server:)`): an empty section's own task never runs.
 struct ProfileServingSection: View {
     let serving: HermesProfileServing?
     let connection: BotConnection
     let server: URL
-    /// Called once the Webapp serves every Profile.
     let onServed: () -> Void
 
-    /// What the Webapp at `server` says about the Profiles it serves; nil on a dashboard, which
-    /// serves every Profile itself, or when the read fails. The read signs in first when needed,
-    /// which is what tells a Webapp from a dashboard.
     static func read(connection: BotConnection, server: URL) async -> HermesProfileServing? {
         let http = HermesConnections.shared.connection(for: connection, server: server)
         guard let read = try? await HermesProfileServing.read(on: http), http.servesWebapp else { return nil }
@@ -47,7 +39,6 @@ struct ProfileServingSection: View {
     }
 }
 
-/// The host's own words for why something failed, collapsed under Hermex's plain summary.
 struct HostReasonDisclosure: View {
     let text: String
 

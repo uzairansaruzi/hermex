@@ -374,9 +374,6 @@ import XCTest
         reader.close()
     }
 
-    /// A probe can end the room's socket after the network change that started it, so no second
-    /// change will come: a room on screen reconnects on its own, keeping its history. Leaving it
-    /// cancels that (#1372).
     func testALostRoomOnScreenReconnectsOnItsOwnAndLeavingCancelsIt() async {
         let wire = RoomWire(), next = RoomWire(), spare = RoomWire(); next.latest = 1
         var wires = [wire, next, spare]
@@ -398,8 +395,6 @@ import XCTest
         XCTAssertEqual(spare.stateCalls, 0, "a room off screen stays down")
     }
 
-    /// A room that spent its automatic reconnects still reconnects when the network returns,
-    /// without resending anything (#1372).
     func testARoomOutOfRetriesReconnectsWhenTheNetworkReturns() async {
         let wire = RoomWire(), offline = RoomWire(), next = RoomWire(); next.latest = 1
         offline.connectFailure = URLError(.notConnectedToInternet)
@@ -418,8 +413,6 @@ import XCTest
         XCTAssertTrue(next.writes.isEmpty, "a reconnect never resends")
     }
 
-    /// A tunnel's passing 503 during an automatic reconnect doesn't end the room's recovery
-    /// (#1372).
     func testARoomKeepsReconnectingPastATransientRefusal() async {
         let wire = RoomWire(), refused = RoomWire(), next = RoomWire(); next.latest = 1
         refused.connectFailure = BotFailure.rejected(503)
@@ -764,9 +757,6 @@ import XCTest
         reader.close()
     }
 
-    /// A canonical host fences a room task by its member and generation (#1605). Retry names
-    /// both, and a task whose outcome is unknown offers Discard instead, never Retry; Discard
-    /// sends all four fields, and a host that doesn't list `groups.discard` gets no card button.
     func testACanonicalRoomTaskIsRetriedOrDiscardedUnderItsFence() async throws {
         let wire = RoomWire()
         var caps = RoomFixture.capabilities.fields!
@@ -775,7 +765,6 @@ import XCTest
         func action(_ kind: String, _ task: String, member: String = "chief") -> BotJSON {
             .object(["kind": .string(kind), "member_id": .string(member), "task_id": .string(task), "execution_generation": .number(3)])
         }
-        // A stalled preparation's Retry names every member it couldn't wake.
         wire.driverStatus = RoomFixture.status(actions: [action("retry", "prepare:fixture-room", member: "chief, coder"),
                                                          action("discard", "task:2")])
         let reader = makeReader(wire); await reader.open()
@@ -823,9 +812,6 @@ import XCTest
         XCTAssertNil(reader.uncertainSend)
     }
 
-    /// A refused password stops the room with Update sign-in, and any other stop keeps
-    /// Reconnect. A reopen after backgrounding shows the saved history again but builds
-    /// no client, so the refused password is never sent again (#884).
     func testARejectedPasswordStopsTheRoomNeedingSignIn() async {
         let wire = RoomWire(); wire.latest = 3; wire.connectFailure = BotFailure.transport
         var clients = 0
@@ -876,7 +862,6 @@ final class BotRoomTranscriptWindowTests: XCTestCase {
         XCTAssertTrue(window.showEarlier(in: original, overview: true))
         XCTAssertEqual(window.start(in: original, overview: true), 0)
 
-        // Thread 1 moves to the front of the descending overview at sequence 101.
         let reordered = Self.events(2...101)
         XCTAssertEqual(window.start(in: reordered, overview: true), 0,
                        "Incoming activity must not hide the 50 previously revealed threads")
@@ -986,7 +971,6 @@ final class BotRoomTranscriptWindowTests: XCTestCase {
     }
 }
 
-/// Synthesized protocol fixtures. Live host fixtures are kept separately when available.
 enum RoomFixture {
     static let approval = BotJSON.object(["kind": .string("approval"), "member_id": .string("chief"),
         "task_id": .string("task:1"), "execution_generation": .number(1), "request_id": .string("approval:1"),
@@ -996,7 +980,6 @@ enum RoomFixture {
                  "counts": .object(["running": .number(Double(running)), "stopping": .number(Double(stopping))]),
                  "pending_actions": .array(actions)])
     }
-    /// Every room method the host advertises that Hermex uses.
     static let methods = ["groups.capabilities", "groups.list", "groups.state", "groups.log",
                           "groups.send", "groups.stop", "groups.approve", "groups.retry",
                           "groups.create", "groups.rename", "groups.disband"]
@@ -1025,7 +1008,6 @@ enum RoomFixture {
     var capabilities = RoomFixture.capabilities
     var disbanded = false
     var roomName = "Comms"
-    /// The members `groups.state` reports; nil keeps the fixture's one member.
     var members: [BotJSON]?
     var listedRooms: [BotJSON]?
     var listCalls = 0
@@ -1040,7 +1022,6 @@ enum RoomFixture {
     var failure: Error?
     var driverStatus = RoomFixture.status()
     var writes: [(String, [String: BotJSON])] = []
-    /// The writes as typed calls, for what only a canonical socket adds to their params.
     var writeCalls: [HermesCall] = []
     var beforeWrite: (() async -> Void)?
     var beforeSummaryDispatch: (() async -> Void)?
@@ -1116,7 +1097,6 @@ enum RoomFixture {
             await beforeSummaryReply?()
             return .object(["text": .string("Room command explanation")])
         case "profiles.list": return .object(["profiles": .array([])])
-        // The inbox reads live statuses after every roster read; no bot is busy here.
         case "session.active_list": return .object(["sessions": .array([])])
         case "groups.capabilities": return capabilities
         case "groups.list":
@@ -1158,7 +1138,6 @@ enum RoomFixture {
 }
 
 private extension BotRoomTests {
-    // Read-only tunnel capture, 2026-09-16, Hermes 0.21.2; install identity replaced.
     static let liveFixture = #"""
 {
   "capabilities": {

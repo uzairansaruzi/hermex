@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// MetricKit reports kept for About → Diagnostics (#1397): what a payload keeps, and how retention
-/// and deletion bound the store.
 final class DiagnosticsLogTests: XCTestCase {
     private var directory: URL!
     private let clock = Clock()
@@ -17,9 +15,6 @@ final class DiagnosticsLogTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Each diagnostic in a mixed payload becomes one report with its signal, build and frame
-    /// offsets, even beside a diagnostic with missing fields. Messages, paths, signposts and the
-    /// device model never reach the text About shows and copies.
     func testPayloadKeepsSymbolicationFieldsAndDropsSensitiveText() throws {
         let reports = DiagnosticReport.reports(
             fromPayload: Data(Self.documentedFormatPayload.utf8),
@@ -51,7 +46,6 @@ final class DiagnosticsLogTests: XCTestCase {
         }
     }
 
-    /// iOS can deliver the same payload again; it is kept once.
     func testRepeatedDeliveryIsKeptOnce() {
         let store = makeStore()
         store.save([report(build: "1")], receivedAt: clock.now)
@@ -60,8 +54,6 @@ final class DiagnosticsLogTests: XCTestCase {
         XCTAssertEqual(store.entries().count, 1)
     }
 
-    /// The count and age limits hold on read alone, newest first, with no new delivery to
-    /// trigger them, and the dropped files leave the disk.
     func testRetentionPrunesOnRead() throws {
         let store = makeStore(maxCount: 2)
         let day: TimeInterval = 86_400
@@ -75,7 +67,6 @@ final class DiagnosticsLogTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path).count, 1)
     }
 
-    /// Reports delivered together list by when they happened, the newest window first.
     func testReportsListNewestWindowFirst() {
         let store = makeStore()
         let day: TimeInterval = 86_400
@@ -87,8 +78,6 @@ final class DiagnosticsLogTests: XCTestCase {
         XCTAssertEqual(store.entries().map(\.report?.appBuildVersion), ["2", "3", "1"])
     }
 
-    /// A delivery received before Delete All, or before its own report was deleted, lands too
-    /// late to bring the report back; one received after is kept.
     func testDeletesWinOverOlderPendingWrites() {
         let store = makeStore()
         let received = clock.now
@@ -110,8 +99,6 @@ final class DiagnosticsLogTests: XCTestCase {
         XCTAssertEqual(store.entries().count, 0)
     }
 
-    /// A report MetricKit delivers while About or Diagnostics is open shows up there without
-    /// leaving the page.
     @MainActor
     func testOpenPageListsAReportDeliveredWhileItIsShown() async {
         let store = makeStore()
@@ -147,10 +134,6 @@ final class DiagnosticsLogTests: XCTestCase {
         var now = Date(timeIntervalSince1970: 1_800_000_000)
     }
 
-    /// A documented-format sample, not a device capture: the shape of
-    /// `MXDiagnosticPayload.jsonRepresentation()` as Apple documents it, seeded with sensitive
-    /// values (USER-SECRET, a device model, a container path) that must not survive projection.
-    /// The second crash has no metadata and a mistyped stack tree.
     private static let documentedFormatPayload = """
     {
       "timeStampBegin": "2026-10-28 00:00:00",

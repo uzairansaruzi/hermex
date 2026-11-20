@@ -43,7 +43,6 @@ final class KanbanEventStreamClientTests: XCTestCase {
         )
     }
 
-    /// A Hermes socket frame is `{events, cursor}` with no event type or frame id (#1045).
     func testHermesSocketFramesReadAsEventsAndOtherMessagesAreIgnored() {
         let frame = KanbanStreamFrameDecoder.decodeSocketFrame(Data(
             #"{"events":[{"id":2,"task_id":"t_8aa1b5e6","run_id":null,"kind":"status","payload":{"status":"ready"},"created_at":1791255525,"future":1}],"cursor":2,"future":true}"#.utf8

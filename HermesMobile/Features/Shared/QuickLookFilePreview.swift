@@ -2,9 +2,6 @@ import Foundation
 import QuickLook
 import SwiftUI
 
-/// A downloaded file in a temporary directory of its own, deleted when the last
-/// reference is released. Whatever preview state holds it owns the file, so a
-/// refresh, a dismissal or a server switch removes it.
 final class QuickLookTemporaryFile: Sendable {
     let url: URL
 
@@ -16,17 +13,12 @@ final class QuickLookTemporaryFile: Sendable {
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
     }
 
-    /// Writes `data` as the last path component of `name`, off the main actor.
-    /// An empty or dot name is written as `File`.
     static func write(data: Data, name: String) async throws -> QuickLookTemporaryFile {
         try await Task.detached {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("quick-look-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            // Split rather than `URL(fileURLWithPath:)`, which resolves dot names
-            // against the working directory instead of leaving them to the fallback.
             let filename = name.split(separator: "/").last.map(String.init) ?? ""
-            // Owned before the write, so a failed write still removes the directory.
             let file = QuickLookTemporaryFile(url: directory.appendingPathComponent(
                 filename.isEmpty || filename == "." || filename == ".." ? "File" : filename
             ))
@@ -36,14 +28,9 @@ final class QuickLookTemporaryFile: Sendable {
     }
 }
 
-/// Identity is the instance, so a `.sheet(item:)` can hold one file and release it on close.
 extension QuickLookTemporaryFile: Identifiable {}
 
 extension FilePreviewContent {
-    /// Loads a `BinaryFilePreview.quickLook` file. A `knownSize` over the 25 MB cap
-    /// returns the too-large state without calling `download`, as does a download
-    /// stopped at the cap. Quick Look declining the written file falls back to No
-    /// Preview. `data` is the downloaded bytes, so Export can reuse them.
     @MainActor
     static func loadQuickLook(
         name: String,
@@ -63,7 +50,6 @@ extension FilePreviewContent {
         }
 
         let file = try await QuickLookTemporaryFile.write(data: data, name: name)
-        // A dismissed preview drops the file here, which deletes it.
         try Task.checkCancellation()
         guard QLPreviewController.canPreview(file.url as NSURL) else {
             return (.unavailable(String(localized: "Preview is not available for this file type.")), data)
@@ -72,7 +58,6 @@ extension FilePreviewContent {
     }
 }
 
-/// Quick Look provides native PDF, image, audio and document viewers and export.
 struct QuickLookFileView: UIViewControllerRepresentable {
     let url: URL
 

@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// The session row's attention state: the pure precedence rule, and the bound
-/// on how often the list asks the server about it.
 final class SessionRowAttentionStateTests: XCTestCase {
     private let unreadSuite = "SessionRowAttentionStateTests." + UUID().uuidString
     private lazy var unreadDefaults = UserDefaults(suiteName: unreadSuite)!
@@ -12,8 +10,6 @@ final class SessionRowAttentionStateTests: XCTestCase {
         unreadDefaults.removePersistentDomain(forName: unreadSuite)
         super.tearDown()
     }
-
-    // MARK: - Resolver
 
     func testApprovalBeatsInputAndWorking() {
         let streaming = SessionSummary(sessionId: "s", activeStreamId: "stream-1")
@@ -64,10 +60,6 @@ final class SessionRowAttentionStateTests: XCTestCase {
         )
     }
 
-    // MARK: - Row presentation
-
-    /// A screen that does not poll (Archived) passes no state, and a streaming
-    /// row still reads and shows Working.
     func testRowWithoutSuppliedStateFallsBackToTheSessionsOwnStream() {
         let streaming = SessionSummary(sessionId: "s", activeStreamId: "stream-1")
 
@@ -88,8 +80,6 @@ final class SessionRowAttentionStateTests: XCTestCase {
         )
     }
 
-    /// A cached summary keeps the stream fields it was captured with, so an
-    /// offline row must not say the agent is working.
     func testCachedRowDoesNotFallBackToWorking() {
         let streaming = SessionSummary(sessionId: "s", activeStreamId: "stream-1")
 
@@ -375,8 +365,6 @@ final class SessionRowAttentionStateTests: XCTestCase {
         XCTAssertEqual(store.load(for: second), ["same": 200])
     }
 
-    // MARK: - View model bound
-
     @MainActor
     func testRefreshChecksPendingStateOncePerStreamingSessionAndSkipsIdleRows() async throws {
         let counts = RequestCounts()
@@ -434,8 +422,6 @@ final class SessionRowAttentionStateTests: XCTestCase {
         XCTAssertEqual(viewModel.attentionState(for: SessionSummary(sessionId: "busy")), .working)
         XCTAssertNil(viewModel.attentionState(for: SessionSummary(sessionId: "idle")))
 
-        // Exactly one probe of each kind per streaming session, and none at all
-        // for the session without an active stream.
         XCTAssertEqual(counts.count(path: "/api/approval/pending", sessionID: "waiting"), 1)
         XCTAssertEqual(counts.count(path: "/api/approval/pending", sessionID: "busy"), 1)
         XCTAssertEqual(counts.count(path: "/api/approval/pending", sessionID: "idle"), 0)
@@ -444,8 +430,6 @@ final class SessionRowAttentionStateTests: XCTestCase {
         XCTAssertEqual(counts.count(path: "/api/clarify/pending", sessionID: "idle"), 0)
     }
 
-    /// A reload that drops a session's stream must drop its attention entry, or
-    /// a finished row would keep claiming it wants something.
     @MainActor
     func testReloadClearsAttentionStateForSessionsThatStoppedStreaming() async throws {
         let sessionsResponses = LockedQueue([
@@ -482,8 +466,6 @@ final class SessionRowAttentionStateTests: XCTestCase {
         XCTAssertTrue(viewModel.attentionStatesBySessionID.isEmpty)
     }
 
-    /// A probe that fails is not an answer. A tick that cannot reach the server
-    /// keeps the row's known Approval instead of demoting it to Working.
     @MainActor
     func testFailedApprovalProbeKeepsTheKnownApprovalState() async throws {
         let approvalProbes = LockedCounter()
@@ -519,8 +501,6 @@ final class SessionRowAttentionStateTests: XCTestCase {
         XCTAssertEqual(viewModel.attentionStatesBySessionID, ["waiting": .approval])
     }
 
-    // MARK: - Helpers
-
     @MainActor
     private func makeViewModel(
         unreadStore: SessionUnreadStore? = nil,
@@ -541,8 +521,6 @@ final class SessionRowAttentionStateTests: XCTestCase {
     }
 }
 
-/// Request tallies written from the mock's loading queue and read from the test,
-/// so counting needs no sleeps.
 private final class RequestCounts: @unchecked Sendable {
     private let lock = NSLock()
     private var counts: [String: Int] = [:]
@@ -562,13 +540,10 @@ private final class RequestCounts: @unchecked Sendable {
     }
 }
 
-/// Counts calls from the mock's loading queue, so a handler can answer the
-/// first probe differently from the ones after it.
 private final class LockedCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0
 
-    /// Returns the new count, so `== 1` means "this was the first call".
     func increment() -> Int {
         lock.lock()
         defer { lock.unlock() }
@@ -578,7 +553,6 @@ private final class LockedCounter: @unchecked Sendable {
     }
 }
 
-/// Scripted responses handed out in order, repeating the last one.
 private final class LockedQueue: @unchecked Sendable {
     private let lock = NSLock()
     private var values: [String]

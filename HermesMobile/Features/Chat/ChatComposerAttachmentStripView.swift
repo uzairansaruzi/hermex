@@ -1,8 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// A staged document's badge slot in the strip. Its Quick Look preview is made
-/// at this size, and the pill's smaller tile draws the same image scaled down.
 private let documentBadgeSize = CGSize(width: 58, height: 68)
 
 struct ComposerAttachmentStripView: View {
@@ -38,8 +36,6 @@ struct ComposerAttachmentStripView: View {
     }
 }
 
-/// Pill-state summary of pending attachments: up to three 30 pt tiles plus a
-/// `+N` chip, so nothing pending is ever out of sight while the editor is idle.
 struct ComposerAttachmentPillPreview: View {
     let attachments: [PendingAttachment]
     let onPreview: (PendingAttachment) -> Void
@@ -108,10 +104,6 @@ struct ComposerAttachmentPillPreview: View {
     }
 }
 
-/// Loads a staged document's Quick Look preview and hands it to `content`:
-/// nil until it arrives, and for good when Quick Look can't draw one, so the
-/// tile keeps its icon. A preview made earlier, by this tile or the other
-/// composer state, draws in the first frame. The swap never animates.
 private struct ComposerDocumentThumbnail<Content: View>: View {
     let attachment: PendingAttachment
     @ViewBuilder let content: (UIImage?) -> Content
@@ -218,8 +210,6 @@ private struct ComposerAttachmentThumbnailView: View {
                         .scaledToFill()
                         .frame(width: documentBadgeSize.width, height: documentBadgeSize.height)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        // Keeps a white page from dissolving into a light
-                        // tile, and gives it an edge in dark mode.
                         .overlay(previewBorder(cornerRadius: 10))
                 } else {
                     fileBadge
@@ -254,8 +244,6 @@ private struct ComposerAttachmentThumbnailView: View {
         .accessibilityLabel("File attachment \(attachment.name), \(fileDetailText)")
     }
 
-    /// The document's icon and extension, until (or unless) Quick Look draws
-    /// a preview in the same slot.
     private var fileBadge: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10, style: .continuous)

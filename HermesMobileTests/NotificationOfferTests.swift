@@ -2,7 +2,6 @@ import XCTest
 import UserNotifications
 @testable import HermesMobile
 
-/// #863: the one-time notification offer after the first run started from the phone.
 @MainActor
 final class NotificationOfferTests: XCTestCase {
     private let server = URL(string: "https://a.example.com")!
@@ -31,8 +30,6 @@ final class NotificationOfferTests: XCTestCase {
         XCTAssertEqual(decide(canPair: true), .push)
     }
 
-    // Once per install: the flag is set before the offer is shown, so a second run
-    // (another chat, another server, a relaunch) never asks again.
     func testClaimMarksTheOfferMadeSoItIsAskedOnce() async {
         let scheduler = SpyResponseCompletionNotificationScheduler(status: .notDetermined)
 
@@ -45,7 +42,6 @@ final class NotificationOfferTests: XCTestCase {
         XCTAssertEqual(scheduler.requestAuthorizationCallCount, 0)
     }
 
-    // A run that offers nothing leaves the offer for a later run.
     func testClaimLeavesTheFlagUnsetWhenThereIsNothingToOffer() async {
         let offer = await claim(scheduler: SpyResponseCompletionNotificationScheduler(status: .denied))
 
@@ -53,8 +49,6 @@ final class NotificationOfferTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: "notificationOffer.hasOffered"))
     }
 
-    // The chat closed while the permission check ran: nothing is shown, so the offer
-    // must not be used up.
     func testClaimLeavesTheFlagUnsetWhenTheChatIsGone() async {
         var isOnScreen = true
         let scheduler = SpyResponseCompletionNotificationScheduler(status: .authorized) {
@@ -74,8 +68,6 @@ final class NotificationOfferTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: "notificationOffer.hasOffered"))
     }
 
-    // Denied and paired installs never get the offer, so every send on them skips the
-    // Keychain reads that could not change the answer.
     func testClaimSkipsKeychainReadsThatCannotChangeTheAnswer() async {
         var reads: [String] = []
         func claimCountingReads(status: UNAuthorizationStatus, isPaired: Bool) async -> NotificationOffer.Offer? {

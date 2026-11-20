@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Color scheme, theme, accent, text size, code display, the primary-button tint and the app icon
-/// (#1583). They apply on this iPhone to every server; the header color is per server, on the
-/// server's page. The Text and Code sections each open with a sample, so a change shows beside
-/// its control.
 struct SettingsAppearancePage: View {
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
     @AppStorage(AppAppearanceSettings.lightThemeKey) private var lightTheme = ColorTheme.default
@@ -119,7 +115,6 @@ struct SettingsAppearancePage: View {
         return AppTextSize.percentage(of: size).formatted(.percent.precision(.fractionLength(0)))
     }
 
-    /// Turning it on starts at the size code is showing now, so nothing jumps.
     private var usesCustomCodeSize: Binding<Bool> {
         Binding {
             customCodeSize != nil
@@ -150,7 +145,6 @@ struct SettingsAppearancePage: View {
     }
 }
 
-/// One card per theme. A card sets both modes; its light or dark orb sets only that mode.
 private struct ThemePicker: View {
     @Binding var lightTheme: ColorTheme
     @Binding var darkTheme: ColorTheme
@@ -190,7 +184,6 @@ private struct ThemeCard: View {
         .frame(maxWidth: .infinity)
         .background(Color(.appGroupedSurface), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        // The rest of the card. The orbs and title are buttons, so they answer first.
         .onTapGesture(perform: selectBothModes)
     }
 
@@ -231,8 +224,6 @@ private struct ThemeCard: View {
     }
 }
 
-/// The theme's own accent, eight swatches, or a custom color. A pick is shown as chosen; the app
-/// uses it moved just far enough to stay readable (`ThemePalette.withAccent`).
 private struct AccentPicker: View {
     private struct Swatch: Identifiable {
         let hex: String
@@ -257,7 +248,6 @@ private struct AccentPicker: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    /// The swatch for no pick, so it shows the accent that choosing it brings back.
     private var themeAccent: Color {
         let isDark = colorScheme == .dark
         return Color(uiColor: (isDark ? darkTheme : lightTheme).palette(isDark: isDark).accent)
@@ -311,7 +301,6 @@ private struct AccentPicker: View {
     }
 }
 
-/// A few lines of code in the chat's own highlighter and font, following both Code settings.
 private struct AppearanceCodePreview: View {
     private static let code = """
     func retry(_ attempt: Int) async throws {
@@ -353,7 +342,6 @@ private struct AppearanceCodePreview: View {
     }
 
     private var lines: some View {
-        // Plain until this color scheme's highlight is ready, never the other scheme's colors.
         let current = highlight?.request == request ? highlight?.text : nil
         let content = MarkdownCodeHighlighter.shared.cachedHighlight(for: request)
             ?? current

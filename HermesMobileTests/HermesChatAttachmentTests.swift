@@ -2,14 +2,7 @@ import XCTest
 import UIKit
 @testable import HermesMobile
 
-/// Photos and files in a Hermes session's main chat (#1012): staged as local copies, then
-/// uploaded by Send or Queue through the Bot path (image-upload plus the vision-tool line,
-/// `file.attach` for documents), over #901's socket-level host and an HTTP fixture.
 @MainActor final class HermesChatAttachmentTests: XCTestCase {
-    // MARK: Sending
-
-    /// Staging uploads nothing. Send stores the image, then submits the typed text with
-    /// Hermes's vision-tool instruction line; the bubble shows the text and a chip.
     func testSendUploadsTheImageAndSubmitsItsInstructionLine() async throws {
         let chat = await openChat()
         var upload: (query: String?, body: [String: String]?)?
@@ -46,8 +39,6 @@ import UIKit
         XCTAssertEqual(copies, 0, "the accepted send deletes the local copy")
     }
 
-    /// A document goes through `file.attach` on the attached runtime, and its `ref_text`
-    /// goes into the prompt exactly as the host wrote it.
     func testFileAttachRefTextGoesIntoThePromptVerbatim() async throws {
         let chat = await openChat()
         let ref = "@file:`/home/u/.hermes/attachments/\(Self.uuid)-Q3 report.pdf`"
@@ -71,8 +62,6 @@ import UIKit
         XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["Q3 report.pdf"])
     }
 
-    /// A long paste titles a new session (#1701) through `title_preview` alone, even once edited
-    /// below the paste threshold; the prompt carries only the file's reference.
     func testAnEditedLongPasteTitlesTheSessionOutsideThePrompt() async throws {
         let chat = await openChat(version: HermesCompatibility.titlePreviewVersion)
         let staged = await chat.model.stagePastedText(String(repeating: "a", count: 3_001)).value
@@ -94,9 +83,6 @@ import UIKit
         XCTAssertEqual(submit["title_preview"]?.text, "Quarterly revenue notes")
     }
 
-    /// A Windows host (#1312) stores both files under drive-letter paths. The send goes
-    /// through, its rebuilt row shows the photo as a chip, ↑ recalls only the typed text,
-    /// and the chip downloads from the path as the host wrote it.
     func testAWindowsHostTakesBothAttachmentsAndItsPhotoChipDownloads() async throws {
         let chat = await openChat()
         let image = #"C:\Users\u\AppData\Local\hermes\images\dashboard_20261004_031500_ab12cd34_photo.jpg"#
@@ -138,7 +124,6 @@ import UIKit
         XCTAssertEqual(download, image)
     }
 
-    /// One failed upload of two: nothing is submitted, and the text and both files stay.
     func testAFailedUploadSubmitsNothingAndKeepsTheDraft() async {
         let chat = await openChat()
         _ = HermesHostFixture.configuration { request in
@@ -161,7 +146,6 @@ import UIKit
         XCTAssertEqual(copies, 2)
     }
 
-    /// Cancel during an upload: nothing is submitted, and the text and file stay.
     func testCancellingTheUploadSubmitsNothingAndKeepsTheDraft() async {
         let chat = await openChat()
         _ = HermesHostFixture.configuration { request in request.url?.path == "/api/chat/image-upload" ? .park : nil }
@@ -178,10 +162,6 @@ import UIKit
         XCTAssertEqual(chat.model.sendErrorMessage, "Upload cancelled. Your message and attachments are still here.")
     }
 
-    /// #508: a lost answer to the prompt keeps the text and files, marks the submission
-    /// unresolved on disk, and holds Send while the chat reattaches; nothing is sent again.
-    /// The reattach releases the hold and the mark and leaves the draft. A draft reopened
-    /// with the mark holds Send the same way until the chat attaches.
     func testALostAcknowledgmentHoldsSendUntilTheReattachAndNeverResends() async throws {
         let chat = await openChat()
         chat.host.always("file.attach", .init(result: .object([
@@ -206,12 +186,10 @@ import UIKit
         let marked = await chat.drafts.draft(for: key)
         XCTAssertEqual(marked?.botSubmissionUncertain, true)
         XCTAssertEqual(marked?.text, "Read this")
-        // The files may be on the host already, so an edit waits too (#1456).
         let staged = try XCTUnwrap(chat.model.pendingAttachments.first)
         let refusedEdit = await chat.model.saveStagedPaste(staged, text: "edited")
         XCTAssertEqual(refusedEdit, StagedPasteText.sendingNotice)
 
-        // Joins the reattach the lost answer started.
         await chat.turn.activate()
         await chat.model.submissionMarkRelease?.value
         XCTAssertFalse(chat.model.isHermesSubmissionUncertain)
@@ -229,8 +207,6 @@ import UIKit
         XCTAssertFalse(chat.model.isHermesSubmissionUncertain)
     }
 
-    /// Queue carries the files too; when the host runs the queued prompt, its row shows them
-    /// as chips.
     func testAQueuedPromptWithFilesShowsChipsWhenItsTurnStarts() async throws {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -252,8 +228,6 @@ import UIKit
         XCTAssertEqual(row.attachments?.map(\.name), ["notes.txt"])
     }
 
-    /// A files-only draft mid-run queues (#1367): with no text, the file's reference is the
-    /// whole queued prompt.
     func testAFileOnlyDraftMidRunQueuesItsFile() async throws {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -269,11 +243,6 @@ import UIKit
         XCTAssertEqual(chat.model.pendingAttachments, [])
     }
 
-    // MARK: Steer and limits
-
-    /// Steer and Stop and send never carry files. With files staged on a Hermes session,
-    /// Steer drops out of the send button and a Steer default queues them; Stop and send
-    /// stays, goes text-only and leaves them staged.
     func testStagedFilesDropSteerAndStopAndSendLeavesThemStaged() async {
         let steer = ChatComposerSendButton(isWaitingForStream: true, hasText: true, hasQuotes: false,
                                            defaultBehavior: .steer, stagedFilesDropSteer: true)
@@ -305,8 +274,6 @@ import UIKit
         XCTAssertEqual(chat.model.pendingAttachments.map(\.name), ["more.txt"])
     }
 
-    /// `/interrupt` mid-run is Stop and send (#1673): `session.redirect` with its text, and the
-    /// staged file stays staged.
     func testInterruptCommandMidRunStopsAndSends() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -320,7 +287,6 @@ import UIKit
         XCTAssertEqual(chat.model.pendingAttachments.map(\.name), ["notes.txt"])
     }
 
-    /// Bot Chat's limits: eight files. The ninth is refused with the Bot message.
     func testStagingStopsAtEightFiles() async {
         let chat = await openChat()
         for index in 1...9 {
@@ -330,7 +296,6 @@ import UIKit
         XCTAssertEqual(chat.model.uploadAttachmentErrorMessage, "Use up to 8 attachments, 25 MB each and 50 MB total.")
     }
 
-    /// Imports that stage at once share the 50 MB total: of three 20 MB files, one is refused.
     func testOverlappingImportsShareTheTotalLimit() async {
         let chat = await openChat()
         let file = Data(repeating: 0x61, count: 20 * 1024 * 1024)
@@ -344,8 +309,6 @@ import UIKit
         XCTAssertEqual(chat.model.uploadAttachmentErrorMessage, "Use up to 8 attachments, 25 MB each and 50 MB total.")
     }
 
-    /// Two long pastes in quick succession (#1381): the second is named before the first
-    /// lands, so each file keeps its own name and its own bytes.
     func testRapidPastesStageDistinctFiles() async throws {
         let chat = await openChat()
         let logs = [String(repeating: "a", count: 3_001), String(repeating: "b", count: 3_001)]
@@ -362,8 +325,6 @@ import UIKit
         XCTAssertEqual(bytes, Set(logs.map { Data($0.utf8) }))
     }
 
-    /// A long paste whose chat goes away while its copy is being saved (#1381) leaves no
-    /// tile, no copy and no held Send.
     func testAPasteCancelledMidSaveLeavesNothingBehind() async throws {
         let copies = PausingCopies()
         let coordinator = ChatAttachmentCoordinator(
@@ -386,10 +347,6 @@ import UIKit
         XCTAssertEqual(copiesLeft, 0)
     }
 
-    // MARK: Editing a staged paste (#1456)
-
-    /// Saving an edit: the tile keeps its name and place with a new size, the old copy goes,
-    /// a reopened draft finds the edit, and Send carries the edited bytes.
     func testASavedEditReplacesThePasteAndSurvivesAReopen() async throws {
         let copies = BotAttachmentCopies()
         let saved = BotMemoryDrafts()
@@ -421,8 +378,6 @@ import UIKit
         XCTAssertEqual(records?.map(\.file), coordinator.pendingAttachments.map(\.draftFileName))
     }
 
-    /// A draft that can't be saved rolls the edit back: the tile and its bytes stay the
-    /// original, and the same edit saves once the disk answers again.
     func testAnEditThatCantBeSavedKeepsTheOriginal() async throws {
         let copies = BotAttachmentCopies()
         let saved = FailingDrafts()
@@ -453,7 +408,6 @@ import UIKit
         XCTAssertEqual(coordinator.pendingAttachments.first?.size, 7)
     }
 
-    /// A tile removed while its edit saves stays gone, and the new copy goes with it.
     func testATileRemovedWhileItsEditSavesStaysGone() async throws {
         let copies = PausingCopies()
         await copies.resume()
@@ -469,7 +423,6 @@ import UIKit
 
         let save = Task { await coordinator.replaceStagedPaste(paste, with: "trimmed") }
         await fulfillment(of: [saving], timeout: 5)
-        // As the composer's remove button does: the delete waits for the save's storage lock.
         let old = try XCTUnwrap(paste.draftFileName)
         coordinator.removePendingAttachment(id: paste.id)
         let delete = Task { await coordinator.deleteDraftCopy(named: old, attachmentID: paste.id) }
@@ -483,8 +436,6 @@ import UIKit
         XCTAssertEqual(copiesLeft, 0)
     }
 
-    /// While a send may be reading the files, an edit is refused and the file stays as it was,
-    /// even if the sheet opened before the send began.
     func testASendInFlightRefusesAnEdit() async throws {
         let chat = await openChat()
         _ = HermesHostFixture.configuration { request in request.url?.path == "/api/chat/image-upload" ? .park : nil }
@@ -510,8 +461,6 @@ import UIKit
         XCTAssertEqual(bytes.count, 3_001)
     }
 
-    /// An edit's size replaces the text it edits in the 50 MB total: 10 MB grows to 11 next to
-    /// 39 MB of other files, and can't grow to 12. A refused edit changes nothing.
     func testTheTotalLimitCountsAnEditInPlaceOfTheTextItReplaces() async throws {
         let chat = await openChat()
         let megabyte = 1024 * 1024
@@ -529,8 +478,6 @@ import UIKit
         XCTAssertEqual(chat.model.pendingAttachments.first?.size, 11 * megabyte)
     }
 
-    /// A long paste shows its start without splitting a character and offers no edit; bytes
-    /// that aren't UTF-8 show as unreadable, so a save can't damage them.
     func testAStagedPasteReadsAsWholeTextOrItsStartOrNothing() throws {
         let short = try XCTUnwrap(StagedPasteText(data: Data("héllo\r\n".utf8)))
         XCTAssertEqual(short.text, "héllo\r\n")
@@ -545,7 +492,6 @@ import UIKit
         XCTAssertNil(StagedPasteText(data: Data([0x61, 0xFF, 0x62])))
     }
 
-    /// Only a local paste opens the editor: a file already on the server keeps its preview.
     func testOnlyALocalPasteOpensTheEditor() {
         func attachment(name: String = "pasted-text-2.txt", path: String = "") -> PendingAttachment {
             PendingAttachment(name: name, path: path, mime: "text/plain", isImage: false, draftFileName: "copy")
@@ -562,10 +508,6 @@ import UIKit
         )
     }
 
-    // MARK: Transcript
-
-    /// The rule keeps text without references as it is, and reads references only as whole
-    /// blocks, wherever they are, in each of `file.attach`'s quotings.
     func testTheHermesReferenceRuleReadsOnlyWholeReferenceBlocks() {
         let typed = "See @file:src/app.swift line 3\n\n--- not a footer"
         XCTAssertEqual(MessageAttachment.hermesReferences(in: typed).text, typed)
@@ -584,11 +526,6 @@ import UIKit
         XCTAssertEqual(MessageAttachment.hermesReferences(in: warned).text, "Read @folder:src", "a footer with no @file: goes too")
     }
 
-    /// After a rebuild the user row shows the typed text and one chip per reference: the
-    /// image pair, a plain and a quoted `@file:` token. The host's context footer and every
-    /// host path are gone from the text, each chip keeps its path for the download (#1030)
-    /// under its display name, and ↑ recalls only the typed text. The saved row is the
-    /// shape `scripts/local-hermes` stored at the pin for such a prompt, its paths shortened.
     func testTheTranscriptShowsChipsAndNoHostPathsAfterARebuild() async throws {
         let quoted = "@file:`/home/u/.hermes/attachments/\(Self.uuid)-Q3 report.pdf`"
         let stored = "Compare these\n\n"
@@ -613,8 +550,6 @@ import UIKit
         XCTAssertEqual(chat.model.lastSentText, "Compare these")
     }
 
-    /// A staged photo has no server path and the chat no webui session: its preview shows
-    /// the local copy instead of asking for a session.
     func testAPathlessPreviewShowsTheLocalCopy() async throws {
         let chat = await openChat()
         await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
@@ -630,10 +565,6 @@ import UIKit
         XCTAssertNil(preview.errorMessage)
     }
 
-    // MARK: Downloading (#1030)
-
-    /// A chip's thumbnail downloads from the host by its path, under the session's
-    /// Profile and stored key, so the host resolves it against the session.
     func testAThumbnailDownloadsThroughTheSessionsProfileAndStoredKey() async throws {
         let chat = await openChat()
         var query: [URLQueryItem]?
@@ -649,7 +580,6 @@ import UIKit
                                URLQueryItem(name: "session_id", value: "tip")])
     }
 
-    /// A download still in flight when the chat reattaches is dropped, not shown.
     func testADownloadThatOutlivesItsAttachIsDropped() async throws {
         let chat = await openChat()
         _ = HermesHostFixture.configuration { request in request.url?.path == "/api/fs/download" ? .park : nil }
@@ -667,8 +597,6 @@ import UIKit
         XCTAssertNotEqual(chat.turn.engine.generation, attempt)
     }
 
-    /// An inline player that loads while the chat is detached waits instead of failing, and
-    /// plays once the chat attaches, downloading the clip once.
     func testInlineAudioLoadedWhileDetachedPlaysOnceTheChatAttaches() async throws {
         let chat = await openChat()
         let path = "/home/u/.hermes/attachments/\(Self.uuid)-memo.wav"
@@ -691,8 +619,6 @@ import UIKit
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/fs/download" }.count, 1)
     }
 
-    /// A bubble hands its player the source's load key unchanged: a detached Hermes chat's
-    /// nil waits for the attach, where a stand-in key would load now and show the failure.
     func testABubblesInlinePlayerKeepsADetachedChatsNilLoadKey() {
         func player(loadKey: Int?) -> InlineAudioPlayerView {
             let attachment = MessageAttachment(name: "memo.wav", path: "/home/u/.hermes/attachments/memo.wav")
@@ -707,8 +633,6 @@ import UIKit
         XCTAssertEqual(player(loadKey: 3).loadKey, 3)
     }
 
-    /// Transcript rows skip re-rendering while their inputs compare equal, so the attach
-    /// generation must be one of them, or an unchanged row's player never learns of it.
     func testATranscriptRowRerendersWhenOnlyTheAudioLoadKeyChanges() {
         func row(loadKey: Int?) -> ChatTranscriptMessageBlock {
             ChatTranscriptMessageBlock(
@@ -737,9 +661,6 @@ import UIKit
         XCTAssertNotEqual(row(loadKey: 3), row(loadKey: 4))
     }
 
-    /// A just-sent audio chip has no host path yet, so it stays a file cell and nothing
-    /// downloads it by its display name; a chip with its host path plays inline. A webui
-    /// chip still plays by name, as older sessions saved uploads to the workspace root.
     func testAHermesAudioChipPlaysInlineOnlyFromItsHostPath() async throws {
         let chat = await openChat()
         chat.host.always("file.attach", .init(result: .object([
@@ -763,8 +684,6 @@ import UIKit
         XCTAssertEqual(loaded, [])
     }
 
-    /// A Hermes chip's inline player keeps the chip's Open action (Quick Look, Save and
-    /// Share, #1030), handing over the chip itself; a webui player has none.
     func testAHermesAudioPlayerOpensTheChipsPreview() throws {
         let chip = MessageAttachment(name: "memo.m4a", path: "/home/u/.hermes/attachments/memo.m4a", mime: "audio/mp4")
         var opened: [(MessageAttachment, Data?)] = []
@@ -781,7 +700,6 @@ import UIKit
         XCTAssertNil(hermes.openAction(for: chip, localData: nil, onPreview: nil))
     }
 
-    /// Thumbnails are cached per connection and Profile: neither shows the other's.
     func testTheThumbnailNamespaceSeparatesConnectionsAndProfiles() {
         let other = BotConnection(id: UUID(), name: "Mac", address: Self.connection.address,
                                   username: "user", password: "fixture")
@@ -797,11 +715,6 @@ import UIKit
         XCTAssertNotEqual(base, namespace(Self.connection, "work"))
     }
 
-    // MARK: Workspace (#1112)
-
-    /// The chat's workspace is its Profile, stored key, and the folder and terminal backend
-    /// `session.info` names; a later report moving the folder moves it, and its files download
-    /// on the chat's connection by their host path. Before any report names a folder there is none.
     func testTheWorkspaceFollowsSessionInfoAndReadsOnTheChatsConnection() async throws {
         let chat = await openChat()
         XCTAssertNil(chat.model.hermesWorkspace, "no session.info has named a folder")
@@ -826,9 +739,6 @@ import UIKit
                                URLQueryItem(name: "profile", value: "default")])
     }
 
-    /// A reply's relative Markdown image (#1679) resolves against the chat's folder: its session
-    /// row's until `session.info` names the live one, whose file the thumbnail then downloads on
-    /// the session.
     func testARelativeImageLoadsFromTheChatsFolder() async throws {
         let chat = await openChat()
         XCTAssertEqual(chat.model.transcriptWorkspaceRoot(listedFolder: "/work/listed"), "/work/listed")
@@ -850,8 +760,6 @@ import UIKit
         XCTAssertEqual(query?.first { $0.name == "session_id" }?.value, "tip")
     }
 
-    /// The chat owns its repository's Git writes (#1115): none goes out while a turn runs, and a
-    /// client made for a folder the chat has since left writes nothing at all.
     func testGitWritesWaitForTheTurnAndStopAtAFolderMove() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -870,10 +778,6 @@ import UIKit
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path.hasPrefix("/api/git/") == true }, [])
     }
 
-    /// A move made from the composer's folder picker (#1117) leaves the old folder behind as a
-    /// `session.info` move does: Files reads the new folder (#1112), the `@path` chips go
-    /// (#1113), and a Git client made for the old folder writes nothing (#1115). The host's
-    /// `session.info` echo of the same folder changes nothing more.
     func testAComposerFolderMoveLeavesTheOldFolderBehind() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -900,9 +804,6 @@ import UIKit
         XCTAssertEqual(chat.model.fileChipPaths, ["new.md"], "an echo of the folder already moved to drops nothing")
     }
 
-    /// A MEDIA reference's inline audio, video or file in a reply downloads from the host by
-    /// the path the reply wrote, under the session's Profile and stored key, so the host
-    /// resolves it against the session; webui's `/api/media` is never asked.
     func testInlineTranscriptMediaDownloadsFromTheHost() async throws {
         let chat = await openChat()
         var query: [URLQueryItem]?
@@ -921,8 +822,6 @@ import UIKit
         XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.path == "/api/media" })
     }
 
-    /// A MEDIA file's export downloads all of it, past the preview cap that stops a MEDIA image's
-    /// thumbnail, on the same session's Profile and stored key.
     func testInlineTranscriptMediaFileExportHasNoPreviewCap() async throws {
         let cap = 4 * 1024
         let chat = await openChat(previewLimit: cap)
@@ -943,11 +842,6 @@ import UIKit
         XCTAssertEqual(downloads.count, 2)
     }
 
-    // MARK: Canonical hosts (#1644)
-
-    /// On a canonical host a photo goes as the prompt's own attachment: `prompt.submit` names the
-    /// path and type the upload answered, and its text has no instruction pair. The sending row's
-    /// chip is the composer's, as on any host (`testSendUploadsTheImageAndSubmitsItsInstructionLine`).
     func testACanonicalSendCarriesItsPhotoAsAnAttachment() async throws {
         let chat = await openChat(canonical: true)
         _ = HermesHostFixture.configuration { request in
@@ -964,8 +858,6 @@ import UIKit
         XCTAssertEqual(params["attachments"], .array([.object(["path": .string(Self.storedImage), "mime": .string("image/jpeg")])]))
     }
 
-    /// A photo queued on a canonical host keeps its chip while the host's `pending` lists only its
-    /// text, and the row its turn opens with shows it once, with the chip.
     func testAQueuedCanonicalPhotoKeepsItsChipIntoItsTurn() async throws {
         let chat = await openChat(canonical: true)
         chat.receive(event(1, "message.start", runtime: "tip", admission: "a1"))
@@ -994,12 +886,6 @@ import UIKit
         XCTAssertEqual(rows.map { $0.attachments?.map(\.path) }, [[Self.storedImage]])
     }
 
-    /// A host stores a canonical send's photos as its own image notes (#1644): native hints after
-    /// the caption with their `[screenshot]` lines, its default caption when there was none (and its
-    /// context footer ahead of the hints), or text mode's notes before the caption. Each photo shows
-    /// as a chip on the stored path with no path left in the text, and ↑ recalls only what was
-    /// typed. The rows are the shapes `scripts/local-hermes --gateway` stored at the pin, their
-    /// paths shortened.
     func testTheHostsImageNotesShowAsChips() async throws {
         let saved = "/home/u/.hermes/cache/documents/native-inputs/3fd6e6be/dashboard_20261111_194223_195f8b19_"
         let windows = #"C:\Users\u\.hermes\cache\documents\native-inputs\3fd6e6be\dashboard_20261111_194229_ad25ea0b_scan.png"#
@@ -1025,8 +911,6 @@ import UIKit
         XCTAssertEqual(chat.model.lastSentText, "Describe it")
     }
 
-    // MARK: Fixture
-
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
     private static let uuid = "0F6A3C1E-8D2B-4F7A-9C3D-5E6F7A8B9C0D"
@@ -1038,8 +922,6 @@ import UIKit
         }
     }
 
-    /// A Hermes chat attached to an idle session whose saved transcript is `history`, the rows
-    /// of its transcript page (#1047).
     private struct Chat {
         let model: ChatViewModel
         let turn: HermesChatTurnCoordinator
@@ -1048,16 +930,13 @@ import UIKit
         let copies: BotAttachmentCopies
         let client: BotClient
 
-        /// One of the runtime's event frames.
         @MainActor func receive(_ frame: BotJSON) { client.onEvent?(frame) }
 
-        /// The params of every `method` call the chat sent.
         func writes(_ method: String) -> [[String: BotJSON]] {
             host.requests.filter { $0["method"].text == method }.compactMap { $0["params"].fields }
         }
     }
 
-    /// One of `runtime`'s event frames; a canonical host's (`runtime` `tip`) names its `admission`.
     private func event(_ seq: Int, _ type: String, _ payload: [String: BotJSON] = [:], runtime: String = "runtime",
                        admission: String? = nil) -> BotJSON {
         var frame: [String: BotJSON] = ["session_id": .string(runtime), "seq": .number(Double(seq)), "type": .string(type),
@@ -1066,14 +945,10 @@ import UIKit
         return .object(frame)
     }
 
-    /// A canonical host's admission receipt for a send (#1602).
     private static func receipt(_ admission: String) -> BotJSON {
         .object(["admission_id": .string(admission), "sequence": .number(1), "status": .string("queued")])
     }
 
-    /// `previewLimit` is the chat's preview cap, which a test lowers to stay small. `canonical`
-    /// opens it on a gateway's canonical listener (#1341), where the session's runtime is its key.
-    /// `version` replaces the fixture host's 0.21.5 in `/api/status`.
     private func openChat(history: [BotJSON] = [], previewLimit: Int = BotArtifactBuffer.maximumBytes,
                           canonical: Bool = false, version: String? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
@@ -1115,7 +990,6 @@ import UIKit
     }
 }
 
-/// Saves until told to fail, as a full disk or a data-protection error would.
 private actor FailingDrafts: ChatDraftPersisting {
     private var values: [ChatDraftKey: ChatDraft] = [:]
     private var fails = false

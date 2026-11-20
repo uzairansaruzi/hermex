@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// Add/remove editor for custom request headers, shared by Add Server's Connection Options,
-/// a webui server's settings and a Hermes connection. Binds directly to the header list; the
-/// owner decides when to persist. See issue #255. The owner may hide a row as it is edited
-/// (Connection Options moves Cloudflare Access's rows to their own fields), so rows bind by
-/// id, never by index (#1705).
 struct CustomHeadersEditor: View {
     @Binding var headers: [CustomHeader]
 
@@ -79,9 +74,6 @@ struct CustomHeadersEditor: View {
 }
 
 extension Binding where Value == [CustomHeader] {
-    /// A binding to the row with `snapshot`'s id, wherever it now sits. Once the row is gone
-    /// it reads `snapshot` and drops writes, so a field SwiftUI still holds can't read past
-    /// the end of a list that just shrank.
     func row(_ snapshot: CustomHeader) -> Binding<CustomHeader> {
         Binding<CustomHeader>(
             get: { wrappedValue.first { $0.id == snapshot.id } ?? snapshot },

@@ -1,9 +1,6 @@
 import Foundation
 import Observation
 
-/// The Plugins screen's state (#1582): the host's Profiles, the one shown, its plugins, and the host's
-/// catalog. Every read goes to the host and nothing outlives the screen. A change shows only what the
-/// host then reports, nothing is retried, and a restart is always a separate confirmed action.
 @MainActor
 @Observable
 final class PluginsModel {
@@ -27,7 +24,6 @@ final class PluginsModel {
         }
     }
 
-    /// One titled group of rows. A plugin is in only the first group it fits.
     struct Group: Identifiable, Equatable {
         enum Kind: Hashable { case updates, yours, bundled }
         let kind: Kind
@@ -35,18 +31,15 @@ final class PluginsModel {
         var id: Kind { kind }
     }
 
-    /// A toggle waiting for the user's answer to its warning.
     struct PendingToggle: Equatable {
         let plugin: HermesPlugin
         let turningOn: Bool
         let warning: String
     }
 
-    /// What the screen last learned about a change on the shown Profile.
     enum Notice: Equatable {
         case reported(String)
         case refused(String)
-        /// The connection dropped or the host went quiet, so the change may or may not have applied.
         case unconfirmed(String)
     }
 
@@ -58,30 +51,23 @@ final class PluginsModel {
         case failed(String)
     }
 
-    /// What the install sheet's field resolves to.
     enum InstallReview: Equatable {
         case none
         case invalid
         case repo(String)
         case catalog(HermesCatalogEntry)
-        /// A catalog name that isn't listed. It's never reinterpreted as a repository.
         case notInCatalog(String)
-        /// A name Nous took out of the catalog, with its reason.
         case removed(String, reason: String)
         case loadingCatalog
         case catalogUnavailable(String)
     }
 
-    /// How an install ended for the sheet that asked. Anything else it has to say goes in the notice.
     enum InstallResult: Equatable {
-        /// The sheet can close, and the list shows what the host reported or that it's unconfirmed.
         case finished
-        /// The host says this plugin is already there, the only case that offers Replace.
         case alreadyExists(String)
         case refused(String)
     }
 
-    /// An update the host held back until the user reads why.
     struct UpdateReview: Identifiable, Equatable {
         enum Reason: Equatable {
             case newAbilities([String])
@@ -91,12 +77,10 @@ final class PluginsModel {
         let plugin: HermesPlugin
         let profile: String
         let reason: Reason
-        /// Already accepted, so a scan after a consent keeps that answer.
         let acceptedCapabilities: Bool
         var id: String { plugin.key }
     }
 
-    /// The keys a plugin installed just now needs before it can run.
     struct PluginSetup: Equatable {
         let profile: String
         let name: String
@@ -110,17 +94,14 @@ final class PluginsModel {
 
     private(set) var state = State.loading
     private(set) var profiles: [String] = []
-    /// The Profile the screen lists and acts on, once the host has named its Profiles.
     private(set) var profile: String?
     private(set) var notice: Notice?
     private(set) var isRestarting = false
     var tab = Tab.installed
     var query = ""
     var filter = Filter.all
-    /// The Discover category, or nil for all of them.
     var discoverCategory: String?
     var pendingToggle: PendingToggle?
-    /// A user install waiting for the user to confirm its removal.
     var pendingRemoval: HermesPlugin?
     private(set) var catalog = CatalogState.idle
     private(set) var setup: PluginSetup?
@@ -128,13 +109,9 @@ final class PluginsModel {
 
     private let client: HermesPluginsClient
     private var stakes = HermesPluginStakes()
-    /// Each toggle on its way to the host and the state it asked for.
     private var toggling: [Target: Bool] = [:]
-    /// The plugins whose last change the host said needs a restart, until one is requested.
     private var awaitingRestart: Set<Target> = []
-    /// Bumped by each read, so only the latest one applies after a Profile switch.
     @ObservationIgnored private var readSerial = 0
-    /// Bumped by each change the host confirms, so a read that left before it goes out again.
     @ObservationIgnored private var changeSerial = 0
     @ObservationIgnored private var catalogLoad: Task<Void, Never>?
 
@@ -149,7 +126,6 @@ final class PluginsModel {
 
     func count(of filter: Filter) -> Int { plugins.lazy.filter(filter.includes).count }
 
-    /// The rows the filter and search leave, grouped as the screen lists them.
     var groups: [Group] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let shown = plugins.filter { plugin in
@@ -164,8 +140,6 @@ final class PluginsModel {
                 Group(kind: .bundled, plugins: others.filter(\.isBundled))].filter { !$0.plugins.isEmpty }
     }
 
-    /// Reads the host's Profiles, keeping the shown one while it still exists and otherwise
-    /// starting on the default, then that Profile's plugins.
     func load() async {
         if case .failed = state { state = .loading }
         readSerial += 1
@@ -188,7 +162,6 @@ final class PluginsModel {
         await read()
     }
 
-    /// Whether `plugin`'s row reads as on: what a toggle in flight asked for, else what the host said.
     func isOn(_ plugin: HermesPlugin) -> Bool {
         profile.flatMap { toggling[Target(profile: $0, key: plugin.key)] } ?? plugin.isEnabled
     }
@@ -197,7 +170,6 @@ final class PluginsModel {
         profile.map { toggling[Target(profile: $0, key: plugin.key)] != nil } ?? false
     }
 
-    /// The row's switch: one that needs a warning waits for the answer, any other applies at once.
     func requestToggle(_ plugin: HermesPlugin, to turningOn: Bool) {
         guard !isToggling(plugin) else { return }
         if let warning = stakes.warning(for: plugin, turningOn: turningOn) {
@@ -207,15 +179,12 @@ final class PluginsModel {
         }
     }
 
-    /// The user accepted the pending toggle's warning.
     func confirmPendingToggle() {
         guard let pendingToggle else { return }
         self.pendingToggle = nil
         Task { await apply(pendingToggle.plugin, turningOn: pendingToggle.turningOn) }
     }
 
-    /// The catalog, read once while the screen is open. The read belongs to the model, so a caller
-    /// cancelled by the next keystroke doesn't take it down. A failed read can be tried again.
     func loadCatalog() async {
         if catalogLoad == nil {
             catalog = .loading
@@ -231,7 +200,6 @@ final class PluginsModel {
         await catalogLoad?.value
     }
 
-    /// What Discover lists now, or nothing until the catalog arrives.
     var discoverGroups: [PluginDiscoverGroup] {
         guard case .loaded(let catalog) = catalog else { return [] }
         return catalog.groups(query: query, category: discoverCategory)
@@ -242,22 +210,16 @@ final class PluginsModel {
         return catalog.categories
     }
 
-    /// The catalog entries on the shown Profile, or nil until its list is read, which is no time to
-    /// offer an install. The catalog's own `installed` field isn't used, because its route reads only
-    /// the dashboard's Profile.
     var installedCatalogNames: Set<String>? {
         guard case .loaded(let plugins) = state else { return nil }
         return Set(plugins.map { $0.catalogName ?? $0.name })
     }
 
-    /// Why Nous took `plugin` out of the catalog, once the catalog has arrived.
     func removalReason(for plugin: HermesPlugin) -> String? {
         guard !plugin.isBundled, case .loaded(let catalog) = catalog else { return nil }
         return catalog.removalReasons[plugin.catalogName ?? plugin.name]
     }
 
-    /// Resolves the install field against the catalog. A removal reason wins, so a name Nous took out
-    /// is never offered.
     func review(of input: PluginInstallInput) -> InstallReview {
         switch input {
         case .empty: return .none
@@ -276,9 +238,6 @@ final class PluginsModel {
 
     func isTooNew(_ entry: HermesCatalogEntry) -> Bool { entry.isTooNew(forHost: client.hostVersion) }
 
-    /// Installs on `profile`, which the sheet fixed when it opened, then reads the list again. Nothing
-    /// here retries: `replace` comes only from the user answering `.alreadyExists`, and a lost reply
-    /// ends as an unconfirmed notice.
     func install(_ source: HermesPluginSource, profile: String, replace: Bool, enable: Bool) async -> InstallResult {
         do {
             let install = try await client.install(source, profile: profile, replace: replace, enable: enable)
@@ -292,9 +251,7 @@ final class PluginsModel {
             }
             return .finished
         } catch BotSettingFailure.rejected(_, let message) {
-            // The plugin can be on disk after a refused enable, so the list is read either way.
             if self.profile == profile { await read() }
-            // The host's only signal at the pin is its sentence for this refusal.
             return message.contains("already exists") ? .alreadyExists(message) : .refused(message)
         } catch {
             if self.profile == profile {
@@ -305,14 +262,10 @@ final class PluginsModel {
         }
     }
 
-    /// Writes one key `setup` asked for, then takes it off the list. Throws the host's refusal.
     func saveKey(_ name: String, value: String) async throws {
         guard let setup else { return }
         try await client.saveKey(name, value: value, profile: setup.profile)
-        // Tells the host, so a server that couldn't connect without this key tries again. The key is
-        // written by then, so a failed follow-up isn't a failed save.
         _ = try? await client.saveSettings(key: setup.name, values: [:], profile: setup.profile)
-        // A switch while it was saving ended this setup, and any new one isn't what was saved.
         guard self.setup?.profile == setup.profile, self.setup?.name == setup.name else { return }
         notice = .reported(String(localized: "\(name) is saved on \(setup.profile)."))
         self.setup?.keys.removeAll { $0 == name }
@@ -321,8 +274,6 @@ final class PluginsModel {
 
     func dismissSetup() { setup = nil }
 
-    /// Updates one plugin, on the Profile shown when it was asked for. Nothing is retried: the two
-    /// accepts come only from the user answering a review, and there's no way to update them all.
     func update(_ plugin: HermesPlugin) async {
         guard let profile else { return }
         await update(plugin, profile: profile, acceptCapabilities: false, acceptCaution: false)
@@ -359,8 +310,6 @@ final class PluginsModel {
         }
     }
 
-    /// The user accepted `review`, the one on their screen. It answers only that review, on its own
-    /// Profile: anything newer hasn't been read, and a scan that can't be overridden can't be accepted.
     func accept(_ review: UpdateReview) {
         guard review == updateReview, review.profile == profile else { return }
         let acceptsCaution: Bool
@@ -377,8 +326,6 @@ final class PluginsModel {
         }
     }
 
-    /// Saves changed settings for `plugin` on the shown Profile. Answers the host's refusal for the
-    /// form to show, or nil when the notice has said everything.
     func saveSettings(_ plugin: HermesPlugin, values: [String: BotJSON]) async -> String? {
         guard let profile else { return nil }
         do {
@@ -398,9 +345,6 @@ final class PluginsModel {
         }
     }
 
-    /// Writes or removes `plugin`'s secret field's `.env` value, then tells the host, which reconnects
-    /// anything that reads it, and reads the list for whether it's set. Throws the host's refusal of
-    /// the write for the form to show. The value is written by then, so a failed follow-up isn't one.
     func setSecret(_ env: String, value: String?, of plugin: HermesPlugin) async throws {
         guard let profile else { return }
         if let value {
@@ -414,15 +358,12 @@ final class PluginsModel {
         await read()
     }
 
-    /// The user confirmed the pending removal. Synchronous, because the alert clears `pendingRemoval`
-    /// as it closes, before a task started from its button would run.
     func confirmPendingRemoval() {
         guard let pendingRemoval else { return }
         self.pendingRemoval = nil
         Task { await remove(pendingRemoval) }
     }
 
-    /// Removes a user install from the Profile shown when it was asked for.
     func remove(_ plugin: HermesPlugin) async {
         guard let profile else { return }
         let target = Target(profile: profile, key: plugin.key)
@@ -450,8 +391,6 @@ final class PluginsModel {
         }
     }
 
-    /// Sends one toggle for the Profile shown when it was asked for. Its outcome reaches the
-    /// screen only while that Profile is still shown. Nothing here retries.
     func apply(_ plugin: HermesPlugin, turningOn: Bool) async {
         guard let profile else { return }
         let target = Target(profile: profile, key: plugin.key)
@@ -482,7 +421,6 @@ final class PluginsModel {
         }
     }
 
-    /// Asks the host to restart the shown Profile's gateway, after the user confirmed it.
     func restartGateway() async {
         guard let profile, !isRestarting else { return }
         isRestarting = true
@@ -496,7 +434,6 @@ final class PluginsModel {
         }
     }
 
-    /// Shows `name` with nothing carried over from the Profile before it.
     private func show(_ name: String) {
         profile = name
         state = .loading
@@ -514,8 +451,6 @@ final class PluginsModel {
         state = .loaded(plugins)
     }
 
-    /// Lists the shown Profile's plugins, then reads what it relies on. Until that arrives every
-    /// plugin it might cover asks first, so a slow read never skips a warning.
     private func read() async {
         guard let profile else { return }
         readSerial += 1
@@ -525,7 +460,6 @@ final class PluginsModel {
             guard serial == readSerial else { return }
             guard change == changeSerial else { return await read() }
             state = .loaded(plugins)
-            // Only the catalog knows what Nous removed, and only a user install can be on that list.
             if plugins.contains(where: { !$0.isBundled }), catalog == .idle { Task { await loadCatalog() } }
         } catch {
             guard serial == readSerial else { return }
@@ -537,7 +471,6 @@ final class PluginsModel {
         if self.profile == profile { self.stakes = stakes }
     }
 
-    /// A host without `plugins.manage` says so, rather than the connection's generic refusal.
     private static func message(for error: Error) -> String {
         if case BotFailure.rejected(-32601) = error {
             return String(localized: "This Hermes host can't manage plugins from Hermex. Update Hermes on the host, then try again.")

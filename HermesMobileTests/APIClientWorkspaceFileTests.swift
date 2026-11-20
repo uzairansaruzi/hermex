@@ -364,8 +364,6 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         XCTAssertEqual(requestedPaths, ["/api/file/raw"])
     }
 
-    // MARK: - Quick Look
-
     @MainActor
     func testFilePreviewOpensPDFInQuickLook() async throws {
         let pdf = Data("%PDF-fixture".utf8)
@@ -443,7 +441,6 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         }
         var viewModel: FilePreviewViewModel? = try makeQuickLookViewModel(path: "Docs/report.pdf", client: client)
 
-        // Only URLs leave the preview: holding the file here would keep it alive.
         func quickLookURL() -> URL? {
             guard case let .quickLook(file) = viewModel?.preview else { return nil }
             return file.url
@@ -516,8 +513,6 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
             .filter { $0.hasPrefix("quick-look-") })
     }
 
-    // MARK: - Prefetch
-
     @MainActor
     func testFilePreviewUsesPrefetchedContentWithoutRefetching() async throws {
         let client = makeClient { request in
@@ -567,8 +562,6 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         XCTAssertEqual(file.content, "fresh")
     }
 
-    // MARK: - Chunked Markdown
-
     @MainActor
     func testFilePreviewSplitsOnlyLargeMarkdownIntoChunks() async throws {
         let large = MarkdownPreviewChunkerTests.largeDocument()
@@ -584,11 +577,6 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         XCTAssertNil(largeSource, "Only Markdown previews are chunked.")
     }
 
-    // MARK: - Copy Path
-
-    /// Copy Path offers exactly the workspace-relative path the tree or link named (for
-    /// every file kind; it never reads the preview), and nothing for a path that would
-    /// leak or escape the workspace.
     func testCopyPathIsWorkspaceRelativeOnly() {
         func copyablePath(_ path: String) -> String? {
             FilePreviewViewModel(files: nil, path: path).copyablePath
@@ -617,7 +605,6 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
 }
 
 private extension APIClientTestCase {
-    /// The webui session `makeFilePreviewSession` names, read through `client`.
     func makeFilePreviewFiles(_ client: APIClient) throws -> WebUIWorkspaceFileClient? {
         WebUIWorkspaceFileClient(session: try makeFilePreviewSession(), server: try XCTUnwrap(URL(string: "https://example.test")),
                                  apiClient: client)

@@ -1,111 +1,46 @@
 import Foundation
 import Observation
 
-/// A Hermes session's host requests in the main chat (#1011): approvals, questions, sudo and
-/// secret prompts, Desktop's own tasks and `manage_connections` operations (#1141).
-/// `HermesChatTurnCoordinator` owns it and feeds it the session's request frames; envelopes
-/// parse with the Bot models (`BotServerRequest`, `BotConnectionOperation`), and answers go
-/// out through the engine's guarded writes, once each, from a tap. Nothing is retried (#508):
-/// a lost reply reconnects, and the attach's `open_requests` and `pending_connection` say
-/// whether the request is still open.
-///
-/// The list is the host's: live envelopes, `request.cancel` withdrawals, and the
-/// `open_requests` an attach's replay and snapshot carry, which replace it. An approval, a
-/// question, a sudo or secret prompt and a Desktop task get a card; a Desktop task's is only
-/// shown, never answered, since a reply from here would take the request from Desktop, which
-/// answers it. Password-vault prompts and unknown methods get no card and are never answered.
-/// Any open request still means the session waits for someone. `set_theme`'s `theme.apply` and
-/// `theme.pick` are the exception (#1727): answered at once without a tap, they never join the
-/// list (`HermesThemeRequest`). Credential and setup values
-/// pass straight to the dispatch and are never kept.
-///
-/// A connection operation is an event plus an RPC, not a server request: `connection.request`
-/// opens it, each newer `connection.update` replaces it, its settled frame closes it, and the
-/// snapshot's `pending_connection` restores it. Account operations' global updates never
-/// reach a session, so they never touch its card.
 @MainActor @Observable final class HermesChatRequests {
     private let engine: HermesConversation
-    /// Reports a refused answer or setting, for the chat's error line.
     @ObservationIgnored var onFailure: (String) -> Void = { _ in }
-    /// Asks the owner to reattach, whose `open_requests` settles a batch the host still
-    /// holds questions of.
     @ObservationIgnored var onNeedsReattach: () -> Void = {}
-    /// Runs after every change to `open`; the owner's Live Activity shows the wait (#1014).
     @ObservationIgnored var onOpenChange: () -> Void = {}
 
-    /// This runtime's open requests, oldest first, one per envelope id.
     private(set) var open: [BotServerRequest] = [] {
         didSet {
-            // A warning about one request's answer leaves with that request, so it never
-            // appears over the next card.
             if let id = errorRequestID, !open.contains(where: { $0.pending?.requestID == id }) {
                 errorMessage = nil; errorRequestID = nil
             }
             onOpenChange()
         }
     }
-    /// The request `errorMessage` is about, when it is about one answer.
     private var errorRequestID: String?
-    /// The open `manage_connections` operation, live or restored from `pending_connection`.
-    /// Cleared by its settled frame, a snapshot without it, a stop, a disconnect or a new attach.
     private(set) var connection: BotConnectionOperation? { didSet { onOpenChange() } }
-    /// The host holds an operation this build cannot read (no id, deadline or readable row):
-    /// the session waits with no card, until a settled frame or a snapshot says otherwise.
     private(set) var hasUnreadableConnection = false { didSet { onOpenChange() } }
-    /// The unreadable operation's `op_id`, when it has one: its readable settled frame ends the wait.
     @ObservationIgnored private var unreadableConnectionID: String?
-    /// The last operation seen settling, so a late frame or snapshot never brings its card back.
     @ObservationIgnored private var settledConnectionID: String?
-    /// The verdict on the connection card: inert once the host no longer holds its operation
-    /// (4004), a warning after a lost reply. Scoped to its `op_id`, so it outlives the
-    /// reconnect that restores the card and never reaches another operation's.
     private(set) var connectionResolution: BotRequestResolution?
-    /// The request whose answer is in flight; its card stays inert.
     private(set) var answeringRequestID: String?
-    /// Why the last answer or bypass change was refused. Cleared by the next one.
     private(set) var errorMessage: String?
-    /// The note left where a card stood when the host withdrew it (#948): never for an
-    /// answer given elsewhere or this phone's own stop. Cleared by a new request, an accepted
-    /// prompt or leaving; never cached.
     private(set) var withdrawal: BotRequestWithdrawal?
-    /// The session's approval bypass, as `session.info` reports `yolo`: on while this
-    /// session's flag is set or the host approves everything itself (`approvals.mode: off`,
-    /// or a `--yolo` launch).
     private(set) var approvalBypass = false
-    /// `session.info`'s `approval_mode`, kept as sent so a mode newer than this app still shows.
     private(set) var approvalMode: String?
-    /// The host approves everything, whatever this session sets.
     private var hostApprovesAll: Bool { approvalMode == HermesApprovalMode.off.rawValue }
-    /// Turning this session's flag off left `session.info`'s `yolo` on, so the bypass is the
-    /// host's own (a `--yolo` launch, which `session.info` does not name). Cleared once the
-    /// bypass goes off.
     private var bypassOutlivedTurnOff = false
-    /// Bumped by every `session.info` that reports `yolo`, so a bypass write knows whether
-    /// the host reported the result itself.
     @ObservationIgnored private var bypassReports = 0
-    /// A `config.set` for `yolo` or `approvals.mode` in flight.
     private(set) var isChangingApprovalBypass = false
-    /// This phone's Stop or Stop & send is in flight: the host withdrawing the cards then is
-    /// the user's own doing, so it leaves no note.
     @ObservationIgnored var isStoppingHere = false
-    /// Bumped by every request envelope and `request.cancel`, so an `open_requests` read
-    /// before one never replaces it.
     @ObservationIgnored private var revision = 0
     @ObservationIgnored private var replayRevision = 0
     @ObservationIgnored private var snapshotRevision = 0
-    /// The envelope on screen when the chat last left a live connection, so a cancel in the
-    /// replay on return still leaves its note. The next replay consumes it.
     @ObservationIgnored private var envelopeShownWhenLeft: BotRequestWithdrawal.Envelope?
-    /// The theme requests this chat took to answer, by envelope id, so neither a repeated frame
-    /// nor an attach that still lists one answers it twice. Kept across attaches.
     @ObservationIgnored private var themeRequestsTaken: Set<String> = []
 
     init(engine: HermesConversation) {
         self.engine = engine
     }
 
-    /// The request a card shows: a question first, then an approval, then a sudo or secret
-    /// prompt or a Desktop task, then a connection operation.
     var onScreen: BotPendingRequest? {
         let shown = open.compactMap(\.pending).filter(Self.isShownHere)
         return shown.first { if case .question = $0 { return true }; return false }
@@ -114,41 +49,32 @@ import Observation
             ?? connection.map(BotPendingRequest.connection)
     }
 
-    /// The session waits on someone while any request is open, a card or not.
     var isWaiting: Bool { !open.isEmpty || connection != nil || hasUnreadableConnection }
 
-    /// A stop would withdraw something only this chat's user could still give: any open
-    /// request but Desktop's own tasks, which the host carries on without.
     var stopWithdrawsAnswers: Bool {
         connection != nil || hasUnreadableConnection
             || open.contains { if case .desktopTask? = $0.pending { return false }; return true }
     }
 
-    /// Model settings' switch may turn the bypass off: only this session's own flag can be.
     var mayTurnOffApprovalBypass: Bool { approvalBypass && !hostApprovesAll && !bypassOutlivedTurnOff }
 
-    /// The open approvals, for the approval card's count.
     var approvalCount: Int {
         open.filter { if case .approval? = $0.pending { return true }; return false }.count
     }
 
-    /// True while the card on screen may be answered.
     var mayAnswer: Bool {
         guard engine.connectionState == .connected, answeringRequestID == nil, !isChangingApprovalBypass,
               let request = onScreen, Self.isAnsweredHere(request) else { return false }
         return resolution(for: request)?.blocksFurtherAnswers != true
     }
 
-    /// The verdict the card on screen shows, if it has one.
     var onScreenResolution: BotRequestResolution? { onScreen.flatMap(resolution(for:)) }
 
-    /// Whether this chat shows a card for `request`.
     static func isShownHere(_ request: BotPendingRequest) -> Bool {
         if case .desktopTask = request { return true }
         return isAnsweredHere(request)
     }
 
-    /// Whether this chat answers `request`. A Desktop task is shown, never answered.
     static func isAnsweredHere(_ request: BotPendingRequest) -> Bool {
         switch request {
         case .approval, .question, .credential, .connection: return true
@@ -156,8 +82,6 @@ import Observation
         }
     }
 
-    /// Captures what an answer is checked against, or nil when the card on screen cannot be
-    /// answered now.
     func prepareAnswer() -> HermesAnswerAction? {
         guard mayAnswer, let runtime = engine.runtime, let id = onScreen?.requestID else { return nil }
         let prompt = open.first { $0.pending?.requestID == id }?.promptGeneration
@@ -170,7 +94,6 @@ import Observation
                      conversation: .session(profile: engine.target.profile, key: root))
     }
 
-    /// The existing chat transport only: a legacy/no-connection card gets no summary slot.
     func summaryPresentation(for approval: BotApprovalRequest, workingDirectory: String?) -> ApprovalSummaryPresentation? {
         guard engine.connectionState == .connected, answeringRequestID != approval.requestID,
               let runtime = engine.runtime, let scope = summaryScope,
@@ -206,10 +129,6 @@ import Observation
         ApprovalSummaries.shared.retain(Set(pending), in: scope)
     }
 
-    // MARK: Answers
-
-    /// Answers the approval on screen with one of the choices the host offered. True once the
-    /// host took it.
     @discardableResult
     func respond(_ action: HermesAnswerAction, choice: BotApprovalRequest.Choice) async -> Bool {
         guard case .approval(let approval)? = onScreen, approval.requestID == action.requestID,
@@ -217,8 +136,6 @@ import Observation
         return await deliver(.approval(choice), action) == .answered
     }
 
-    /// Answers the question on screen: every outstanding batch question in one tap, each
-    /// locked by its `qid`, or the single question's one unkeyed answer.
     @discardableResult
     func answerQuestion(_ action: HermesAnswerAction, _ answers: [BotQuestionAnswer]) async -> Bool {
         guard case .question(let question)? = onScreen, question.requestID == action.requestID,
@@ -232,9 +149,6 @@ import Observation
         return await deliver(.questions(answers), action) == .answered
     }
 
-    /// Skips the question on screen with empty answers: an empty lock per outstanding batch
-    /// question, never a bare answer, which the host reads as cancelling the whole batch; a
-    /// single question's one empty `request.answer`.
     @discardableResult
     func skipQuestion(_ action: HermesAnswerAction) async -> Bool {
         guard case .question(let question)? = onScreen, question.requestID == action.requestID,
@@ -246,8 +160,6 @@ import Observation
         return await deliver(.questions(answers), action) == .answered
     }
 
-    /// Sends the value typed for a sudo or secret prompt; empty is the host's skip. The value
-    /// goes straight to the dispatch and is never stored.
     @discardableResult
     func answerCredential(_ action: HermesAnswerAction, value: String) async -> Bool {
         guard case .credential(let credential)? = onScreen, credential.requestID == action.requestID,
@@ -255,42 +167,27 @@ import Observation
         return await deliver(.value(value), action) == .answered
     }
 
-    /// "Skip all this session": turns the session's approval bypass on, then releases the
-    /// approval on screen with `once`. Two writes from one tap, each sent once. True once the
-    /// bypass is on and the card has left; a refused release leaves the card answerable with
-    /// its reason, and the bypass on for the approvals after it.
     @discardableResult
     func skipApprovals(_ action: HermesAnswerAction) async -> Bool {
         guard case .approval(let approval)? = onScreen, approval.requestID == action.requestID,
               action == prepareAnswer() else { return false }
         guard await setApprovalBypass(true, for: action) else { return false }
-        // The host lists `once` first in every choice set it computes; without it the card
-        // waits for one of its own choices.
         guard approval.choices.contains(.once) else { return false }
-        // Only a confirmed release counts; an uncertain one keeps the card and its warning.
         let released = await deliver(.approval(.once), action)
         return released == .answered || released == .alreadyResolved
     }
 
-    /// `/yolo` (#1036): turns the session's approval bypass on, or off when only this
-    /// session's flag holds it. The bypass after the change, or nil when it did not change;
-    /// a refusal's reason went to `onFailure`.
     func toggleApprovalBypass() async -> Bool? {
         let enabled = !approvalBypass
         guard enabled || mayTurnOffApprovalBypass, await setApprovalBypass(enabled, for: nil) else { return nil }
         return approvalBypass
     }
 
-    /// Sets this chat's YOLO from Model settings' switch, to the value the user asked for.
     func setApprovalBypass(_ enabled: Bool) async {
         guard enabled != approvalBypass, enabled || mayTurnOffApprovalBypass else { return }
         await setApprovalBypass(enabled, for: nil)
     }
 
-    /// Sends the Profile's approval mode, once; true when the host confirmed it. The `session.info`
-    /// the host sends ahead of the reply carries the new bypass. Only a session with no agent
-    /// sends none: then Off still bypasses, and leaving Off keeps showing the bypass until a report
-    /// says otherwise, because this chat's own flag may be holding it.
     @discardableResult
     func setApprovalMode(_ mode: HermesApprovalMode) async -> Bool {
         guard engine.connectionState == .connected, let runtime = engine.runtime, !isChangingApprovalBypass,
@@ -319,11 +216,6 @@ import Observation
         }
     }
 
-    /// Answers one row of the connection card, or Continue without: one `connection.respond`,
-    /// checked at the write against the card on screen and never retried. The card stays
-    /// until the host says the operation settled; its updates move the rows meanwhile. True
-    /// once the host took it. 4004 says it no longer holds the operation: the card goes inert
-    /// and the chat reattaches to read it. A lost reply warns on the card and reconnects.
     @discardableResult
     func respondToConnection(_ action: HermesAnswerAction, _ answer: BotConnectionOperation.Answer) async -> Bool {
         guard case .connection(let operation)? = onScreen, operation.opID == action.requestID,
@@ -333,7 +225,6 @@ import Observation
         do {
             let reply = try await engine.write(.connectionRespond(sessionID: action.runtime, opID: action.requestID, answer: answer),
                                                attempt: action.generation, runtime: action.runtime) { [weak self] in
-                // An update since the tap may have moved the row: send only a move the card still offers.
                 guard let self, case .connection(let current)? = self.onScreen, current.opID == action.requestID,
                       answer.isOffered(by: current) else { throw BotFailure.stale }
             }
@@ -347,7 +238,6 @@ import Observation
             answeringRequestID = nil
             if error as? BotFailure == .stale { return false }
             if case BotFailure.rejected(let code) = error {
-                // The host replied over a live socket, so nothing it refused took effect.
                 if code == 4004 {
                     connectionResolution = BotRequestResolution(requestID: action.requestID, outcome: .alreadyResolved)
                     onNeedsReattach()
@@ -364,13 +254,6 @@ import Observation
         }
     }
 
-    /// Releases the open operation before a Steer or Queue message, as Desktop does, so the
-    /// message does not wait behind the blocked tool until its deadline: one
-    /// `settled_by: "continue"`, never retried. A refusal (most often: it had already
-    /// settled) lets the message go; a lost reply warns on the card, as a lost row answer
-    /// does, then throws, and the message is held. It shares the card's one answer at a time
-    /// (`answeringRequestID`): an answer still out holds the message, and the card waits while
-    /// Continue is out. An operation that changed before the write holds the message too.
     func continueConnection(runtime: String, attempt: Int) async throws {
         guard let opID = connection?.opID else { return }
         guard answeringRequestID == nil else { throw BotFailure.stale }
@@ -379,7 +262,6 @@ import Observation
         do {
             let reply = try await engine.write(.connectionRespond(sessionID: runtime, opID: opID, answer: .continueWithout),
                                                attempt: attempt, runtime: runtime) { [weak self] in
-                // Releasing a replaced operation would leave the new one blocking the message.
                 guard let self, self.connection?.opID == opID else { throw BotFailure.stale }
             }
             if reply["settled"].flag == true { closeConnection(opID) }
@@ -393,10 +275,6 @@ import Observation
         }
     }
 
-    /// Sends one answer and applies the host's verdict. An accepted or already resolved
-    /// request leaves at once; a batch the host still holds questions of asks for a reattach.
-    /// A refusal over the live socket leaves the card answerable with the reason. A lost
-    /// reply reconnects, and the attach's `open_requests` shows whether it is still open.
     @discardableResult
     private func deliver(_ answer: HermesRequestAnswer, _ action: HermesAnswerAction) async -> BotRequestResolution.Outcome? {
         answeringRequestID = action.requestID
@@ -413,10 +291,6 @@ import Observation
             }
             revision += 1
             if outcome == .uncertain {
-                // No verdict: keep the card answerable for a deliberate second tap and say so.
-                // Nothing is resent. If the host did settle it, its `request.cancel` retires
-                // the card and the warning with it; a reattach here would drop both first.
-                // A reply that lands after its request already left warns about nothing.
                 guard open.contains(where: { $0.pending?.requestID == action.requestID }) else { return outcome }
                 fail(BotRequestResolution(requestID: action.requestID, outcome: .uncertain).message(.hermes), about: action.requestID)
                 return outcome
@@ -427,10 +301,8 @@ import Observation
         } catch {
             guard action.generation == engine.generation, !Task.isCancelled else { return nil }
             answeringRequestID = nil
-            // A stale action is refused before the write, so nothing is in doubt.
             if error as? BotFailure == .stale { return nil }
             if case BotFailure.rejected(let code) = error {
-                // The host replied over a live socket, so the answer did not take effect.
                 fail([401, 403, -32601].contains(code)
                     ? BotFailure.rejected(code).localizedDescription
                     : String(localized: "The server did not accept that response. The request is still waiting."),
@@ -442,11 +314,6 @@ import Observation
         }
     }
 
-    /// Sends `config.set yolo` for this session, once; true when the host confirmed `enabled`.
-    /// `action` is the approval Skip all answers, which must still be on screen at the write.
-    /// The reply confirms only the session's flag. The `session.info` the host sends ahead of
-    /// it says whether approvals are bypassed; only a session with no agent sends none, and
-    /// then the flag is the bypass.
     @discardableResult
     private func setApprovalBypass(_ enabled: Bool, for action: HermesAnswerAction?) async -> Bool {
         guard engine.connectionState == .connected, let runtime = engine.runtime, !isChangingApprovalBypass,
@@ -482,7 +349,6 @@ import Observation
         }
     }
 
-    /// Why a `config.set` failed. One that went out and lost its reply may still have applied.
     private func failChange(_ error: Error, dispatched: Bool) {
         if error as? BotFailure == .stale { return }
         if case BotSettingFailure.rejected = error { fail(error.localizedDescription) }
@@ -496,10 +362,6 @@ import Observation
         onFailure(message)
     }
 
-    // MARK: Frames
-
-    /// A live request envelope for this runtime: added, or replacing the one with its id. It
-    /// takes a withdrawn card's slot.
     func receive(_ envelope: BotJSON) {
         guard let request = BotServerRequest(envelope), request.sessionID == engine.runtime,
               !answersTheme(envelope) else { return }
@@ -513,8 +375,6 @@ import Observation
         withdrawal = nil
     }
 
-    /// `request.cancel` withdraws only the matching envelope. Only the card on screen leaves a
-    /// note, and only in an empty slot: a request behind it was never read.
     func cancel(_ payload: BotJSON) {
         guard let id = payload["id"].text, !id.isEmpty, let method = payload["method"].text, !method.isEmpty else { return }
         revision += 1
@@ -527,10 +387,6 @@ import Observation
         if shown { withdrawal = onScreen == nil ? note(envelope, reason: payload["reason"].text) : nil }
     }
 
-    /// `connection.request` (`opens`) or `connection.update` for this session. A request
-    /// opens its operation in place of any held; an update replaces the held one only when its
-    /// `seq` is newer; the settled frame closes it, held or not. Neither revives the last
-    /// settled operation.
     func receiveConnection(_ payload: BotJSON, opens: Bool) {
         guard let frame = BotConnectionOperation(payload) else {
             if opens { holdUnreadableConnection(payload) } else if payload["settled"].flag == true { hasUnreadableConnection = false }
@@ -539,13 +395,8 @@ import Observation
         applyConnection(frame, opens: opens)
     }
 
-    /// A `request.cancel` the engine held while attaching: newer than any `open_requests` in
-    /// flight.
     func holdRequestFrame() { revision += 1 }
 
-    /// The host withdrew every request: a stop, from any client, which also settles an open
-    /// connection operation. Stop & send is not one: a redirect while a tool waits on a
-    /// request only steers.
     func withdrawAll() {
         revision += 1
         open = []
@@ -554,7 +405,6 @@ import Observation
         hasUnreadableConnection = false
     }
 
-    /// `session.info`'s `yolo` and `approval_mode`, live or in a snapshot.
     func applyBypass(_ info: BotJSON) {
         if let yolo = info["yolo"].flag {
             bypassReports += 1
@@ -564,28 +414,18 @@ import Observation
         if let mode = info["approval_mode"].text, mode != approvalMode { approvalMode = mode }
     }
 
-    /// The host accepted a prompt: the withdrawn card's note has served its turn.
     func promptAccepted() { withdrawal = nil }
 
-    // MARK: Attach
-
-    /// Leaving a live connection: remember the card on screen for the replay on return.
-    /// Leaving again before that replay keeps the one already held.
     func willLeave() {
         if let scope = summaryScope { ApprovalSummaries.shared.leave(scope) }
         guard engine.connectionState == .connected else { return }
         envelopeShownWhenLeft = envelopeOnScreen
     }
 
-    /// The socket dropped: the connection operation goes with it until the next attach's
-    /// `pending_connection` restores it. Its verdict and the last settled `op_id` stay, for
-    /// the card that attach restores.
     func disconnect() {
         connection = nil; hasUnreadableConnection = false
     }
 
-    /// A new attach or leaving dropped the connection, and the requests with it. The
-    /// connection card's verdict stays for the card the next attach restores.
     func reset() {
         if let scope = summaryScope { ApprovalSummaries.shared.leave(scope) }
         open = []; answeringRequestID = nil; isChangingApprovalBypass = false
@@ -593,13 +433,8 @@ import Observation
         connection = nil; hasUnreadableConnection = false
     }
 
-    /// The attach is about to read `session.events.since`.
     func willReplay() { replayRevision = revision }
 
-    /// The replay's `open_requests` replaces the list unless a request frame came since it was
-    /// asked for. A card the chat showed when it left leaves its note when the replay lost
-    /// nothing and its last `request.cancel` is that card's: request frames have no `seq`, so
-    /// a later cancel is the only trace of a card that took the slot after it.
     func didReplay(_ reply: BotJSON, frames: [BotJSON]) {
         if replayRevision == revision { restore(reply["open_requests"]) }
         if let left = envelopeShownWhenLeft {
@@ -612,12 +447,8 @@ import Observation
         }
     }
 
-    /// The attach is about to read the full snapshot.
     func willReadSnapshot() { snapshotRevision = revision }
 
-    /// The snapshot's `open_requests`, `pending_connection` and `info.yolo`. The operation is
-    /// always restored: connection frames that land during the read are held and go out after
-    /// it in `seq` order, so they move or settle the restored operation instead of being lost.
     func didReadSnapshot(_ snapshot: BotJSON) {
         if snapshotRevision == revision { restore(snapshot["open_requests"]) }
         restoreConnection(snapshot["pending_connection"])
@@ -625,22 +456,16 @@ import Observation
         if withdrawal != nil, onScreen != nil { withdrawal = nil }
     }
 
-    // MARK: Helpers
-
-    /// The card on screen by its envelope: the identity `request.cancel` names.
     private var envelopeOnScreen: BotRequestWithdrawal.Envelope? {
         guard let shown = onScreen?.requestID else { return nil }
         return open.first { $0.pending?.requestID == shown }.map { BotRequestWithdrawal.Envelope(id: $0.id, method: $0.method) }
     }
 
-    /// The note for the host withdrawing `envelope`, or nil when it stays silent.
     private func note(_ envelope: BotRequestWithdrawal.Envelope, reason: String?) -> BotRequestWithdrawal? {
         guard let note = BotRequestWithdrawal(method: envelope.method, reason: reason) else { return nil }
         return note.reason == .stopped && isStoppingHere ? nil : note
     }
 
-    /// Resume omits `pending_connection` when no operation is open, so a missing field clears
-    /// the card, and one this build cannot read waits without one.
     private func restoreConnection(_ pending: BotJSON) {
         guard let frame = BotConnectionOperation(pending) else {
             connection = nil
@@ -651,17 +476,12 @@ import Observation
         applyConnection(frame, opens: true)
     }
 
-    /// An operation this build cannot read takes the held one's place, as a readable one
-    /// would, so the old card never stays answerable.
     private func holdUnreadableConnection(_ payload: BotJSON) {
         connection = nil
         unreadableConnectionID = payload["op_id"].text
         hasUnreadableConnection = true
     }
 
-    /// A settled frame closes its operation whether or not a card holds it, so a snapshot that
-    /// already dropped it or an unreadable wait for it cannot outlive it. A held operation's
-    /// settled frame counts only when its `seq` is newer.
     private func applyConnection(_ frame: BotConnectionOperation, opens: Bool) {
         guard frame.opID != settledConnectionID else { return }
         let next: BotConnectionOperation
@@ -674,7 +494,6 @@ import Observation
             return closeConnection(next.opID)
         }
         if connectionResolution?.requestID != next.opID { connectionResolution = nil }
-        // A new operation takes a withdrawn card's slot.
         if next.opID != connection?.opID { withdrawal = nil }
         if next != connection { connection = next }
     }
@@ -685,14 +504,11 @@ import Observation
         if connection?.opID == opID { connection = nil }
     }
 
-    /// The verdict `request`'s card shows: only a connection operation carries one here.
     private func resolution(for request: BotPendingRequest) -> BotRequestResolution? {
         guard case .connection(let operation) = request, connectionResolution?.requestID == operation.opID else { return nil }
         return connectionResolution
     }
 
-    /// Resume omits an empty `open_requests`; replay always carries it. One entry per id. A
-    /// theme request is answered instead.
     private func restore(_ rows: BotJSON) {
         var seen = Set<String>()
         open = (rows.list ?? []).filter { !answersTheme($0) }.compactMap(BotServerRequest.init)
@@ -700,14 +516,6 @@ import Observation
         retainPendingSummaries()
     }
 
-    /// True when `envelope` is a theme request for this runtime, which is answered here instead
-    /// of joining `open`: `theme.apply` changes the app's appearance first, as Settings does.
-    /// Each envelope id is answered once (but see `.stale` below), with no card to check against
-    /// and nothing shown on failure: a refusal or a lost reply leaves the host to time the request out. A `.stale`
-    /// answer forgets the id so the next attach that lists it answers it. A response frame goes
-    /// stale only before it is sent, but a `request.answer` is also re-checked after its reply,
-    /// so that answer may already have gone out: the host has then resolved the request, the
-    /// second answer changes nothing there, and the same theme applies again.
     private func answersTheme(_ envelope: BotJSON) -> Bool {
         guard let method = envelope["method"].text, HermesThemeRequest.methods.contains(method) else { return false }
         let params = envelope["params"]
@@ -735,50 +543,28 @@ import Observation
     }
 }
 
-/// The host's out-of-band notices on a Hermes session (#1746): `notification.show` and
-/// `notification.clear`, which credits, a slow agent start, a dropped model switch, the low-disk
-/// question, a plugin's `post_message` and `/login`'s sign-in link arrive as. They are about the
-/// session, not messages in it: never a transcript row, an error line or a haptic. The chat shows
-/// the newest above the composer (`HostNoticeRow`).
-///
-/// Notices are kept by the host's `key`, else its `id`, newest last; a show with a known key
-/// replaces that notice in place, and `notification.clear` withdraws it. A `ttl` notice is shown
-/// only from a live frame, so a replay never brings back an expired one, and hides after its
-/// `ttl_ms` with one scheduled task. Every other kind stays until cleared or dismissed, from a
-/// replay too. A dismissed key stays hidden until the host shows it with new text. Everything is
-/// in memory: leaving the chat drops it and cancels its timers.
 @MainActor @Observable final class HermesHostNotices {
     struct Notice: Equatable, Identifiable {
         enum Level: Equatable { case info, warning, error, success }
-        /// The host's `key`, else its `id`; a local one when it sent neither.
         let id: String
         let text: String
-        /// `text` with its web links tappable, built once here rather than in a view body.
         let linkedText: AttributedString
         let level: Level
-        /// The full text behind a short `text` (the low-disk question), shown on a tap.
         let detail: String?
-        /// Tells this show from a later one with the same key, so an old timer never hides it.
         fileprivate let serial: Int
     }
 
-    /// Runs `expire` once `delay` has passed. Tests pass one they fire by hand.
     typealias Timer = @MainActor (_ delay: Duration, _ expire: @escaping @MainActor () -> Void) -> Task<Void, Never>
 
-    /// Newest last.
     private(set) var notices: [Notice] = []
-    /// The notice the chat shows: the newest.
     var shown: Notice? { notices.last }
-    /// How many notices wait behind `shown`.
     var waitingCount: Int { max(notices.count - 1, 0) }
 
     @ObservationIgnored private let timer: Timer
     @ObservationIgnored private var expiries: [String: Task<Void, Never>] = [:]
-    /// The text each dismissed key had; the same text shown again stays hidden.
     @ObservationIgnored private var dismissed: [String: String] = [:]
     @ObservationIgnored private var serial = 0
 
-    /// `timer` defaults to `sleeping`.
     init(timer: Timer? = nil) {
         self.timer = timer ?? Self.sleeping
     }
@@ -794,9 +580,6 @@ import Observation
         }
     }
 
-    /// One of the session's frames, live (as it happened) or from a replay: applies it when it is
-    /// a `notification.show` or `notification.clear`, and says whether it was one. The coordinator
-    /// sends every replay through here, a transcript rebuild's too, and the live frame after a gap.
     @discardableResult
     func receive(_ frame: BotJSON, live: Bool) -> Bool {
         switch frame["type"].text {
@@ -807,7 +590,6 @@ import Observation
         return true
     }
 
-    /// One `notification.show` payload; `live` is a frame as it happened, not a replay's.
     private func show(_ payload: BotJSON, live: Bool) {
         guard let text = payload["text"].text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
         let expires = payload["kind"].text == "ttl"
@@ -830,20 +612,17 @@ import Observation
         }
     }
 
-    /// One `notification.clear` payload: the host withdrew the notice with its `key`.
     private func clear(_ payload: BotJSON) {
         guard let key = Self.nonEmpty(payload["key"]) else { return }
         dismissed[key] = nil
         remove(key)
     }
 
-    /// The user closed `notice`: its key stays hidden until the host shows it with new text.
     func dismiss(_ notice: Notice) {
         dismissed[notice.id] = notice.text
         remove(notice.id)
     }
 
-    /// Drops every notice, for a chat that now shows another session or runtime.
     func removeAll() {
         expiries.values.forEach { $0.cancel() }
         expiries = [:]; dismissed = [:]
@@ -874,7 +653,6 @@ import Observation
         }
     }
 
-    /// `text` as sent, with each web address a link.
     private static func linked(_ text: String) -> AttributedString {
         var linked = AttributedString(text)
         let range = NSRange(text.startIndex..., in: text)

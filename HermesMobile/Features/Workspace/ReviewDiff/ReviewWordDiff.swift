@@ -1,15 +1,8 @@
 import Foundation
 
-/// Word-level highlights for paired deleted/added lines. A run of deletions followed by
-/// a run of additions is paired index by index; each pair is diffed by word and the
-/// changed words become highlight ranges, subject to gates that keep noisy lines plain.
 enum ReviewWordDiff {
-    /// Lines longer than this are never word-diffed.
     static let maxLineLength = 1000
-    /// More ranges than this reads as noise, so the line stays plain.
     static let maxRangeCount = 4
-    /// Highlights covering more than this share of the non-whitespace text mean the
-    /// line was rewritten, not edited; the line stays plain.
     static let maxCoverage = 0.45
 
     struct Pair: Equatable {
@@ -17,8 +10,6 @@ enum ReviewWordDiff {
         var addition: [Range<Int>]
     }
 
-    /// Adds word-diff ranges to every paired deletion/addition line in `rows`.
-    /// Pairs never cross a file or hunk boundary because those rows break the run.
     static func annotate(_ rows: inout [ReviewDiffRow]) {
         var index = 0
         while index < rows.count {
@@ -50,7 +41,6 @@ enum ReviewWordDiff {
         }
     }
 
-    /// Ranges are Character offsets. Either side is empty when its gates fail.
     static func ranges(deletion: String, addition: String) -> Pair {
         guard !(deletion.isEmpty && addition.isEmpty),
               deletion.count <= maxLineLength, addition.count <= maxLineLength else {
@@ -84,17 +74,11 @@ enum ReviewWordDiff {
         )
     }
 
-    // MARK: - Spans
-
     private struct Span {
         var isChanged: Bool
         var text: String
     }
 
-    /// Consecutive spans of one kind merge. A single neutral character (a dot, a
-    /// bracket) between two changed words joins the change so the highlight reads as
-    /// one edit instead of a stutter. The last operation never joins, so a trailing
-    /// unchanged run stays unhighlighted.
     private static func pushOrJoin(_ span: Span, into spans: inout [Span], isLast: Bool) {
         guard let last = spans.last, !isLast else {
             spans.append(span)
@@ -156,10 +140,6 @@ enum ReviewWordDiff {
         return Double(highlighted) / Double(meaningful) <= maxCoverage
     }
 
-    // MARK: - Token diff
-
-    /// Runs of word characters, whitespace, and other characters, so "foo.bar" diffs as
-    /// three tokens and an edit inside a word highlights just that word.
     static func tokenize(_ text: String) -> [String] {
         enum Run { case word, space, other }
         var tokens: [String] = []
@@ -191,15 +171,12 @@ enum ReviewWordDiff {
         case added(String)
     }
 
-    /// Longest-common-subsequence diff over tokens. Lines are capped at
-    /// `maxLineLength`, so the table stays small.
     private static func diff(_ old: [String], _ new: [String]) -> [Operation] {
         let rows = old.count
         let columns = new.count
         var table = [Int](repeating: 0, count: (rows + 1) * (columns + 1))
         let stride = columns + 1
         if rows > 0, columns > 0 {
-            // Suffix table: cell (row, column) is the LCS length of the tails.
             for row in (0..<rows).reversed() {
                 for column in (0..<columns).reversed() {
                     if old[row] == new[column] {

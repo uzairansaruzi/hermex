@@ -11,7 +11,6 @@ enum KanbanCompatibilityState: Equatable {
     case networkUnavailable
     case serverUnavailable
     case incompatibleContract
-    /// The server has no Kanban: a Hermes host without its Kanban plugin (#1043).
     case unavailable
 }
 
@@ -183,8 +182,6 @@ private enum KanbanBoardCollectionExpectation {
     case dispatch(generation: Int, board: String, mode: KanbanDispatchMode)
 }
 
-/// How a Board refresh ended. `unchanged` is a since-cursor check that found no new
-/// event, so the snapshot on screen was kept as it is.
 private enum KanbanBoardRefreshOutcome {
     case failed
     case unchanged
@@ -205,7 +202,6 @@ enum KanbanCardMutationPhase: Equatable, Sendable {
 
 enum KanbanCardMutationKind: Equatable, Sendable {
     case status(String)
-    /// Done, with the note a Hermes host needs outside Review (#1677).
     case complete(String?)
     case block(String?)
     case unblock
@@ -218,15 +214,12 @@ enum KanbanCardMutationKind: Equatable, Sendable {
 struct KanbanCardMutationState: Equatable, Sendable {
     let kind: KanbanCardMutationKind
     let phase: KanbanCardMutationPhase
-    /// Why the server refused it, in its own words (`KanbanWriteRefusal`), shown with the failure.
     var message: String?
 }
 
 struct KanbanArchiveUndo: Equatable, Sendable {
     let cardID: String
     let cardTitle: String
-    /// Where Undo returns the Card: its Status before Archive, or on a Hermes host the
-    /// ordinary destination `KanbanBackend.restoreStatus(after:)` names (#1044).
     let previousStatus: String
     let expiresAt: Date
     let card: KanbanCard
@@ -254,7 +247,6 @@ enum KanbanBoardMutationKind: Equatable, Sendable {
 struct KanbanBoardMutationState: Equatable, Sendable {
     let kind: KanbanBoardMutationKind
     let phase: KanbanCardMutationPhase
-    /// Why the server refused it, in its own words (`KanbanWriteRefusal`), shown with the failure.
     var message: String?
 }
 
@@ -310,8 +302,6 @@ private struct KanbanPendingDependencyChange {
 
 struct KanbanLiveUpdateTiming: Sendable {
     let coalescingDelay: Duration
-    /// The wait before each reconnect, the last one held. webui reconnects twice and then
-    /// polls; a Hermes socket keeps reconnecting while it polls (#1045).
     let reconnectDelays: [Duration]
     let pollingInterval: Duration
     let failuresBeforePolling: Int
@@ -324,11 +314,6 @@ struct KanbanLiveUpdateTiming: Sendable {
     )
 }
 
-/// Remembers the last locally browsed Board per server (#259) so a rebuilt
-/// `KanbanFeatureState` reopens it instead of the server-global active Board.
-/// Keyed by the server's absolute URL like the other per-server defaults. The
-/// value is only a hint: `load()` validates it against the fresh Board list
-/// before it reaches the wire, and it never changes the server's active Board.
 enum KanbanBoardPreference {
     static func key(for server: URL) -> String {
         "kanban.selectedBoard|\(server.absoluteString)"
@@ -347,14 +332,9 @@ enum KanbanBoardPreference {
     }
 }
 
-/// Server-bound Kanban browsing state. Each instance owns one server's Board
-/// choice, filters, selection, and snapshots; nothing is shared across servers.
-/// Only the browsed Board slug outlives the instance, via `KanbanBoardPreference`.
 @MainActor
 @Observable
 final class KanbanFeatureState {
-    /// Every Status a Card can hold short of Archived, in a Hermes host's Column order.
-    /// A webui Board has six of them; Scheduled and Review are Hermes's (#1043).
     static let liveStatuses = ["triage", "todo", "scheduled", "ready", "running", "blocked", "review", "done"]
     private static let bulkReconciliationConcurrency = 4
 
@@ -386,9 +366,6 @@ final class KanbanFeatureState {
     private(set) var boardSelectionNotice: KanbanBoardSelectionNotice?
     private(set) var dispatchState: KanbanDispatchState?
     private(set) var dispatcherCapabilityIsIncompatible = false
-    /// The server's note on the last created Card, such as a Hermes host's warning that no
-    /// dispatcher is running to pick up a Ready Card (#1044). Shown until dismissed, a reload
-    /// or another Board.
     private(set) var cardNotice: String?
 
     private(set) var selectedBoardSlug: String? {
@@ -409,9 +386,6 @@ final class KanbanFeatureState {
     private var activeBoardLoadID: UUID?
     private var boardsResponse: KanbanBoardsResponse?
     private let client: any KanbanDataClient
-    /// A Hermes host's live updates (#1045) come over a socket that keeps reconnecting while
-    /// it polls, and its polling reloads the Board, because the host has no events route. Its
-    /// writes (#1044) offer fewer destinations and can land a Card elsewhere than asked.
     private let backend: KanbanBackend
     private let streamClient: any KanbanEventStreamingClient
     private let timing: KanbanLiveUpdateTiming
@@ -427,17 +401,9 @@ final class KanbanFeatureState {
     private var streamFailureCount = 0
     private var reconnectTask: Task<Void, Never>?
     private var coalescingTask: Task<Void, Never>?
-    /// True while `coalescingTask` is past its first debounce: fetching the Board or
-    /// waiting out the debounce before a follow-up fetch.
     @ObservationIgnored private var liveRefreshIsFetching = false
-    /// A burst landed during that fetch; the running task refreshes once more.
     @ObservationIgnored private var needsLiveRefresh = false
-    /// A refresh asked for stats and assignee history and has not finished reading them;
-    /// a live refresh that supersedes it reads them instead.
     @ObservationIgnored private var supplementaryRefreshPending = false
-    /// The Board and filters (without `since`) of the fetch that produced `snapshot`.
-    /// Upstream's `latest_event_id` ignores filters, so a cursor refresh is only sound
-    /// when this still matches the current request.
     @ObservationIgnored private var snapshotRequest: KanbanBoardRequest?
     private var pollingTask: Task<Void, Never>?
     private var activeCardMutationIDs: [String: UUID] = [:]
@@ -478,15 +444,10 @@ final class KanbanFeatureState {
         self.defaults = defaults
     }
 
-    /// Whether the Card list shows its "Refreshing Board" row: while a Board loads with no
-    /// snapshot on screen (first load, Board switch) or with one fetched under other filters
-    /// (a filter change). Live, poll, mutation, and pull refreshes of the Board on screen
-    /// update the rows in place without it.
     var showsBoardLoadingRow: Bool {
         isRefreshing && (snapshot == nil || snapshotRequest != filteredBoardRequest)
     }
 
-    /// The selected Board with the current server-side filters, without `since`.
     private var filteredBoardRequest: KanbanBoardRequest? {
         selectedBoardSlug.map {
             KanbanBoardRequest(
@@ -499,8 +460,6 @@ final class KanbanFeatureState {
         }
     }
 
-    /// Future write slices must use this single seam before exposing any
-    /// mutation, Dispatcher, or shared-state action.
     var canUseServerAuthoritativeActions: Bool {
         snapshot != nil && !isOffline && !isRefreshing && !refreshFailed
     }
@@ -648,8 +607,6 @@ final class KanbanFeatureState {
         return boards.first { normalized($0.slug) == selectedBoardSlug }
     }
 
-    /// The Board's Columns in the server's order: webui's configured six, or a Hermes
-    /// host's eight. Archived follows the filter, and a Column the server adds follows them.
     var availableStatuses: [String] {
         var result = configuration?.columns?.compactMap(normalized) ?? Self.liveStatuses
         if includeArchived, !result.contains("archived") { result.append("archived") }
@@ -660,8 +617,6 @@ final class KanbanFeatureState {
         return result
     }
 
-    /// Only Mine filters by webui's active chat Profile, or on a Hermes host by the Profile
-    /// the Sessions side lists, offered only when one is known (#1677).
     var offersOnlyMine: Bool { client.offersOnlyMine }
 
     var profileOptions: [String] {
@@ -728,39 +683,28 @@ final class KanbanFeatureState {
         return cardMutationStates[cardID]
     }
 
-    /// The ordinary Statuses a Card can move to: Triage, To Do and Ready, or on a Hermes host
-    /// Triage and Ready (#1044). Only a Bulk Action moves Cards into Scheduled or Review.
     func moveDestinations(for card: KanbanCard) -> [String] {
         guard canMutateCard(card) else { return [] }
         return (configuration?.columns ?? [])
             .filter { backend.createStatuses.contains($0) && $0 != card.status?.rawValue }
     }
 
-    /// Whether `card` offers Block: a Hermes host blocks only a Ready or Running Card (#1044).
     func canBlock(_ card: KanbanCard) -> Bool {
         canMutateCard(card) && backend.offersBlock(from: card.status?.rawValue)
     }
 
-    /// Whether `card` offers Complete: a Hermes host completes a Ready, Running, Blocked or
-    /// Review Card (#1677).
     func canComplete(_ card: KanbanCard) -> Bool {
         canMutateCard(card) && backend.offersComplete(from: card.status?.rawValue)
     }
 
-    /// Whether completing `card` needs a note of what was done: on a Hermes host, any Card
-    /// outside Review (#1677).
     func completionNeedsResult(_ card: KanbanCard) -> Bool {
         backend.completionNeedsResult(from: card.status?.rawValue)
     }
 
-    /// The Statuses a Bulk Action can move Cards to: every Column but Running, and on a Hermes
-    /// host not To Do either (#1044, #1677).
     var bulkStatusOptions: [String] {
         (configuration?.columns ?? []).filter { !backend.unofferedStatuses.contains($0) }
     }
 
-    /// The Bulk Action that moves the selected Cards to `status`: Done carries `result` when a
-    /// selected Card, where it is on the Board now, needs a note to complete (#1677).
     func bulkStatusAction(_ status: String, result: String) -> KanbanBulkAction {
         let needsResult = selectedCardIDs.contains { cardID in
             backend.completionNeedsResult(from: (cardInSnapshot(cardID) ?? selectedCardsByID[cardID])?.status?.rawValue)
@@ -768,8 +712,6 @@ final class KanbanFeatureState {
         return status == "done" && needsResult ? .complete(result: result) : .changeStatus(status)
     }
 
-    /// Where `cardID` is on the Board now, which after a Hermes write can differ from where it
-    /// was asked to go (#1044).
     func status(ofCard cardID: String?) -> String? {
         normalized(cardID).flatMap(cardInSnapshot)?.status?.rawValue
     }
@@ -811,8 +753,6 @@ final class KanbanFeatureState {
         )
     }
 
-    /// Completes `card`, sending `result` as what was done. A Card that needs a note
-    /// (`completionNeedsResult`) is not completed without one.
     func completeCard(_ card: KanbanCard, result: String? = nil, confirmingRunningExit: Bool = false) async {
         let result = normalized(result)
         guard backend.offersComplete(from: card.status?.rawValue),
@@ -1041,7 +981,6 @@ final class KanbanFeatureState {
         }
 
         do {
-            // Ordered exactly as docs/agents/kanban.md requires; every probe is a verified GET.
             let serverConfiguration = try await client.kanbanConfiguration()
             guard isCurrent(loadID) else { return }
             let boardsResponse = try await client.kanbanBoards()
@@ -1118,12 +1057,6 @@ final class KanbanFeatureState {
         }
     }
 
-    /// Cold-loads only when no Board is loaded. `KanbanView` calls this every time the
-    /// Board reappears, so returning from a pushed Card keeps its rows, scroll position,
-    /// and archive undo; `setVisible(true)` resumes the live stream from `liveCursor`.
-    /// When a pop cancelled a live refresh (the stream already moved `liveCursor` past the
-    /// Board on screen) or the first load's stats and assignee reads, this refreshes the
-    /// Board in place instead of starting over.
     func loadIfNeeded() async {
         guard let snapshot else {
             await load()
@@ -1134,7 +1067,6 @@ final class KanbanFeatureState {
         _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
     }
 
-    /// Each supplementary read either returned a value or recorded its warning.
     private var supplementaryReadsSettled: Bool {
         (stats != nil || capabilityWarnings.contains(.statsUnavailable))
             && (assigneeHistory != nil || capabilityWarnings.contains(.profileHistoryUnavailable))
@@ -1512,12 +1444,6 @@ final class KanbanFeatureState {
         }
     }
 
-    /// `KanbanStatusFocusView` forwards every scene phase change. Only `.background` suspends live
-    /// updates: `.inactive` is a transient overlay (Control Center, Notification Center, a
-    /// system alert, the app switcher), so the stream and the Board stay as they are.
-    /// Returning to `.active` asks the server for the Board since the snapshot's cursor.
-    /// When no event landed, the Board, its stats, and the Board list are kept and the
-    /// stream resumes from `liveCursor`; a changed Board also reconciles the Board list.
     func setScenePhase(_ phase: ScenePhase) async {
         guard phase != .inactive else { return }
         let active = phase == .active
@@ -1684,8 +1610,6 @@ final class KanbanFeatureState {
         )
     }
 
-    /// Reads the Board again after the editor saved, keeping the server's `notice` on the
-    /// created Card for the Board to show.
     func reconcileAfterCardMutation(notice: String? = nil) async {
         if let notice { cardNotice = notice }
         _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
@@ -2066,8 +1990,6 @@ final class KanbanFeatureState {
                 )
             }
         }
-        // A new prerequisite can send a Ready dependent back to To Do, and a removed one can
-        // promote it, so the Board is read again to show where the host put it.
         await reloadBoardAfterHermesWrite()
     }
 
@@ -2155,8 +2077,6 @@ final class KanbanFeatureState {
         detailRefreshRevision &+= 1
     }
 
-    /// A Hermes host's write reports no `changed` and can move other Cards too (a promoted
-    /// dependent, a gated one), so once a Card write settles the Board is read again (#1044).
     private func reloadBoardAfterHermesWrite() async {
         guard backend == .hermes else { return }
         _ = await refreshBoard(usingCursor: false)
@@ -2276,7 +2196,6 @@ final class KanbanFeatureState {
         if case let APIError.network(underlying) = error {
             return (underlying as? URLError)?.code == .cancelled
         }
-        // A Hermes host's transport errors arrive unwrapped.
         return (error as? URLError)?.code == .cancelled
     }
 
@@ -2472,9 +2391,6 @@ final class KanbanFeatureState {
         boardSelectionNotice = KanbanBoardSelectionNotice(boardName: boardDisplayName)
     }
 
-    /// The saved per-server Board choice, only while the fresh Board list still
-    /// contains it. A stale slug is dropped here so it never reaches the wire and
-    /// a cold start falls back silently to the server's current Board.
     private func restoredBoard(from availableBoards: [KanbanBoard]) -> String? {
         guard let saved = normalized(KanbanBoardPreference.savedSlug(for: server, in: defaults)) else {
             return nil
@@ -2494,11 +2410,6 @@ final class KanbanFeatureState {
         }
     }
 
-    /// Refetches the selected Board. A cursor refresh (`usingCursor`) sends the snapshot's
-    /// `latest_event_id` as `since` when the snapshot came from the same Board and filters;
-    /// when the server answers `changed: false` the snapshot stays untouched, and
-    /// `refreshSupplementary` reads stats and assignee history only when one is missing or
-    /// an earlier refresh left them pending.
     @discardableResult
     private func refreshBoard(
         usingCursor: Bool,
@@ -2510,8 +2421,6 @@ final class KanbanFeatureState {
         }
         let boardLoadID = UUID()
         activeBoardLoadID = boardLoadID
-        // Missing stats or assignee history (never read, or a failed read that left only a
-        // warning) is retried even when the Board itself is unchanged.
         let supplementaryReadsOwed = supplementaryRefreshPending || stats == nil || assigneeHistory == nil
         if refreshSupplementary { supplementaryRefreshPending = true }
         isRefreshing = true
@@ -2532,7 +2441,6 @@ final class KanbanFeatureState {
             guard isCurrentBoardLoad(boardLoadID, board: board) else { return .failed }
             let outcome: KanbanBoardRefreshOutcome
             if request.since != nil, response.changed == false {
-                // The minimal unchanged envelope: no event since the snapshot on screen.
                 outcome = .unchanged
             } else {
                 let report = try validateBrowsingSnapshot(response, board: board)
@@ -2545,8 +2453,6 @@ final class KanbanFeatureState {
                 outcome = .changed
             }
             if backend == .hermes, let latest = response.latestEventID, latest < cursorAtRequest {
-                // The host's ids went backwards (its Kanban database was recreated), so a
-                // socket reading after the old cursor would stay silent (#1045).
                 liveCursor = latest
                 reopenStream()
             } else {
@@ -2631,9 +2537,6 @@ final class KanbanFeatureState {
             streamFailureCount = 0
             liveUpdatesDelayed = false
         case .opened:
-            // A Hermes socket is live once its upgrade succeeds, and polling stops. A Board
-            // that went offline, or whose last live refresh failed after the cursor moved,
-            // catches up now: the socket reports only what follows the cursor.
             streamFailureCount = 0
             liveUpdatesDelayed = false
             pollingTask?.cancel()
@@ -2662,13 +2565,12 @@ final class KanbanFeatureState {
 
     private func handleStreamFailure(board: String, generation: Int, attemptID: Int) {
         guard isCurrentLiveWork(board: board, generation: generation), streamAttemptID == attemptID else { return }
-        streamAttemptID += 1 // Makes duplicate callbacks from this attempt inert.
+        streamAttemptID += 1
         streamClient.stop()
         streamFailureCount += 1
         if streamFailureCount >= timing.failuresBeforePolling {
             liveUpdatesDelayed = true
             startPollingIfNeeded()
-            // webui stops here and polls; a Hermes socket keeps its backoff while it polls.
             guard backend == .hermes else { return }
         }
 
@@ -2684,12 +2586,6 @@ final class KanbanFeatureState {
         }
     }
 
-    /// Debounces live event bursts into one Board-only refresh; stats and assignee
-    /// history refresh on load, pull, a changed foreground, and mutations instead, unless
-    /// they have not settled yet or this refresh supersedes one still reading them.
-    /// A burst that lands while that refresh is fetching queues one follow-up pass
-    /// rather than cancelling the in-flight download; the follow-up waits out the same
-    /// debounce, so writes unlock between passes. `suspendLiveUpdates` clears both flags.
     private func scheduleCoalescedReconciliation(board: String, generation: Int) {
         if liveRefreshIsFetching {
             needsLiveRefresh = true
@@ -2703,7 +2599,6 @@ final class KanbanFeatureState {
             guard let self, self.isCurrentLiveWork(board: board, generation: generation) else { return }
             self.liveRefreshIsFetching = true
             defer {
-                // A suspend already cleared the flag, and a newer generation may own it.
                 if self.liveGeneration == generation { self.liveRefreshIsFetching = false }
             }
             repeat {
@@ -2719,10 +2614,8 @@ final class KanbanFeatureState {
                     self.startPollingIfNeeded()
                     return
                 }
-                // A refresh that brings an offline Board back clears the stale Card detail too.
                 if succeeded, wasOffline { self.loadedDetailIsStale = false }
                 if self.needsLiveRefresh {
-                    // Bursts keep folding into the flag while this debounce runs.
                     do { try await sleep(delay) } catch { return }
                     guard self.isCurrentLiveWork(board: board, generation: generation) else { return }
                 }
@@ -2730,9 +2623,6 @@ final class KanbanFeatureState {
         }
     }
 
-    /// Polls every `pollingInterval` until live updates resume. webui stops its stream and
-    /// polls the events route; a Hermes socket keeps reconnecting, and its polling reloads the
-    /// Board, kept as it is while its `latest_event_id` has not moved.
     private func startPollingIfNeeded() {
         guard pollingTask == nil, isVisible, sceneIsActive, let board = selectedBoardSlug else { return }
         if backend == .webui {
@@ -2755,9 +2645,6 @@ final class KanbanFeatureState {
         }
     }
 
-    /// One Hermes poll. An offline Board reloads in full. A poll that reaches the Board
-    /// restarts the socket, unless the socket is already reconnecting on its own backoff
-    /// (`liveUpdatesDelayed`): a refused foreground check, for one, left no socket open.
     private func pollBoard(board: String, generation: Int) async {
         let wasOffline = isOffline
         let succeeded = await refreshBoard(
@@ -2804,8 +2691,6 @@ final class KanbanFeatureState {
         }
     }
 
-    /// Reopens the stream at `liveCursor` now, without waiting out a reconnect delay. The
-    /// failure count stays, so a failing socket keeps its backoff.
     private func reopenStream() {
         guard isVisible, sceneIsActive else { return }
         reconnectTask?.cancel()
@@ -2866,8 +2751,6 @@ final class KanbanFeatureState {
         loadedDetailIsStale = true
     }
 
-    /// webui wraps a transport failure in `APIError.network`; a Hermes host's arrives as
-    /// `BotFailure.transport` or a bare `URLError`.
     private static func isTransportFailure(_ error: Error) -> Bool {
         switch error {
         case APIError.network: true
@@ -2942,7 +2825,6 @@ final class KanbanFeatureState {
         )
     }
 
-    /// A Hermes host's `/config` names no Columns, so its Board's Columns stand in.
     private func adoptingBoardColumns(
         _ configuration: KanbanConfiguration,
         from snapshot: KanbanBoardSnapshot
@@ -3004,8 +2886,6 @@ final class KanbanFeatureState {
         }
     }
 
-    /// A Hermes host's failures. Its sign-out stays with `HermesConnection.onLoginRejected`,
-    /// so nothing here is forwarded; a refused or replaced sign-in reads as signed out.
     private static func classify(_ failure: BotFailure) -> KanbanCompatibilityState {
         switch failure {
         case .transport:

@@ -1,8 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// A Hermes chat's toolbar entry to its delegated workers (#1140, mock B): its own glass button
-/// beside the action cluster, `person.2` and a plain count, shown while any worker is active.
 struct HermesDelegatedWorkButton: View {
     let count: Int
     let action: () -> Void
@@ -26,9 +24,6 @@ struct HermesDelegatedWorkButton: View {
     }
 }
 
-/// A bounded preview at the live end of the transcript. Observing the roster here keeps tool
-/// updates in this leaf; the transcript only needs to observe whether any workers are active.
-/// Equal by `work`, which `onOpen` opens, so a stream tick above it skips this body.
 struct HermesDelegatedWorkInlineView: View, Equatable {
     let work: HermesDelegatedWork
     let onOpen: () -> Void
@@ -104,7 +99,6 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
         }
     }
 
-    /// A plain row rather than a `Label`, which truncates beside free space at accessibility sizes.
     private func toolRow(_ title: Text) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "hammer")
@@ -297,8 +291,6 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
     }
 }
 
-/// A durable, non-user-authored timeline row. The compact card is driven only
-/// by typed display metadata; the sheet preserves the host's report verbatim.
 struct HermesDelegationCompletionCard: View {
     let completion: HermesDelegationCompletion
     @State private var showingResults = false

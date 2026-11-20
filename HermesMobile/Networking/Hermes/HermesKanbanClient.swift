@@ -1,28 +1,7 @@
 import Foundation
 
-/// Kanban on a Hermes host (#1043): the host's Kanban plugin under `/api/plugins/kanban`, read
-/// and written (#1044) over the sign-in, cookie jar and headers (#898) the server's Bot screens
-/// share. It reads configuration, Boards, a Board, stats, assignee history, Card detail and the
-/// worker log, writes Cards, comments, prerequisites, Bulk Actions, the Dispatcher and Boards,
-/// and adapts each reply to the Kanban models webui fills:
-/// - host paths and process data (`workspace_path`, `stored_path`, a log's `path`, `db_path`,
-///   `default_workdir`, an archived Board's `new_path`, `worker_pid`, `claim_lock`) are dropped
-///   before decoding, so no view or log can show them;
-/// - every reply reads `read_only: false`, because the host has no read-only mode;
-/// - the Assigned Profile filter and Only Mine run here, because the host's `/board` takes
-///   neither; Only Mine is `mine`, the Profile the Sessions side lists (#1677);
-/// - block and unblock are Status changes, a prerequisite reply is filled with the request's
-///   ids, because the host echoes none, and a 400 or 409 throws `KanbanWriteRefusal` with
-///   the host's `detail`.
-///
-/// A 404 on `/config` is a host without the Kanban plugin. Live updates come over the Board's
-/// Kanban socket (`KanbanWebSocketEventClient`, #1045). The host has no REST events route, so
-/// `kanbanEvents` throws; the feature state's polling fallback reloads the Board instead, and
-/// a `since` request reads as unchanged while the Board's `latest_event_id` still equals it.
 struct HermesKanbanClient: KanbanDataClient {
     let http: HermesConnection
-    /// The Profile Only Mine shows: the one the Sessions side lists and New Session opens in.
-    /// Nil when none is known, and then Only Mine is not offered.
     var mine: String? = nil
 
     var backend: KanbanBackend { .hermes }
@@ -50,8 +29,6 @@ struct HermesKanbanClient: KanbanDataClient {
             tenant: request.tenant,
             includeArchived: request.includeArchived
         ))
-        // The host's `/board` takes no `since`, so the reply's `latest_event_id` answers it the
-        // way webui's `changed` does: a poll or a foreground check keeps an unchanged Board.
         let changed = request.since.map { $0 != snapshot.latestEventID } ?? snapshot.changed
         let assignee = (request.onlyMine ? mine : request.assignee).flatMap { $0.isEmpty ? nil : $0 }
         guard assignee != nil || changed != snapshot.changed else { return snapshot }
@@ -95,8 +72,6 @@ struct HermesKanbanClient: KanbanDataClient {
     }
 
     func createKanbanCard(_ request: KanbanCreateCardRequest) async throws -> KanbanCardMutationEnvelope {
-        // `status` would be ignored: the host starts a Card in Triage, To Do or Ready by its own
-        // rule. No Assigned Profile is null, because `""` is a 400.
         var body: [String: BotJSON] = [
             "title": .string(request.title),
             "assignee": request.assignee.map(BotJSON.string) ?? .null,
@@ -113,8 +88,6 @@ struct HermesKanbanClient: KanbanDataClient {
         return try await write(.kanbanCreateTask(board: request.board, body: body))
     }
 
-    /// Never sends `tenant`, which the host can't change after create. An unassigned Card is
-    /// `""`, because null leaves the assignee as it is.
     func editKanbanCard(_ request: KanbanEditCardRequest) async throws -> KanbanCardMutationEnvelope {
         var body: [String: BotJSON] = [
             "title": .string(request.title),
@@ -135,14 +108,12 @@ struct HermesKanbanClient: KanbanDataClient {
         return try await write(.kanbanUpdateTask(id: request.cardID, board: request.board, body: body))
     }
 
-    /// Blocked is a Status here, which the host may turn into Triage after repeat blocks.
     func blockKanbanCard(_ request: KanbanCardActionRequest) async throws -> KanbanCardMutationEnvelope {
         var body: [String: BotJSON] = ["status": .string("blocked")]
         body["block_reason"] = request.reason.map(BotJSON.string)
         return try await write(.kanbanUpdateTask(id: request.cardID, board: request.board, body: body))
     }
 
-    /// Ready from Blocked unblocks, landing the Card in Ready, To Do or Review by the host's rule.
     func unblockKanbanCard(_ request: KanbanCardActionRequest) async throws -> KanbanCardMutationEnvelope {
         try await write(.kanbanUpdateTask(id: request.cardID, board: request.board, body: ["status": .string("ready")]))
     }
@@ -161,7 +132,6 @@ struct HermesKanbanClient: KanbanDataClient {
                         echoing: request)
     }
 
-    /// The same body webui takes: an unassigned Card is `""`, and only Archive sends `archive`.
     func performKanbanBulkAction(_ request: KanbanBulkActionRequest) async throws -> KanbanBulkActionEnvelope {
         var body: [String: BotJSON] = ["ids": .array(request.cardIDs.map(BotJSON.string))]
         switch request.action {
@@ -208,10 +178,6 @@ struct HermesKanbanClient: KanbanDataClient {
         try Self.decoded(try Self.adapted(try await http.data(rest)))
     }
 
-    /// Sends a write and decodes a 2xx reply. A prerequisite write passes its request as `echo`:
-    /// the host names neither Card, so the reply is filled with them, and its 200 means the
-    /// link is now there or gone. A 400 or 409 whose body has a `detail` throws
-    /// `KanbanWriteRefusal` with it; any other status throws `BotFailure.rejected`, as a read does.
     private func write<Response: Decodable>(
         _ rest: HermesREST,
         echoing echo: KanbanDependencyMutationRequest? = nil
@@ -234,14 +200,10 @@ struct HermesKanbanClient: KanbanDataClient {
         return try decoder.decode(Response.self, from: data)
     }
 
-    /// Keys whose values are host paths or process data, dropped at every depth.
     static let hostOnlyKeys: Set<String> = [
         "workspace_path", "stored_path", "path", "db_path", "default_workdir", "new_path", "worker_pid", "claim_lock"
     ]
 
-    /// A reply without `hostOnlyKeys`, marked writable, with `filling`'s top-level keys set.
-    /// `JSONSerialization` keeps the host's integers integers on the way back out. A body that
-    /// is not a JSON object is an incompatible reply.
     static func adapted(_ data: Data, filling: [String: Any] = [:]) throws -> Data {
         guard var reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             throw KanbanResponseError.nonJSONContentType
@@ -264,11 +226,7 @@ struct HermesKanbanClient: KanbanDataClient {
     }
 }
 
-/// A socket `KanbanWebSocketEventClient` reads: the gateway's socket boundary and a WebSocket
-/// ping. Production wraps `URLSessionWebSocketTask` (`NativeBotSocket`); tests script one.
 protocol KanbanSocket: BotSocket {
-    /// Sends one ping frame and returns when its pong arrives. A refused upgrade throws what
-    /// `receive()` throws for it.
     func ping() async throws
 }
 
@@ -290,25 +248,10 @@ extension NativeBotSocket: KanbanSocket {
     }
 }
 
-/// Live Kanban events from a Hermes host (#1045): one WebSocket per open Board,
-/// `/api/plugins/kanban/events?board=&since=&ticket=` on the Board's `HermesConnection`. Every
-/// connect mints a fresh single-use ticket there, never the gateway's, so the upgrade carries
-/// the connection's headers to its own origin only. It offers no subprotocol.
-///
-/// The host sends `{events, cursor}` only when events land: no hello and no heartbeat, and a
-/// dashboard bound to loopback (how a tunneled one runs) sends no protocol pings either, so a
-/// tunnel such as Cloudflare would close a quiet socket at about 100 s. This client pings every
-/// 25 s, and a ping that has seen neither its pong nor a frame by the next one ends the socket.
-/// The first pong or frame proves the upgrade and reports `.opened`. A 403 on the upgrade, the
-/// host's answer to a used or expired ticket, opens once more on a fresh ticket before the
-/// failure is reported. `stop()` closes the socket cleanly, and nothing from it is reported after.
 @MainActor final class KanbanWebSocketEventClient: KanbanEventStreamingClient {
-    /// Tests script the socket and the clock; production takes the defaults.
     struct Options {
-        /// The ping cadence, and how long a ping may go without its pong or a frame.
         var keepalive: Duration = .seconds(25)
         var sleep: @MainActor @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
-        /// Gets the finished upgrade; nil opens a native socket on the connection's session.
         var socketFactory: ((URLRequest) -> any KanbanSocket)?
     }
 
@@ -316,17 +259,14 @@ extension NativeBotSocket: KanbanSocket {
     private let options: Options
     private var onFrame: (@MainActor (KanbanStreamFrame) -> Void)?
     private var onFailure: (@MainActor () -> Void)?
-    /// The Board and cursor of the current `start`, for the one fresh-ticket retry.
     private var target: (board: String, since: Int)?
     private var mayRetryRefusal = false
-    /// Numbers sockets. Anything from an older one, or from before `stop()`, is dropped.
     private var generation = 0
     private var socket: (any KanbanSocket)?
     private var opener: Task<Void, Never>?
     private var reader: Task<Void, Never>?
     private var keepalive: Task<Void, Never>?
     private var isOpen = false
-    /// A ping went out and neither its pong nor a frame has arrived since.
     private var awaitingPong = false
 
     init(http: HermesConnection, options: Options = Options()) {
@@ -355,7 +295,6 @@ extension NativeBotSocket: KanbanSocket {
         target = nil
     }
 
-    /// Mints a ticket and opens a socket on it.
     private func connect() {
         guard let target else { return }
         let owner = generation, http = http
@@ -409,7 +348,6 @@ extension NativeBotSocket: KanbanSocket {
 
     private func ping(_ socket: any KanbanSocket, generation owner: Int) {
         awaitingPong = true
-        // Not kept: closing the socket fails a ping still waiting for its pong.
         Task { [weak self] in
             do { try await socket.ping() } catch {
                 self?.fail(error, generation: owner)
@@ -431,7 +369,6 @@ extension NativeBotSocket: KanbanSocket {
         onFrame?(KanbanStreamFrameDecoder.decodeSocketFrame(data))
     }
 
-    /// A pong or a frame: the socket is alive, and the first one reports it open.
     private func markAlive() {
         awaitingPong = false
         guard !isOpen else { return }
@@ -459,8 +396,6 @@ extension NativeBotSocket: KanbanSocket {
         let onFailure = self.onFailure
         stop()
         guard let onFailure else { return }
-        // Reported from a task of its own: the one failing here may be the reader or the
-        // keepalive, which `close()` has just cancelled. A later start or stop drops it.
         let reported = generation
         Task { [weak self] in
             guard self?.generation == reported else { return }
@@ -468,7 +403,6 @@ extension NativeBotSocket: KanbanSocket {
         }
     }
 
-    /// Closes the socket and ends its tasks; the callbacks stay for a retry.
     private func close() {
         generation += 1
         opener?.cancel(); opener = nil
@@ -479,6 +413,5 @@ extension NativeBotSocket: KanbanSocket {
         awaitingPong = false
     }
 
-    /// Names socket `number` in the log, such as `c1 kanban socket s0`, never the Board or host.
     private func label(_ number: Int) -> String { "c\(http.serial) kanban socket s\(number)" }
 }

@@ -3,7 +3,6 @@ import SwiftUI
 struct KanbanCardDetailView: View {
     let featureModel: KanbanFeatureState
     @State private var state: KanbanCardDetailState?
-    /// The card's title as the board showed it, which titles the screen until its detail loads.
     private let boardTitle: String?
 
     init(featureModel: KanbanFeatureState, cardID: String) {
@@ -137,7 +136,6 @@ private struct KanbanCardDetailContent: View {
         }
         .refreshable { await state.refresh() }
         .listStyle(.insetGrouped)
-        // Wide tables fade into the grouped row they sit on.
         .environment(\.markdownTableEdgeFadeColor, Color(.appGroupedSurface))
     }
 

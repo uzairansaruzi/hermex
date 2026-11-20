@@ -2,22 +2,13 @@ import CryptoKit
 import SwiftUI
 import WidgetKit
 
-/// Keeps the Bot widget's snapshot (#1643) in step with each server's roster. The Bots inbox hands
-/// it every roster it reads (`publish`) and, once avatars load, the photos it has (`renderAvatars`);
-/// `AuthManager.removeServer` drops a server (`remove`). A sign-out keeps the server's bots, as
-/// `HermesProfileNameCache` does, and a replaced connection's next roster read overwrites them.
-/// Main-actor, so writes are serialized.
 @MainActor final class BotWidgetPublisher {
     static let shared = BotWidgetPublisher(file: BotWidgetSnapshotFile.shared)
 
     private let file: BotWidgetSnapshotFile?
-    /// The server's section title, or nil once it is no longer configured.
     private let serverTitle: @MainActor (URL) -> String?
     private let reloadWidget: () -> Void
-    /// The bots the Home Screen's Bot widgets show, or nil when WidgetKit couldn't say.
     private let configuredBots: () async -> [BotWidgetDestination]?
-    /// The newest render started per server key. A render that resumes after a newer one started,
-    /// or after the server's removal, is stale and writes nothing.
     private var renderGenerations: [String: Int] = [:]
 
     init(file: BotWidgetSnapshotFile?,
@@ -30,9 +21,6 @@ import WidgetKit
         self.configuredBots = configuredBots
     }
 
-    /// Replaces `server`'s bots with `profiles`, read through `connectionID`, an empty roster
-    /// dropping the server, and reloads the widget only when that changed something. A roster that
-    /// arrives after its server was removed writes nothing, so it can't bring the rows back.
     func publish(_ profiles: [BotProfile], server: URL, connectionID: UUID) {
         guard let file, let title = serverTitle(server) else { return }
         let key = BotHistoryCache.Scope.key(server)
@@ -52,15 +40,11 @@ import WidgetKit
         reloadWidget()
     }
 
-    /// Renders the avatar of each bot on `server` that a widget is configured for, unless its look
-    /// revision already has a file, and deletes the server's other avatar files. A photo bot whose
-    /// photo hasn't loaded is skipped, so its widget keeps the fallback face until the next read.
     func renderAvatars(_ profiles: [BotProfile], server: URL, connectionID: UUID, photos: [String: UIImage]) async {
         guard let file else { return }
         let key = BotHistoryCache.Scope.key(server)
         let generation = renderGenerations[key, default: 0] + 1
         renderGenerations[key] = generation
-        // A failed lookup renders and deletes nothing, rather than reading as "no widgets".
         guard let configured = await configuredBots(), renderGenerations[key] == generation else { return }
         let wanted = Set(configured.filter { $0.serverKey == key }.map(\.profile))
         var keep: Set<String> = []
@@ -86,8 +70,6 @@ import WidgetKit
         if rendered { reloadWidget() }
     }
 
-    /// Deletes one bot's rendered avatars, for a photo replaced without a new look revision
-    /// (`BotProfileEditor` saves the asset alone); the next roster read renders it again.
     func forgetAvatar(server: URL, profile: String) {
         guard let file else { return }
         let prefix = Self.avatarPrefix(serverKey: BotHistoryCache.Scope.key(server)) + Self.profileDigest(profile) + "-"
@@ -97,7 +79,6 @@ import WidgetKit
         }
     }
 
-    /// Drops a removed server's bots and avatar files.
     func remove(server: URL) {
         guard let file else { return }
         let key = BotHistoryCache.Scope.key(server)
@@ -114,9 +95,6 @@ import WidgetKit
         reloadWidget()
     }
 
-    /// `<server key prefix>-<Profile digest>-<connection digest>-<look revision>`, so a new look, or
-    /// a replaced connection whose host reuses the Profile name and revision, gets a new file. The
-    /// connection is a digest, so the app group still holds no connection UUID.
     static func avatarName(serverKey: String, profile: BotProfile, connectionID: UUID) -> String {
         let revision = profile.lookRevision.map(String.init) ?? "u"
         return "\(avatarPrefix(serverKey: serverKey))\(profileDigest(profile.id))-\(digest(connectionID.uuidString, bytes: 4))-\(revision)"
@@ -130,7 +108,6 @@ import WidgetKit
 
     private static func avatarPrefix(serverKey: String) -> String { "\(serverKey.prefix(16))-" }
 
-    /// The photo, else the drawn face, as `BotLiveActivity.writeAvatar` renders them.
     private static func avatar(_ profile: BotProfile, photo: UIImage?, dark: Bool) -> Data? {
         let size: CGFloat = 76
         let renderer = ImageRenderer(content: Group {
@@ -147,8 +124,6 @@ import WidgetKit
         return renderer.uiImage?.pngData()
     }
 
-    /// The server's display name, or a neutral title when it is empty or just repeats the host,
-    /// so the app group never holds a host name. Nil for a server no longer configured.
     static func registryTitle(for server: URL) -> String? {
         guard let account = ServerRegistry.shared.servers.first(where: { $0.id == server.absoluteString }) else { return nil }
         let name = account.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -159,7 +134,6 @@ import WidgetKit
         return name
     }
 
-    /// The bots the Home Screen's Bot widgets are configured with, or nil when WidgetKit fails.
     static func currentConfigurations() async -> [BotWidgetDestination]? {
         guard let widgets = try? await WidgetCenter.shared.currentConfigurations() else { return nil }
         return widgets.filter { $0.kind == BotWidgetSnapshot.widgetKind }.flatMap {

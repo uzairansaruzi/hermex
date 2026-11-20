@@ -1,18 +1,11 @@
 import SwiftUI
 
-/// Task Detail's first card: what this task is, when it runs next, and the two
-/// controls an operator reaches for. When the last run failed the card takes an
-/// error tint and carries the reason, because that is the only thing on the
-/// screen worth reading first.
 struct TaskDetailHeaderCard: View {
     let job: CronJob
     let runningElapsed: Double?
     let isBusy: Bool
     let canSeeFullOutput: Bool
-    /// False where the server won't run this Task on demand: a completed one on a Hermes host.
     var showsRunNow = true
-    /// A Hermes host's Run Now in flight (#1041): Run now waits with a progress indicator
-    /// until the host shows the run, then stays off until the outcome.
     var runNowState: TaskDetailViewModel.RunNowState = .idle
     let runNow: () -> Void
     let togglePauseResume: () -> Void
@@ -35,8 +28,6 @@ struct TaskDetailHeaderCard: View {
         }
     }
 
-    // MARK: - Pieces
-
     private var titleRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
@@ -57,10 +48,6 @@ struct TaskDetailHeaderCard: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// The countdown reads big; the absolute time sits under it for the reader
-    /// who wants the actual clock. Both are computed on render rather than
-    /// ticked by a timer — a label that repaints every second costs more than
-    /// the freshness is worth, and Refresh brings it up to date.
     @ViewBuilder
     private var nextRunBlock: some View {
         if let running = runningElapsed {
@@ -122,12 +109,6 @@ struct TaskDetailHeaderCard: View {
         .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    /// The card's two controls, as its bottom edge rather than as objects
-    /// sitting on it.
-    ///
-    /// Neither action is the primary one — you press whichever matches what you
-    /// want — so they carry equal weight, and no fill competes with the error
-    /// box above them for the one colour on this card that means something.
     @ViewBuilder
     private var actionFooter: some View {
         let runButton = footerButton(
@@ -147,8 +128,6 @@ struct TaskDetailHeaderCard: View {
             if !showsRunNow {
                 pauseButton
             } else if dynamicTypeSize.isAccessibilitySize {
-                // Two labels will not sit side by side at these sizes, so the
-                // divider turns with them.
                 VStack(spacing: 0) {
                     runButton
                     Divider()
@@ -165,7 +144,6 @@ struct TaskDetailHeaderCard: View {
         .disabled(isBusy)
     }
 
-    /// `isWaiting` puts a progress indicator where the icon was.
     private func footerButton(
         title: String,
         systemImage: String,
@@ -188,15 +166,9 @@ struct TaskDetailHeaderCard: View {
             .frame(maxWidth: .infinity, minHeight: 46)
             .contentShape(Rectangle())
         }
-        // Plain keeps the label as the whole control, so the row reads as part
-        // of the card; the style's press dimming is the tap confirmation.
         .buttonStyle(.plain)
     }
 
-    // MARK: - Presentation
-
-    /// The humanised schedule, or the server's own string when the expression
-    /// is not one we recognise — never a guess.
     private var scheduleSentence: String {
         job.scheduleDescription?.sentence ?? job.scheduleText ?? String(localized: "Not available")
     }

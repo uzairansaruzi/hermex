@@ -2,20 +2,8 @@ import XCTest
 import SwiftUI
 @testable import HermesMobile
 
-/// Regression matrix for the #285 review: connection-identity binding,
-/// stale-probe fencing, and configure ownership in `OnboardingViewModel`.
-///
-/// Async schedules are driven by a *phase-aware* gate: every network call site
-/// (`health`, `authStatus`) registers under its own name, so each test releases
-/// exactly the events the real schedule produces — a full accepted `connect()`
-/// emits FOUR gated events (the ViewModel's probe pair, then the internal
-/// re-probe pair inside `AuthManager.configure`). Waiters are deadline-bounded,
-/// so a routing regression fails its assertion instead of hanging the target
-/// (PR #294 re-gate at 5b68be65c).
 @MainActor
 final class OnboardingViewModelIdentityTests: XCTestCase {
-    // MARK: - Identity semantics
-
     func testCanonicallyEquivalentURLsShareIdentity() {
         let viewModel = OnboardingViewModel()
         viewModel.serverURLString = "https://example.com"
@@ -51,8 +39,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         ])
         XCTAssertNotNil(viewModel.authStatus)
 
-        // Effective X-Auth flips b -> a (setValue is last-write-wins), so the
-        // cached trusted-header status no longer describes this credential.
         viewModel.customHeaders = [
             CustomHeader(name: "X-Auth", value: "b"),
             CustomHeader(name: "X-Auth", value: "a")
@@ -77,16 +63,10 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         let viewModel = makeProbedViewModel(headers: [])
         XCTAssertNotNil(viewModel.authStatus)
 
-        // A row whose raw value contains a newline is never sent
-        // (CustomHeader.isApplicable), so adding it must not change identity —
-        // and conversely removing a broken row must not preserve stale state.
         viewModel.customHeaders = [CustomHeader(name: "X-Broken", value: "line1\nline2")]
 
-        // Broken row is filtered from identity; identity equals the empty set,
-        // which matches the probed empty-header identity → no churn.
         XCTAssertNotNil(viewModel.authStatus)
 
-        // But replacing it with an applicable row does change identity.
         viewModel.customHeaders = [CustomHeader(name: "Authorization", value: "Bearer xyz")]
         XCTAssertNil(viewModel.authStatus, "applicable header changes the credential and must invalidate")
     }
@@ -106,11 +86,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage, "inherited banner has no owner once inputs change")
     }
 
-    // MARK: - Phase-aware gated client double (drives real async schedules)
-
-    /// Distinct call sites inside `AuthManager`'s probe: `testConnection(client:)`
-    /// awaits `health()` and then `authStatus()`, so a parked probe is always in
-    /// exactly one known phase.
     enum GatePhase: String {
         case health
         case authStatus
@@ -121,12 +96,8 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         private(set) var recordedPhases: [GatePhase] = []
         private var pending: [(phase: GatePhase, continuation: CheckedContinuation<Void, Never>)] = []
         private var eventWaiters: [(count: Int, expectation: XCTestExpectation)] = []
-        /// When set, further gate entries return immediately — drains the
-        /// abandoned tail of a superseded schedule without extra bookkeeping.
         private var autoRelease = false
 
-        /// Event-driven waiter with a failure bound. On timeout it drains the
-        /// schedule so the owning task can settle instead of hanging at task.value.
         func waitForEvents(_ count: Int, _ comment: String = "", timeout seconds: Double = 5) async {
             guard recordedPhases.count < count else { return }
 
@@ -164,7 +135,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             }
         }
 
-        /// Releases everything currently parked AND stops parking new arrivals.
         func drainEverything() {
             autoRelease = true
             releaseAll()
@@ -179,7 +149,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
     final class GatedAuthAPIClient: AuthAPIClient, @unchecked Sendable {
         let gatekeeper: OnboardingGateKeeper
         var outcome: GatedProbeOutcome
-        /// Records configure side effects so tests can assert what ACTUALLY ran.
         private(set) var configuredServers: [String] = []
         private(set) var configuredPasswords: [String] = []
 
@@ -204,8 +173,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         }
 
         func login(password: String) async throws -> LoginResponse {
-            // Login is deliberately UNGATED: it is the third call of the
-            // configure password path and carries no schedule decision.
             configuredPasswords.append(password)
             return LoginResponse(ok: true, message: nil, error: nil)
         }
@@ -215,11 +182,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         }
     }
 
-    // MARK: - Stale probe fencing
-
-    // Stale A success cannot publish over B: A is held, the user retargets to
-    // B, then A completes — its result must be discarded and B must still be
-    // free to probe.
     func testStaleProbeSuccessForChangedIdentityIsDiscarded() async {
         let gatekeeper = OnboardingGateKeeper()
         let manager = makeGatedManager(GatedAuthAPIClient(
@@ -241,7 +203,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertFalse(viewModel.isConnectionLocked)
     }
 
-    // Stale A rejection cannot publish its error over B.
     func testStaleProbeFailureForChangedIdentityIsDiscarded() async {
         let gatekeeper = OnboardingGateKeeper()
         let manager = makeGatedManager(GatedAuthAPIClient(
@@ -262,11 +223,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertNil(viewModel.authStatus)
     }
 
-    // MARK: - Connection lock (inputs frozen across probe AND configure)
-
-    // The production lock deliberately forbids overlapping operations, so the
-    // right assertion is REFUSAL: a second entry point while locked must be a
-    // no-op that leaves the owning operation's busy state untouched.
     func testOperationWhileLockedIsRefusedAndOwnerKeepsBusyState() async {
         let gatekeeper = OnboardingGateKeeper()
         let manager = makeGatedManager(GatedAuthAPIClient(
@@ -280,7 +236,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         await gatekeeper.waitForEvents(1, "owner probe should park inside health()")
         XCTAssertTrue(viewModel.isWorking)
 
-        // A second Connect refuses while the lock is held.
         await viewModel.connect(authManager: manager)
 
         XCTAssertTrue(viewModel.isWorking, "refused operations must not clear the owner's busy state")
@@ -294,9 +249,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertFalse(viewModel.isConnectionLocked)
     }
 
-    // Configure reaches AuthManager exactly once per accepted connect: one
-    // keychain persist, one registry activation, zero login attempts on a
-    // passwordless server.
     func testConfigureRunsOncePerAcceptedConnect() async {
         let gatekeeper = OnboardingGateKeeper()
         let client = GatedAuthAPIClient(
@@ -313,15 +265,12 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertEqual(keychain.saveCounts[.serverURL], 1, "exactly one persist per accepted connect")
         XCTAssertEqual(keychain.savedValues[.serverURL], "https://example.com")
         XCTAssertEqual(manager.servers.count, 1, "exactly one registry activation")
-        // authEnabled=false → configure skips login entirely (no password path).
         XCTAssertEqual(client.configuredPasswords.count, 0, "passwordless configure must not attempt login")
         XCTAssertFalse(viewModel.isConnectionLocked)
         XCTAssertFalse(viewModel.isWorking)
         XCTAssertEqual(manager.state, .loggedIn(server: URL(string: "https://example.com")!))
     }
 
-    // Full password path: probe demands auth, configure logs in with the typed
-    // password and persists the session.
     func testConfigurePasswordPathLogsInWithTypedPassword() async {
         let gatekeeper = OnboardingGateKeeper()
         let client = GatedAuthAPIClient(
@@ -334,7 +283,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         viewModel.serverURLString = "https://example.com"
         viewModel.password = "typed-secret"
 
-        // Probe pair + configure's probe pair; login itself is ungated.
         await runConnectToCompletion(viewModel, authManager: manager, gatekeeper: gatekeeper)
 
         XCTAssertEqual(client.configuredPasswords, ["typed-secret"], "configure must log in with the typed password")
@@ -344,11 +292,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertFalse(viewModel.isWorking)
     }
 
-    // MARK: - Schedule helpers
-
-    /// Drives the canonical accepted-connect schedule: probe pair (health,
-    /// authStatus), then configure's internal re-probe pair, releasing each
-    /// phase in order so every await settles before its successor is released.
     @MainActor
     final class AcceptedConnectDriver {
         let gatekeeper: OnboardingGateKeeper
@@ -357,16 +300,11 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             self.gatekeeper = gatekeeper
         }
 
-        /// Runs connect() as a task and settles it through all four phases,
-        /// releasing each gate only after its successor has parked.
         func runAndSettle(
             _ operation: @escaping @MainActor () async -> Void
         ) async {
             let task = Task { await operation() }
             await gatekeeper.waitForEvents(1, "accepted connect should park in its probe's health()")
-            // Events 2…4 only fire AFTER the preceding phase is released, so
-            // waiting for them up front would deadlock — release one phase,
-            // then wait for exactly the next event.
             for expected in 2...4 {
                 gatekeeper.releaseNext()
                 await gatekeeper.waitForEvents(expected, "connect schedule phase \(expected)")
@@ -376,7 +314,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         }
     }
 
-    /// Convenience wrapper for inline connect() drives.
     private func runConnectToCompletion(
         _ viewModel: OnboardingViewModel,
         authManager: AuthManager,
@@ -386,14 +323,11 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             .runAndSettle { await viewModel.connect(authManager: authManager) }
     }
 
-    // MARK: - Server kind (#900)
-
     nonisolated override func tearDown() {
         HermesHostFixture.reset()
         super.tearDown()
     }
 
-    /// The webui double with every gate open, so `recordedPhases` lists the webui probe's calls.
     private func makeOpenWebui(authEnabled: Bool = true) -> (OnboardingGateKeeper, AuthManager) {
         let gatekeeper = OnboardingGateKeeper()
         gatekeeper.drainEverything()
@@ -402,7 +336,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         return (gatekeeper, makeGatedManager(client))
     }
 
-    /// The connect form against the scripted Hermes host; nil from `script` is a 0.21.5 dashboard.
     private func makeHermesForm(
         entry: OnboardingViewModel.Entry = .onboarding,
         _ script: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }
@@ -438,7 +371,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
 
         form.username = "admin"
         form.password = "dashboard-secret"
-        // A header edit first: the password must not survive it to reach the next address.
         form.customHeaders[0].value = "id.other"
         form.serverURLString = "webui.example"
         await form.connect(authManager: manager)
@@ -447,8 +379,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertTrue(form.showsPasswordField, "The webui asks for its own password")
     }
 
-    /// A dashboard that signs in through the browser (#708) asks for no username or password,
-    /// and Connect adds it as a Hermes server whose record holds its browser sign-in.
     func testABrowserHostSignsInThroughThePresenterAndAddsItsServer() async throws {
         let keychain = InMemoryKeychainStore()
         let gatekeeper = OnboardingGateKeeper()
@@ -483,8 +413,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertEqual(saved.hermesVersion, "0.21.5")
     }
 
-    /// A dashboard offering both a password and browser sign-in (#1539) asks for the password
-    /// first; picking Browser shows its page instead and never sends a password.
     func testPickingBrowserOnAHostWithBothSignsInThroughThePresenter() async throws {
         let keychain = InMemoryKeychainStore()
         let gatekeeper = OnboardingGateKeeper()
@@ -516,8 +444,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
     }
 
-    /// A dashboard with no sign-in (#1314) asks for no username or password, and Connect adds it
-    /// with none saved, whatever was typed before it answered.
     func testAnOpenHostIsAddedWithoutCredentials() async throws {
         let keychain = InMemoryKeychainStore()
         let gatekeeper = OnboardingGateKeeper()
@@ -549,8 +475,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
     }
 
-    /// Opened from Move to Hermes, a browser sign-in host is no longer refused (#1266): it signs
-    /// in and is added, without switching to it.
     func testABrowserHostSignsInFromAMoveWithoutSwitching() async throws {
         let keychain = InMemoryKeychainStore()
         let gatekeeper = OnboardingGateKeeper()
@@ -586,7 +510,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         let replies: [HermesHostFixture.Reply] = [
             .json(401, .object(["error": .string("Authentication required")])),
             .json(404, .object(["error": .string("Not found")])),
-            // The probe's plain HTTP reached a webui's TLS port, which the webui path reads over https.
             .json(400, .string("The plain HTTP request was sent to HTTPS port"))
         ]
         for reply in replies {
@@ -666,8 +589,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         }
     }
 
-    /// A refused sign-in's Details describe the credentials it sent, so editing the password
-    /// drops them (#1395).
     func testEditingTheRefusedPasswordDropsItsDetails() async throws {
         let (_, manager) = makeOpenWebui()
         let form = makeHermesForm(entry: .addServer) {
@@ -685,9 +606,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertNil(form.failedAttempt)
     }
 
-    /// An address that never answered keeps its failed status read as the error's Details, past
-    /// the webui path's own failure, with nothing after it checked; an edit to the address drops
-    /// them with the error (#1395).
     func testAFailedDetectionKeepsOnlyItsStatusCheckForTheCurrentAddress() async throws {
         let gatekeeper = OnboardingGateKeeper()
         gatekeeper.drainEverything()
@@ -705,8 +623,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertNil(form.failedAttempt)
     }
 
-    /// Add Server keeps the failed status read as Details only while the webui path got no
-    /// answer either; once a webui answered, the error is its own and the Details go (#1395).
     func testAddServerDropsTheStatusDetailsOnceAWebuiAnswered() async {
         let rows: [(GatedProbeOutcome, Bool)] = [
             (.succeed(AuthStatusResponse(authEnabled: true, loggedIn: false, passwordAuthEnabled: false)), false),
@@ -730,8 +646,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         }
     }
 
-    /// Connection Options' Cloudflare Access fields (#1540): an empty one sends nothing, and filled
-    /// in they change the connection and go with the status read.
     func testCloudflareAccessValuesGoOutOnlyOnceFilledIn() async throws {
         let (_, manager) = makeOpenWebui()
         let form = makeHermesForm(entry: .addServer)
@@ -753,9 +667,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertEqual(status.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "secret.access")
     }
 
-    /// A header editor row renamed to a Cloudflare Access header leaves the editor for the
-    /// Access field; the field SwiftUI still holds for it reads without crashing and writes
-    /// nothing (#1705).
     func testRenamingAHeaderRowToCloudflareAccessMovesItWithoutCrashing() {
         let form = makeHermesForm(entry: .addServer)
         form.customHeaders = [CustomHeader(name: "CF-Access-Client-I", value: "id.access")]
@@ -772,8 +683,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertEqual(form.accessClientID, "id.access", "A late write from the gone row is dropped")
     }
 
-    /// Onboarding and Add Server open on the address alone; a webui that needs a password asks
-    /// for it after Continue, and the next tap adds the server and returns it (#1540).
     func testTheSheetAsksAWebuiForItsPasswordAndThenAddsIt() async {
         for entry in [OnboardingViewModel.Entry.onboarding, .addServer] {
             HermesHostFixture.reset()
@@ -801,8 +710,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
 }
 
 extension OnboardingViewModelIdentityTests {
-    /// The connect form against a host whose `/api/status` answers 404, as a webui's does
-    /// with its auth off, so every Connect goes on to the webui path (#900).
     @MainActor
     func makeWebuiFormViewModel() -> OnboardingViewModel {
         OnboardingViewModel(hermesConfiguration: { HermesHostFixture.configuration { _ in .json(404, .object([:])) } })
@@ -817,15 +724,12 @@ extension OnboardingViewModelIdentityTests {
         )
     }
 
-    // MARK: - Helpers
-
     private func makeProbedViewModel(headers: [CustomHeader]) -> OnboardingViewModel {
         let viewModel = OnboardingViewModel(
             savedServer: URL(string: "https://trusted.example.com"),
             savedHeaders: headers
         )
         viewModel.authStatus = AuthStatusResponse(authEnabled: true, loggedIn: true)
-        // Seed the probed identity the way a webui probe would after success.
         viewModel.seedProbedIdentityForTesting()
         return viewModel
     }

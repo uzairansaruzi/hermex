@@ -306,7 +306,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
     }
 
     func testSessionMutatorMove503WithServerPayloadMapsToStreamingBusyError() async throws {
-        // Upstream refuses a move while the session streams: 503 + JSON error payload.
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/session/move")
             let response = HTTPURLResponse(
@@ -330,8 +329,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
     }
 
     func testSessionMutatorMoveProxy503WithoutJSONPayloadKeepsGenericAPIError() async throws {
-        // A tunnel/proxy 503 serves HTML, not the server's JSON payload; keep the
-        // generic connectivity message for that case (issue #25).
         let client = makeClient { request in
             let response = HTTPURLResponse(
                 url: request.url!,
@@ -412,11 +409,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         XCTAssertEqual(response.session?.messagesOffset, 0)
     }
 
-    // MARK: Hermes (#1048)
-
-    /// Each change PATCHes one field of that session, with its Profile in the body, as the
-    /// host's `SessionRename` takes it. A host from before the write fence (#1300) answers the
-    /// snapshot read 404, so its PATCH carries no write identity.
     @MainActor
     func testHermesSessionChangesPatchOneFieldWithTheProfileInTheBody() async throws {
         var patches: [(path: String, body: BotJSON)] = []
@@ -439,8 +431,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         ])
     }
 
-    /// Behind the write fence (#1300) each PATCH carries its own request id and the revision the
-    /// snapshot read just before it, and never `expected_generation`.
     @MainActor
     func testHermesFencedSessionChangeCarriesTheSnapshotsRevision() async throws {
         var revision = 12
@@ -467,8 +457,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         XCTAssertEqual(patches.map { $0["expected_generation"] }, [.null, .null])
     }
 
-    /// Headless `hermes serve` from before the fence answers the snapshot read with its own
-    /// catch-all, so its PATCH also goes out bare.
     @MainActor
     func testHermesHeadlessServeHostTakesTheChangeBare() async throws {
         var patch = BotJSON.null
@@ -489,8 +477,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         XCTAssertEqual(patch["request_id"], .null)
     }
 
-    /// A fence 409, or an owner's 404 or 403 (#1335), is never resent: it comes back as the refusal
-    /// its `detail` names.
     @MainActor
     func testHermesFenceRefusalIsNotResent() async throws {
         let rows: [(status: Int, detail: String, refusal: HermesSessionFenceRefusal)] = [
@@ -522,7 +508,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         }
     }
 
-    /// A title the host refuses comes back in its own words; any other refusal stays a status.
     @MainActor
     func testHermesRefusedTitleCarriesTheHostsMessage() async throws {
         let detail = "Title too long (101 chars, max 100)"
@@ -546,7 +531,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         }
     }
 
-    /// Export reads that exact session under its Profile and hands back the host's bytes.
     @MainActor
     func testHermesExportReadsThatSessionUnderItsProfile() async throws {
         let export = BotJSON.object(["id": .string("tip"), "system_prompt": .string("You are Hermes"), "messages": .array([])])
@@ -562,10 +546,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         XCTAssertEqual(request.url?.query, "profile=research")
     }
 
-    // MARK: Hermes (#1051)
-
-    /// An import posts its body and hands back the host's result. A payload the host refuses
-    /// carries its first error and every session it named; a 413 stays a status.
     @MainActor
     func testHermesImportPostsTheSessionAndCarriesTheHostsRefusal() async throws {
         var status = 200
@@ -614,7 +594,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         }
     }
 
-    /// A session's own row is read under its Profile; a session the host lacks is nil.
     @MainActor
     func testHermesSessionRowReadsThatSessionOrNothing() async throws {
         let row = BotJSON.object(["id": .string("tip"), "parent_session_id": .string("root"),
@@ -637,7 +616,6 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         XCTAssertEqual(request.url?.query, "profile=research")
     }
 
-    /// A connected client on a scripted host whose REST routes `answer` serves first.
     @MainActor
     private func hermesClient(_ answer: @escaping (URLRequest) -> HermesHostFixture.Reply?) async throws -> BotClient {
         addTeardownBlock { HermesHostFixture.reset() }

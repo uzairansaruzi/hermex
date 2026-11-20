@@ -1,19 +1,11 @@
 import SwiftUI
 
-/// The `@` panel: the workspace files and folders that match the path being
-/// typed, on the same glass as the `/` panel so the two read as one surface.
 struct FilePathAutocompleteView: View {
-    // Row height tracks Dynamic Type so the panel is never taller or shorter
-    // than the rows it actually draws.
     @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 48
     @ScaledMetric(relativeTo: .subheadline) private var emptyPanelHeight: CGFloat = 64
 
-    /// The path typed after the `@`, without it.
     let query: String
-    /// Owned by the composer, so its directory listings outlive one open panel.
     let search: ComposerFilePathSearch
-    /// Answers one query with rows. Sessions lists the workspace folder the
-    /// query names; Bot Chats complete the word through `complete.path`.
     let load: (String) async -> Void
     let onSelect: (ComposerFilePathSearch.Match) -> Void
 
@@ -48,14 +40,11 @@ struct FilePathAutocompleteView: View {
         }
     }
 
-    /// What one load answers: the query, in the folder a reloading reset last moved the search to.
     private struct LoadKey: Equatable {
         let query: String
         let scope: Int
     }
 
-    /// A listing that failed reads as "nothing matched": the panel is a
-    /// shortcut past typing the path, never the only way to name a file.
     @ViewBuilder
     private var emptyText: some View {
         if search.isLoading {
@@ -71,10 +60,6 @@ struct FilePathAutocompleteView: View {
     }
 }
 
-/// One file or folder row: the entry's own glyph, its name, and the folder it
-/// sits in. A folder ends in a chevron, because picking one goes deeper rather
-/// than finishing the reference. The Sessions panel and the Bot `@` panel draw
-/// the same row.
 struct FilePathRow: View {
     let match: ComposerFilePathSearch.Match
     let onSelect: (ComposerFilePathSearch.Match) -> Void
@@ -121,8 +106,6 @@ struct FilePathRow: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// The same glyphs the file tree draws: a quiet grey folder, or the file's
-    /// own type icon.
     @ViewBuilder
     private func icon(for match: ComposerFilePathSearch.Match) -> some View {
         if match.isDirectory {

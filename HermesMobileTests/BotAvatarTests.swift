@@ -90,7 +90,6 @@ import XCTest
         XCTAssertEqual(store.images(connectionID: first)["default"]?.size.width, 4)
         XCTAssertTrue(store.images(connectionID: second).isEmpty)
 
-        // Loading the replacement connection's roster drops the old connection's image.
         await store.refresh([profile], connectionID: second, using: large) {}
         XCTAssertEqual(store.images(connectionID: second)["default"]?.size.width, 16)
         XCTAssertTrue(store.images(connectionID: first).isEmpty)
@@ -111,8 +110,6 @@ import XCTest
         XCTAssertEqual(Array(store.images(connectionID: connection).keys), ["ok"])
     }
 
-    /// Desktop uploads a 160x160 PNG copy of its drawn face; Hermex draws the face instead,
-    /// unless the look marks the asset as a photo, and keeps that answer for the revision.
     func testDesktopFaceCopyDrawsTheFaceUnlessTheLookSaysPhoto() async {
         let store = BotAvatarStore()
         let wire = BotAvatarFixtureWire()
@@ -143,7 +140,6 @@ import XCTest
     }
 }
 
-/// A tiny solid PNG the server would return for an avatar, as a data URL.
 func botAvatarDataURL(side: Int) -> String {
     let format = UIGraphicsImageRendererFormat.default()
     format.scale = 1
@@ -153,13 +149,11 @@ func botAvatarDataURL(side: Int) -> String {
     return "data:image/png;base64," + image.pngData()!.base64EncodedString()
 }
 
-/// Answers `profiles.get_asset` from a scripted table; anything else is unsupported.
 @MainActor final class BotAvatarFixtureWire: BotTransport {
     var replayEpoch: String? = "epoch"
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     var assets: [String: BotJSON] = [:]
-    /// Thrown for any Profile missing from `assets`.
     var failure: BotFailure = .transport
     var calls: [(String, [String: BotJSON])] = []
     func connect() async throws {}

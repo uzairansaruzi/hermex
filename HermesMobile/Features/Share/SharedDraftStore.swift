@@ -7,16 +7,10 @@ struct SharedDraftPayload: Codable, Equatable {
     let draft: String?
     let createdAt: Date?
     let attachments: [SharedAttachmentPayload]?
-    /// Where the record came from: nil for a share, else the `ImportedTextOrigin` of a queued
-    /// chat text (#1402, #1476). A value this build doesn't know never opens anywhere.
     let source: String?
-    /// A Shortcut's bound destination: its `SharedShortcutDestination.serverKey` and, optionally,
-    /// its Profile.
     let serverKey: String?
-    /// The server's URL as records written before #1509 stored it. Only read, for those records.
     let server: String?
     let profile: String?
-    /// What the share left out (#1401); absent in payloads written before it.
     let skippedItems: [SharedSkippedItem]?
     let additionalSkippedCount: Int?
 
@@ -47,21 +41,13 @@ struct SharedDraftPayload: Codable, Equatable {
     }
 }
 
-/// Where a queued chat text came from: a Shortcut (#1402) or About's Troubleshoot with Hermes
-/// (#1476). Stored as the record's `source` and on the draft it joins, it picks the review
-/// notice's wording; the text opens the same way either way.
 enum ImportedTextOrigin: String, Codable {
     case shortcut
     case troubleshooting
 }
 
-/// The server, and optionally the Profile, a queued chat text opens on (#1402). Fixed when the
-/// text is queued, so no later server switch can send it anywhere else.
 struct SharedShortcutDestination: Equatable {
-    /// A digest of the server's URL, so the queued record holds no server URL (#1509). The app
-    /// matches it against the servers it has configured, so a removed server can't be named.
     let serverKey: String
-    /// Nil opens in the Profile the server's New Session uses.
     let profile: String?
     var origin: ImportedTextOrigin = .shortcut
 
@@ -82,7 +68,6 @@ struct SharedShortcutDestination: Equatable {
     }
 }
 
-/// Which waiting records a reservation may take: shares, Shortcut texts (#1402), or both.
 struct SharedImportKinds: OptionSet {
     let rawValue: Int
     static let shares = SharedImportKinds(rawValue: 1 << 0)
@@ -90,7 +75,6 @@ struct SharedImportKinds: OptionSet {
     static let all: SharedImportKinds = [.shares, .shortcutTexts]
 }
 
-/// Why a Shortcut's text wasn't queued (#1402). Nothing was written.
 enum SharedShortcutTextError: Error, Equatable {
     case empty
     case tooLong
@@ -117,17 +101,11 @@ struct SharedAttachmentImport: Equatable {
     let data: Data
 }
 
-/// A shared item the extension or inbox left out of a share (#1401), and why. A reason a later
-/// version adds decodes as nil, so its share still opens.
 struct SharedSkippedItem: Codable, Equatable {
     enum Reason: String, Codable {
-        /// Over `HermesShareDraft.maximumSharedAttachmentBytes`.
         case tooLarge
-        /// Its bytes couldn't be read, or were empty.
         case unreadable
-        /// A file of a kind Hermex doesn't attach.
         case unsupported
-        /// Past `HermesShareDraft.maximumSharedAttachmentCount`; such items carry no filename.
         case overLimit
     }
 
@@ -146,8 +124,6 @@ struct SharedSkippedItem: Codable, Equatable {
     }
 }
 
-/// A share's left-out items: the first `maximumItems` in detail, the rest only counted, so a
-/// share of hundreds of files stays a small record.
 struct SharedSkips: Equatable {
     static let maximumItems = 20
 
@@ -168,12 +144,9 @@ struct SharedSkips: Equatable {
 }
 
 struct SharedImport: Equatable {
-    /// A share's text, trimmed; a Shortcut's exactly as it ran.
     let draft: String
     let attachments: [SharedAttachmentImport]
-    /// Set for a Shortcut's text, which opens only here.
     var shortcut: SharedShortcutDestination?
-    /// Not part of the share's content: two shares that differ only here are the same share.
     var skipped = SharedSkips()
 
     var isEmpty: Bool {
@@ -189,9 +162,6 @@ struct SharedImportReservation: Equatable, Identifiable {
 
     var id: String { reservationID }
 
-    /// This share as one occurrence (#1197): stable across retries, releases and relaunch replays
-    /// of one queued item, but new when the same content is shared again after it was consumed,
-    /// whose `itemID` (a content hash) repeats. A Hermes draft records it to add a share once.
     var occurrenceID: String { "\(itemID)@\(createdAt.timeIntervalSinceReferenceDate)" }
 }
 
@@ -201,7 +171,6 @@ enum HermesShareDraft {
             ?? "group.com.uzairansar.hermesmobile"
     }
 
-    // Legacy single-slot names. Existing installs may still have one of these records.
     static let pendingDraftFileName = "pending-share-draft.json"
     static let pendingAttachmentsDirectoryName = "pending-share-attachments"
 
@@ -211,7 +180,6 @@ enum HermesShareDraft {
     static let temporaryItemsDirectoryName = "temporary"
     static let reservationLifetime: TimeInterval = 15 * 60
     static let temporaryItemLifetime: TimeInterval = 24 * 60 * 60
-    /// A Shortcut's text left unopened this long is dropped.
     static let shortcutTextLifetime: TimeInterval = 24 * 60 * 60
     static let maximumShortcutTextBytes = 100 * 1_024
     static let maximumWaitingShortcutTexts = 10
@@ -312,9 +280,6 @@ enum HermesShareDraft {
         )
     }
 
-    /// Queues a chat text for `destination` exactly as given, from a Shortcut (#1402) or About
-    /// (#1476): each run is its own record, so the same text run twice opens twice, in order.
-    /// Throws, writing nothing, for blank or oversized text, or when too many wait already.
     static func saveShortcutText(
         _ text: String,
         for destination: SharedShortcutDestination,
@@ -376,7 +341,6 @@ enum HermesShareDraft {
             do {
                 try fileManager.moveItem(at: pendingURL, to: reservedURL)
             } catch {
-                // Another process may have reserved or consumed this item after enumeration.
                 if !fileManager.fileExists(atPath: pendingURL.path) {
                     continue
                 }
@@ -402,7 +366,6 @@ enum HermesShareDraft {
             guard let loaded = try? loadImport(from: reservedURL), !loaded.sharedImport.isEmpty,
                   loaded.sharedImport.shortcut == nil
                     || now.timeIntervalSince(loaded.createdAt) < shortcutTextLifetime else {
-                // A malformed, incomplete or expired record must not block later valid shares.
                 try? fileManager.removeItem(at: reservedURL)
                 continue
             }
@@ -437,7 +400,6 @@ enum HermesShareDraft {
         return try sortedPendingItemURLs(in: directory, fileManager: fileManager).contains { kinds.contains(kind(of: $0)) }
     }
 
-    /// A waiting record's kind, from its id: a Shortcut's text has its own prefix (`saveShortcutText`).
     private static func kind(of itemURL: URL) -> SharedImportKinds {
         itemURL.lastPathComponent.hasPrefix(shortcutItemPrefix) ? .shortcutTexts : .shares
     }
@@ -520,8 +482,6 @@ enum HermesShareDraft {
         case reservationNoLongerOwned
     }
 
-    /// The share as the inbox stores it, adding to `skipped` each attachment it drops: empty,
-    /// oversized, or past the count limit.
     private static func normalizedImport(
         draft: String,
         attachments: [SharedAttachmentImport],
@@ -561,8 +521,6 @@ enum HermesShareDraft {
         }
     }
 
-    /// Writes `sharedImport` as `itemID`. A share's id is its content hash, so a record already
-    /// waiting under it is the same share and nothing is written; a Shortcut's id is its own.
     private static func enqueue(
         _ sharedImport: SharedImport,
         itemID: String,
@@ -623,7 +581,6 @@ enum HermesShareDraft {
         do {
             try fileManager.moveItem(at: temporaryURL, to: pendingURL)
         } catch {
-            // A concurrent extension save of the same content is a successful deduplication.
             if fileManager.fileExists(atPath: pendingURL.path)
                 || fileManager.fileExists(atPath: reservedURL.path) {
                 return
@@ -647,8 +604,6 @@ enum HermesShareDraft {
         do {
             payload = try JSONDecoder().decode(SharedDraftPayload.self, from: legacyData)
         } catch {
-            // The legacy format has no partial recovery path. Drop malformed data so
-            // it cannot permanently block valid records in the transactional inbox.
             try? fileManager.removeItem(at: legacyPayloadURL)
             try? fileManager.removeItem(at: pendingAttachmentsDirectoryURL(in: directory))
             return
@@ -738,8 +693,6 @@ enum HermesShareDraft {
         }
     }
 
-    /// A share's text is trimmed; a Shortcut's keeps every character. A record from an unknown
-    /// source, or a Shortcut's without a server, throws, so it opens nowhere.
     private static func loadImport(from itemURL: URL) throws -> LoadedSharedImport {
         let payload = try JSONDecoder().decode(
             SharedDraftPayload.self,
@@ -774,10 +727,6 @@ enum HermesShareDraft {
         }
     }
 
-    /// Maps each staged attachment in `directory` rather than reading it, so reserving an
-    /// import on the main actor stays cheap; pages fault in at upload time. The mapping stays
-    /// valid after the reservation is consumed and its files are removed, and nothing rewrites
-    /// a staged file in place. A staged file that is gone or empty joins the payload's skips.
     private static func loadAttachments(
         from payload: SharedDraftPayload,
         in directory: URL

@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Pushed from the editor's Expression row: a large live preview of the draft face
-/// above the sixteen named rest expressions. Tapping a tile edits the draft only;
-/// Save on the editor persists it.
 @MainActor struct BotExpressionPickerView: View {
     let editor: BotProfileEditor
 

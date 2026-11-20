@@ -97,8 +97,6 @@ final class ClarificationTests: XCTestCase {
 
         let didRespond = await viewModel.respondToClarification("Use main")
 
-        // Expired prompt: the stale card dismisses with a friendly explanation
-        // instead of sticking around behind a generic failure (issue #25).
         XCTAssertFalse(didRespond)
         XCTAssertNil(viewModel.clarificationPrompt)
         XCTAssertNil(viewModel.clarificationErrorMessage)

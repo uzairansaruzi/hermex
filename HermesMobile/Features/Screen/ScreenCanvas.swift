@@ -1,14 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// The picture, in a layer `ScreenFrameStore` writes to directly, so a frame never runs SwiftUI.
-/// It fits the view and never asks the desktop to resize. Pinch zooms and one finger pans, with an
-/// inset showing where the view is. While `takesTouches`, a tap clicks what's under it, a hold
-/// right-clicks and two fingers scroll. VoiceOver reads it as one element.
 struct ScreenCanvas: UIViewRepresentable {
     let session: ScreenSession
     let takesTouches: Bool
-    /// Hardware keys and the typing field are live.
     let isControlling: Bool
     @Binding var isTyping: Bool
 
@@ -31,12 +26,9 @@ final class ScreenCanvasView: UIView, UIScrollViewDelegate, UIGestureRecognizerD
     private let viewport = UIView()
     private let field: ScreenKeyField
     private var fitted = CGSize.zero
-    /// Where the last tap landed, as a fraction of the picture, which typing zooms to. A fraction
-    /// because the keyboard and rotation resize the picture.
     private var lastTap: CGPoint?
     private var isControlling = false
     private var isTyping = false
-    /// Finger travel not yet turned into wheel clicks.
     private var scrollTravel: CGFloat = 0
 
     init(session: ScreenSession, onKeyboardDismissed: @escaping () -> Void) {
@@ -104,12 +96,10 @@ final class ScreenCanvasView: UIView, UIScrollViewDelegate, UIGestureRecognizerD
         if typing { focusOnLastTap() }
     }
 
-    /// Only a view in a window can become first responder, so this runs again when it joins one.
     private func applyFocus() {
         if isTyping {
             field.becomeFirstResponder()
         } else if isControlling {
-            // Hardware keys reach whichever is first responder, with no keyboard on screen.
             becomeFirstResponder()
         } else {
             field.resignFirstResponder()
@@ -138,8 +128,6 @@ final class ScreenCanvasView: UIView, UIScrollViewDelegate, UIGestureRecognizerD
         let rest = ScreenHardwareKeys.forward(presses, down: false, to: session)
         if !rest.isEmpty { super.pressesCancelled(rest, with: event) }
     }
-
-    // MARK: - Layout
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -178,7 +166,6 @@ final class ScreenCanvasView: UIView, UIScrollViewDelegate, UIGestureRecognizerD
         scroll.contentInset = UIEdgeInsets(top: y, left: x, bottom: y, right: x)
     }
 
-    /// While typing, the view stays on the field that was tapped, so the user sees what they type.
     private func focusOnLastTap() {
         guard let lastTap, fitted.width > 0 else { return }
         let size = CGSize(width: fitted.width / 2.5, height: fitted.height / 2.5)
@@ -208,8 +195,6 @@ final class ScreenCanvasView: UIView, UIScrollViewDelegate, UIGestureRecognizerD
         updateInset()
     }
 
-    // MARK: - Touch
-
     private func pixel(_ point: CGPoint) -> (x: Int, y: Int)? {
         guard let image = session.frames.image else { return nil }
         return screenPixel(at: point, in: picture.bounds.size, width: image.width, height: image.height)
@@ -232,7 +217,6 @@ final class ScreenCanvasView: UIView, UIScrollViewDelegate, UIGestureRecognizerD
         if recognizer.state == .began { scrollTravel = 0 }
         scrollTravel += recognizer.translation(in: self).y
         recognizer.setTranslation(.zero, in: self)
-        // Two fingers both scroll and pinch. A pinch that has started is zooming, so it doesn't scroll.
         if let pinch = scroll.pinchGestureRecognizer, pinch.state == .began || pinch.state == .changed {
             scrollTravel = 0
             return
@@ -247,8 +231,6 @@ final class ScreenCanvasView: UIView, UIScrollViewDelegate, UIGestureRecognizerD
     }
 }
 
-/// Turns vertical finger travel into wheel clicks. Fingers moving up push the content up, which
-/// is the wheel going down, as on a trackpad.
 enum ScreenWheel {
     private static let pointsPerClick: CGFloat = 24
 
@@ -260,8 +242,6 @@ enum ScreenWheel {
     }
 }
 
-/// Carries the iOS keyboard: Paste and password AutoFill insert through it, and each scalar goes
-/// out as a key. It stays empty, so nothing typed, a password least of all, is kept on the phone.
 final class ScreenKeyField: UITextField, UITextFieldDelegate {
     private let session: ScreenSession
     private let onDismissed: () -> Void
@@ -290,7 +270,6 @@ final class ScreenKeyField: UITextField, UITextFieldDelegate {
         return false
     }
 
-    /// An empty field reports Backspace here and nowhere else.
     override func deleteBackward() {
         session.press(.backspace)
     }
@@ -320,9 +299,7 @@ final class ScreenKeyField: UITextField, UITextFieldDelegate {
     }
 }
 
-/// Maps a hardware keyboard to the screen.
 @MainActor enum ScreenHardwareKeys {
-    /// Sends what it can and returns what it couldn't, for the responder chain.
     static func forward(_ presses: Set<UIPress>, down: Bool, to session: ScreenSession) -> Set<UIPress> {
         presses.filter { press in
             guard let uiKey = press.key, let key = key(uiKey) else { return true }
@@ -363,7 +340,6 @@ final class ScreenKeyField: UITextField, UITextFieldDelegate {
         case .keyboardF11: return .function(11)
         case .keyboardF12: return .function(12)
         default:
-            // Shift picks the character itself; with Control, Option or Command the key is what counts.
             let chorded = !key.modifierFlags.intersection([.control, .alternate, .command]).isEmpty
             let text = chorded ? key.charactersIgnoringModifiers : key.characters
             return text.unicodeScalars.first.flatMap(ScreenKey.init(typing:))
@@ -371,8 +347,6 @@ final class ScreenKeyField: UITextField, UITextFieldDelegate {
     }
 }
 
-/// The trackpad panel: swipe to move, tap to click, hold to drag, two fingers to scroll or
-/// right-click. The motion is the pointer's, in the session, which keeps it on the picture.
 struct ScreenTrackpad: UIViewRepresentable {
     let session: ScreenSession
 
@@ -415,8 +389,6 @@ final class ScreenTrackpadView: UIView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    /// Pixels a point of finger travel moves the pointer: the panel's width crosses the picture
-    /// about one and a half times, which is enough to reach a corner in one swipe.
     private var pointerSpeed: CGFloat {
         guard let image = session.frames.image, bounds.width > 0 else { return 1 }
         return CGFloat(image.width) / bounds.width * 1.5

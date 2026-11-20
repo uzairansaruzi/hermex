@@ -1,100 +1,48 @@
 import Foundation
 import OSLog
 
-/// The one gateway WebSocket a `HermesConnection` shares among its Bot screens. The inbox,
-/// each open chat, a room, the creator and the editor hold their own `BotClient` on it.
-/// The socket opens when the first of them connects and closes when the last one leaves,
-/// so it lives exactly while some Bot screen is connected. An `.inactive` scene (Control
-/// Center, a notification banner) keeps it; `.background` closes it once, silently
-/// (`closeForBackground()`). The chat, inbox, rooms and editor reconnect on `.active`;
-/// the creators reconnect on their next Create.
-///
-/// Every socket mints a fresh ticket and runs one handshake before anything else:
-/// `gateway.ready` (recording `replay_epoch` and whether it speaks the canonical session
-/// protocol), then `client.capabilities` as the first outbound frame, then the keepalive.
-/// Screens that connect while it opens wait for that one attempt, so several screens
-/// reconnecting after the same drop make one replacement.
-///
-/// The receive loop multiplexes, so a quiet tool never blocks a Stop request. A reply
-/// settles only the call that sent it. Every event and string-id server request goes to
-/// every attached screen, which admits only its own (a chat its runtime, the inbox
-/// `sessions.changed`); the gateway never answers a server request itself.
-///
-/// A screen's `close()` ends only its own calls, and their late replies reach no one. A
-/// screen's required call past its deadline ends only that screen, which hears it as a
-/// lost connection. A lost socket (a read or send failure, 45 s of silence) ends every
-/// attached screen's part, and each hears it once; anything later from that socket is
-/// dropped by its generation. `retire()` does the same with `.stale` when the
-/// connection's server or configuration is replaced, and refuses reconnects.
-///
-/// A canonical socket (#1341, a gateway's own listener) takes some calls in another shape
-/// (`HermesCall.canonicalParams`), and its session subscriptions outlive a screen: the last
-/// screen holding a session detaches it as it leaves (`HermesCanonicalSubscriptions`).
-///
-/// A Wi-Fi to cellular handover can leave the socket open but dead. `probe()` checks it when
-/// the network path changes: no frame within `probeDeadline` is a lost socket (#1372).
 @MainActor final class HermesGateway {
-    /// Tests shorten the deadlines and script the socket; production takes the defaults.
     struct Options {
         var rpcDeadline: Duration = .seconds(30)
-        /// The `gateway.ping` cadence.
         var heartbeatInterval: Duration = .seconds(15)
-        /// How long `probe()` waits for any frame before it calls the socket lost. One deadline
-        /// for every route; slow tunnels' false positives get recorded before any per-route policy.
         var probeDeadline: Duration = .seconds(8)
-        /// Gets the finished gateway upgrade; nil opens a native socket on the connection's session.
         var socketFactory: ((URLRequest) -> any BotSocket)?
     }
 
     let http: HermesConnection
     private let profile: String?
-    /// `replay_epoch` from the last socket's `gateway.ready`.
     private(set) var replayEpoch: String?
-    /// Whether the last socket's `gateway.ready` said `session_authority`: a gateway's own
-    /// listener, whose sessions keep their own replay epochs and subscriptions (#1341).
     private(set) var speaksCanonicalProtocol = false
-    /// The open canonical socket's sessions and the screens holding each.
     private var subscriptions = HermesCanonicalSubscriptions()
     private let options: Options
     private var socket: (any BotSocket)?
-    /// The open attempt every connecting screen waits on; nil once the socket is open.
     private var opening: Task<Void, Error>?
-    /// The connection's attempt record the opening socket's handshake reports to, once its
-    /// upgrade is in hand (#1395); nil otherwise.
     private var handshakeAttempt: Int?
     private var reader: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
-    /// The socket the probe in flight checks, its deadline, and every `probe()` waiting on it.
     private var probing: (generation: Int, deadline: Task<Void, Never>)?
     private var probeWaiters: [CheckedContinuation<Void, Never>] = []
-    /// Numbers sockets. A frame, failure or deadline from an older one is ignored.
     private var generation = 0
     private var isRetired = false
     private var consumers: [Consumer] = []
     private var nextID = 0
-    /// Numbers the detaches' string ids.
     private var detachCount = 0
     private var pending: [Int: Pending] = [:]
 
     private struct Consumer {
         let id: Int
         weak var client: BotClient?
-        /// False while it waits for the socket to open.
         var attached: Bool
     }
 
     private struct Pending {
         let continuation: CheckedContinuation<BotJSON, Error>
-        /// The screen that sent it; nil for the handshake's own call.
         let consumer: Int?
-        /// `HermesCall.method`, for the log and the connection's missing methods.
         let method: String
         let deadline: Task<Void, Never>
         let rejection: HermesCall.Rejection
     }
 
-    /// `profile` names a Webapp gateway's own Profile (`HermesConnection.gateway(profile:)`),
-    /// whose sockets present tickets bound to it; nil for the shared gateway.
     init(http: HermesConnection, options: Options = Options(), profile: String? = nil) {
         self.http = http
         self.options = options
@@ -106,15 +54,11 @@ import OSLog
         consumers.contains { $0.id == consumer && $0.attached }
     }
 
-    /// Whether `consumer` may send: attached, or nil for the handshake's own call.
     private func maySend(_ consumer: Int?) -> Bool {
         guard let consumer else { return true }
         return isAttached(consumer)
     }
 
-    /// Attaches `client` to the open socket, or waits for the socket to open, starting that
-    /// when nobody has. Throws what opening threw, `.transport` for a client whose socket
-    /// dropped before it could attach, and `.stale` once retired.
     func join(_ client: BotClient) async throws {
         guard !isRetired else { throw BotFailure.stale }
         let isOpen = socket != nil && opening == nil
@@ -125,9 +69,6 @@ import OSLog
         guard isAttached(client.consumerID) else { throw BotFailure.transport }
     }
 
-    /// Ends `client`'s part: its calls in flight fail with `.transport` and their late
-    /// replies reach no one. The last screen to leave closes the socket, silently. On a
-    /// canonical socket another screen keeps open, the sessions only it held are detached.
     func leave(_ client: BotClient) {
         consumers.removeAll { $0.id == client.consumerID }
         for (id, entry) in pending where entry.consumer == client.consumerID {
@@ -147,11 +88,6 @@ import OSLog
         end(nil)
     }
 
-    /// Closes the socket because the app went to the background, so the host sees a clean
-    /// close rather than a half-open socket the tunnel notices only at its idle cutoff.
-    /// Silent: no attached screen hears it, because each suspends on `.background` itself.
-    /// The chat, inbox, rooms and editor reconnect on `.active` onto a fresh socket, ticket
-    /// and handshake; the creators reconnect on their next Create.
     func closeForBackground() {
         guard socket != nil || opening != nil else { return }
         let label = socketLabel(generation)
@@ -159,9 +95,6 @@ import OSLog
         end(nil)
     }
 
-    /// Ends the socket as lost after the dashboard restarted (#1075), whose old socket can
-    /// linger half-open behind a tunnel: attached screens hear `.transport` once and reconnect
-    /// on their own, as after any drop. Nothing happens while no socket is open or opening.
     func dropSocket() {
         guard socket != nil || opening != nil else { return }
         let label = socketLabel(generation)
@@ -169,12 +102,6 @@ import OSLog
         end(BotFailure.transport)
     }
 
-    /// Checks the open socket after the network path changed (#1372): a `gateway.ping` goes
-    /// out, and any frame from the socket within `probeDeadline` proves it alive. Silence
-    /// ends it as lost, so attached screens hear `.transport` once and reconnect onto one
-    /// replacement. A send that never returns still meets the deadline. Calls made while one
-    /// probe runs wait on it. Nothing happens while no socket is open, or while it opens.
-    /// Returns once the probe settles; a leave, background, retirement or fault ends it early.
     func probe() async {
         if probing == nil {
             guard let socket, opening == nil, !isRetired else { return }
@@ -184,7 +111,6 @@ import OSLog
                 self?.settleProbe(alive: false, generation: owner)
             }
             probing = (owner, watchdog)
-            // Sent beside the deadline rather than before it, so a blocked send can't hold it off.
             Task { [weak self] in
                 do { try await socket.send(.string(#"{"jsonrpc":"2.0","id":"probe","method":"gateway.ping","params":{}}"#)) }
                 catch { self?.fail(error, generation: owner) }
@@ -193,8 +119,6 @@ import OSLog
         await withCheckedContinuation { probeWaiters.append($0) }
     }
 
-    /// Settles the probe on socket `owner`: alive for any frame from it, or once it ended
-    /// for another reason; not alive at the deadline, which ends it as lost.
     private func settleProbe(alive: Bool, generation owner: Int) {
         guard let probe = probing, probe.generation == owner else { return }
         probing = nil
@@ -209,17 +133,11 @@ import OSLog
         for waiter in waiters { waiter.resume() }
     }
 
-    /// Ends the socket for good because the connection was replaced. Attached screens hear
-    /// `.stale` once, and every later `join` throws it.
     func retire() {
         isRetired = true
         end(BotFailure.stale)
     }
 
-    /// Admits and sends one typed request for `consumer` (nil: the handshake's own), then
-    /// waits for its reply. `HermesCall.params()` refuses a value the host must never
-    /// receive and shapes it for the release the last sign-in read; `validateDispatch`
-    /// runs at the actual socket write.
     func send(_ call: HermesCall, for consumer: Int?, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         var params = try call.params(hostVersion: http.serverVersion)
         guard let socket, !Task.isCancelled, maySend(consumer) else { throw BotFailure.stale }
@@ -254,7 +172,6 @@ import OSLog
                 Task { [weak self] in
                     guard let self, self.generation == owner, self.pending[id] != nil else { return }
                     do {
-                        // Validate at the actual socket dispatch, after any executor delay.
                         try validateDispatch?()
                     } catch {
                         self.settle(id, throwing: error)
@@ -268,7 +185,6 @@ import OSLog
             Task { @MainActor [weak self] in self?.cancel(id, generation: owner, safely: cancellationSafe) }
         }
         switch call {
-        // A branch's reply names the runtime the host made for it (#1051).
         case .sessionResume, .sessionBranch:
             if let runtime = reply["session_id"].text, !runtime.isEmpty { http.noteAttached(runtime) }
         case .sessionClose(let runtime): http.noteClosed(runtime)
@@ -277,10 +193,6 @@ import OSLog
         return reply
     }
 
-    /// Answers the host's server request `id` (a canonical host's `sudo` or `secret`, #1602) with a
-    /// bare JSON-RPC response frame, for `consumer`. No reply comes back: the host settles the
-    /// request, and its `request.cancel` withdraws the card. Throws `.stale` when the screen left or
-    /// `validateDispatch` refuses, and `.transport` when the write fails, which ends the socket.
     func respond(toRequest id: String, result: BotJSON, for consumer: Int,
                  validateDispatch: (() throws -> Void)?) async throws {
         guard let socket, !Task.isCancelled, maySend(consumer) else { throw BotFailure.stale }
@@ -294,14 +206,10 @@ import OSLog
         }
     }
 
-    /// `consumer` gives up its hold on `session` alone; the session is detached once nobody holds it.
     func release(_ consumer: Int, from session: HermesCanonicalSubscriptions.Session) {
         detach(subscriptions.release(consumer, from: session).map { [$0] } ?? [])
     }
 
-    /// Writes each detach now, ahead of any later call, without waiting for its reply, which no
-    /// screen reads: its string id, like the keepalive's, makes `consume` drop the reply. A lost
-    /// one leaves the subscription until the socket closes.
     private func detach(_ calls: [HermesCall]) {
         guard let socket, opening == nil else { return }
         let owner = generation
@@ -320,8 +228,6 @@ import OSLog
         }
     }
 
-    /// A cancelled read discards its late reply. Any other cancelled call may have reached
-    /// the agent, so its screen ends as `close()` ends it; the socket stays for the others.
     private func cancel(_ id: Int, generation owner: Int, safely: Bool) {
         guard owner == generation, let entry = pending[id] else { return }
         if safely { settle(id, throwing: CancellationError()); return }
@@ -329,10 +235,6 @@ import OSLog
         consumers.first { $0.id == consumer }?.client?.close()
     }
 
-    /// A required call past its deadline. A screen's ends only that screen, which hears
-    /// `.transport` once, as it did when it had its own socket; the heartbeat and the 45 s
-    /// silence deadline decide whether the socket itself is gone. The handshake's own call
-    /// means the socket never became usable.
     private func expire(_ id: Int) {
         guard let entry = pending[id] else { return }
         guard let consumer = entry.consumer else {
@@ -353,9 +255,6 @@ import OSLog
         entry.continuation.resume(throwing: error)
     }
 
-    /// Opens the socket, and reports its handshake to the connection's attempt record (#1395)
-    /// once the upgrade is in hand: a failed sign-in or ticket is the connection's to record.
-    /// A socket lost mid-handshake reports from `end`, which ends this attempt first.
     private func open() -> Task<Void, Error> {
         let owner = generation
         let attempt = Task {
@@ -368,17 +267,12 @@ import OSLog
                 if let record = handshakeAttempt { http.noteLiveHandshake(nil, attempt: record) }
                 handshakeAttempt = nil
             } catch {
-                // An attempt a leave, fault or retirement already ended has nothing left to end.
                 if owner == generation {
                     let label = socketLabel(owner), reason = HermesConnectionLog.reason(error)
                     HermesConnectionLog.logger.error("\(label, privacy: .public) failed to open: \(reason, privacy: .public)")
                     if let record = handshakeAttempt { http.noteLiveHandshake(error, attempt: record) }
                     end(nil)
                 }
-                // The Webapp closes a Profile's socket before accepting it when its gateway doesn't
-                // serve that Profile, which the upgrade reads as a 403 (#1606). A proxy refusing
-                // sockets refuses the shared one too, so only a shared socket that opens says so.
-                // The signed-in status then says why, when the host gives a reason (#1611).
                 if let profile, case BotFailure.upgradeRefused(403) = error, await http.opensSharedSocket() {
                     let serving = try? await HermesProfileServing.read(on: http)
                     throw BotFailure.profileNotServed(profile, serving?.reason)
@@ -390,8 +284,6 @@ import OSLog
         return attempt
     }
 
-    /// Opens the socket with `upgrade`, the connection's fresh ticket or page token, and
-    /// completes the handshake. No screen sends anything until it returns.
     private func handshake(_ upgrade: URLRequest, generation owner: Int) async throws {
         func check() throws {
             guard owner == generation else { throw BotFailure.stale }
@@ -412,16 +304,10 @@ import OSLog
         guard ready["method"].text == "event", ready["params"]["type"].text == "gateway.ready",
               let epoch = ready["params"]["payload"]["replay_epoch"].text, !epoch.isEmpty
         else { throw BotFailure.unsupported }
-        // A gateway's own listener (0.22.1+) owns its sessions under the canonical protocol (#1341).
         let canonical = ready["params"]["payload"]["session_authority"].flag == true
         replayEpoch = epoch
         speaksCanonicalProtocol = canonical
         startReader(socket, generation: owner)
-        // Without this the host treats the socket as a build that predates
-        // server→client requests: approvals are withdrawn unsent, clarify is
-        // answered empty, and sudo/secret are skipped. A host older than the
-        // capability answers -32601 and connects as before; the shared web
-        // client ignores any rejection here too, so only a lost socket fails.
         do { _ = try await send(.clientCapabilities, for: nil, validateDispatch: nil) }
         catch BotFailure.rejected {}
         try check()
@@ -445,11 +331,6 @@ import OSLog
         }
     }
 
-    /// Sends `gateway.ping` on a fixed cadence, because the host sends no JSON
-    /// heartbeat of its own and an idle socket would otherwise hit the 45 s
-    /// silence deadline in `receive`. The pong is just more inbound traffic: its
-    /// string id matches no pending call, so `consume` drops it. A failed send is
-    /// a lost socket.
     private func startHeartbeat(_ socket: any BotSocket, generation owner: Int) {
         let interval = options.heartbeatInterval
         heartbeat = Task { [weak self] in
@@ -468,10 +349,7 @@ import OSLog
         }
     }
 
-    /// Reads one frame, or closes `socket` after 45 s of silence. `label` names the socket in the log.
     private static func receive(_ socket: any BotSocket, label: String) async throws -> BotJSON {
-        // Heartbeats keep a healthy quiet socket alive. Silence eventually becomes
-        // disconnected/unknown instead of leaving a permanent Working label.
         try await withThrowingTaskGroup(of: BotJSON.self) { group in
             group.addTask {
                 let frame = try await socket.receive()
@@ -497,26 +375,18 @@ import OSLog
 
     private func consume(_ frame: BotJSON, generation owner: Int) {
         if frame["method"].text == "event" { deliver(frame["params"], generation: owner); return }
-        // Server requests have string ids and no replay sequence. Forward the
-        // original envelope so screens cannot mistake them for sequenced events.
         if frame["id"].text != nil, frame["method"].text != nil { deliver(frame, generation: owner); return }
-        // The keepalive's pongs and the detaches' replies have string ids and are dropped here, unlogged.
         guard let id = frame["id"].integer else { return }
-        // Read before the call's own settling, so an attach whose screen has left is still detached.
         if speaksCanonicalProtocol, let detach = subscriptions.didAnswer(id, with: frame["result"]) { self.detach([detach]) }
         guard let entry = pending.removeValue(forKey: id) else {
-            // Usually a late reply to a screen that has left.
             let label = socketLabel(owner)
             HermesConnectionLog.logger.notice("\(label, privacy: .public): reply for call \(id, privacy: .public) matched no open call")
             return
         }
         entry.deadline.cancel()
         if let code = frame["error"]["code"].integer {
-            // The host lacks this method, so every screen on the connection leaves it off.
-            // The handshake's own `client.capabilities` is exempt: an older host connects as before.
             if code == -32601, entry.consumer != nil { http.noteUnavailable(entry.method) }
             let data = frame["error"]["data"]
-            // A room's refusals keep their room reason (`BotRoomFailure`), as on the dashboard.
             if speaksCanonicalProtocol, entry.rejection != .room,
                let reason = ["stale_generation": HermesFenceRefusal.Reason.generation,
                              "revision_conflict": .revision][data["reason"].text ?? ""] {
@@ -543,7 +413,6 @@ import OSLog
 
     private func deliver(_ event: BotJSON, generation owner: Int) {
         for consumer in consumers where consumer.attached {
-            // A callback may close a screen or end the socket; check before each one.
             guard generation == owner else { return }
             guard isAttached(consumer.id), let client = consumer.client else { continue }
             client.onEvent?(event)
@@ -555,13 +424,8 @@ import OSLog
         end(error)
     }
 
-    /// Closes the socket, fails every call on it with `.transport` and drops every screen.
-    /// The attached ones hear `error` once, and the log records it; nil ends it silently
-    /// (the last screen left, the app went to the background, or opening failed and its
-    /// waiters get the error from `join`), and the caller logs why.
     private func end(_ error: Error?) {
         let label = socketLabel(generation), wasLive = socket != nil || opening != nil
-        // A socket lost or timed out mid-handshake failed it; a silent close or retirement didn't.
         if let record = handshakeAttempt, let error, (error as? BotFailure) != .stale {
             http.noteLiveHandshake(error, attempt: record)
         }
@@ -591,17 +455,12 @@ import OSLog
         for client in lost { client.socketEnded(error) }
     }
 
-    /// Names socket `number` of this connection in the log, such as `c1 socket s0`.
     private func socketLabel(_ number: Int) -> String { "c\(http.serial) socket s\(number)" }
 }
 
-/// How the socket treats each request once it is on the wire.
 private extension HermesCall {
     enum Rejection { case plain, room, setting, screen }
 
-    /// Reads and uploads that never control agent execution. Cancelling one
-    /// discards its late reply; cancelling any other call ends its screen's part,
-    /// because its outcome is unknown.
     var isCancellationSafe: Bool {
         switch self {
         case .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
@@ -613,10 +472,6 @@ private extension HermesCall {
         }
     }
 
-    /// Optional reads, and slash commands, whose timeout fails only that request: a slow
-    /// command must never end its chat's connection, nor a Hermes chat's slow `@` lookup
-    /// (#1113) or commit message (#1115). Any other call that times out ends its screen's
-    /// connection; the socket stays for the others.
     var timesOutLocally: Bool {
         switch self {
         case .subagentList, .subagentTail, .subagentRoster, .sessionActiveList, .approvalPending, .sessionMostRecent,
@@ -630,17 +485,6 @@ private extension HermesCall {
         }
     }
 
-    /// How long a reply may take. A slash command may run in the host's slash worker, which
-    /// allows it 45 s, so `slash.exec` waits twice the usual deadline. A compaction asks the
-    /// model for its summary, so `session.compress` (#1050) waits as long as Desktop does
-    /// (`SESSION_COMPRESS_TIMEOUT_MS`), past the host's own 630 s cap. A commit message (#1115)
-    /// waits the two minutes webui's does: the host gives its model call 60 s, on a cold tunnel.
-    /// An approval summary is optional, so it gives up after 20 s at most. Starting a screen can
-    /// take a sandbox's container as well as a desktop, so `display.start` waits two minutes.
-    /// The plugin list reads the host's live catalog, so it waits twice the usual deadline, and a
-    /// plugin toggle can sync the Profile's Python packages, so it waits three minutes. An install
-    /// also clones the plugin first, and took 55 s for a small one, so it and an update wait five.
-    /// A canonical compaction (#1603) waits as `session.compress` does.
     func deadline(_ standard: Duration) -> Duration {
         switch self {
         case .slashExec, .pluginsList: return standard * 2
@@ -654,17 +498,6 @@ private extension HermesCall {
         }
     }
 
-    /// Room rejections carry the host's reason as `BotRoomFailure`; setting rejections
-    /// carry its message as `BotSettingFailure`. So do a refused `/goal`, whose 4004 message
-    /// says what was wrong with it (#1013), a refused slash command (#1036), a refused
-    /// `/title`, whose 4022 message names the session already using it (#1048), a refused
-    /// rewind or `/undo`, whose 5008 message says why the host could not write the cut (#1049),
-    /// a refused `/compress`, whose 5005 message says why the compaction failed (#1050), a
-    /// refused project change or move, such as 5063 naming the project that has the folder (#1052),
-    /// a refused branch, whose 5008 message names the session using its name (#1051), a
-    /// refused plugin toggle, install, removal, update or setting, whose message says why (#1582),
-    /// a refused app sign-in or account removal, whose message is the host's reason (#1629), and a
-    /// refused `/rollback`, such as a Webapp's 4001 `session_busy` (#1728).
     var rejection: Rejection {
         if method.hasPrefix("groups.") { return .room }
         if method.hasPrefix("display.") { return .screen }
@@ -681,20 +514,15 @@ private extension HermesCall {
     }
 }
 
-/// The socket boundary permits scripted frames without a backend or Profile storage.
 protocol BotSocket: Sendable {
     func receive() async throws -> URLSessionWebSocketTask.Message
     func send(_ message: URLSessionWebSocketTask.Message) async throws
     func cancel()
 }
 
-/// The production socket. Tests open one against a loopback listener to check how
-/// URLSession reports the handshake.
 struct NativeBotSocket: BotSocket {
     let task: URLSessionWebSocketTask
-    /// Names this socket in the log.
     let label: String
-    /// Set by `cancel()`, so our own close, which URLSession also reports as code 1000, is not logged.
     private let isClosedHere = OSAllocatedUnfairLock(initialState: false)
 
     init(task: URLSessionWebSocketTask, label: String) {
@@ -702,10 +530,6 @@ struct NativeBotSocket: BotSocket {
         self.label = label
     }
 
-    /// A refused upgrade fails the first read with a bare `URLError`; the handshake's HTTP
-    /// status, when there is one, says what refused it, and the gateway logs that failure.
-    /// A socket the other end closed logs its close code, never its reason: a proxy can put
-    /// any bytes there.
     func receive() async throws -> URLSessionWebSocketTask.Message {
         do { return try await task.receive() } catch {
             if let status = (task.response as? HTTPURLResponse)?.statusCode, let refusal = BotFailure(upgradeStatus: status) {
@@ -726,10 +550,6 @@ struct NativeBotSocket: BotSocket {
 }
 
 extension BotFailure {
-    /// The failure a gateway upgrade answered with `status` stands for, or nil for 101, an
-    /// accepted upgrade whose later errors are the socket's own. 408, 429 and 5xx keep
-    /// `.rejected` and its quiet retry and proxy copy; any other status is `.upgradeRefused`,
-    /// which does not heal on its own.
     init?(upgradeStatus status: Int) {
         switch status {
         case 101: return nil

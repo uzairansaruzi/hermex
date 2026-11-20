@@ -1,13 +1,11 @@
 import SwiftUI
 
-/// What one line of a ```diff or ```patch fence is.
 enum MarkdownDiffLineKind: Equatable {
     case added
     case removed
     case context
     case hunk
     case fileHeader
-    /// `\ No newline at end of file`: metadata that counts toward neither side.
     case note
 }
 
@@ -15,7 +13,6 @@ struct MarkdownDiffLine: Equatable, Identifiable {
     let id: Int
     let kind: MarkdownDiffLineKind
     let text: String
-    /// The same 500-character segments `PlainCodeBlockText` draws, so a long line stays cheap to lay out.
     let segments: [MarkdownPlainCodeSegment]
 }
 
@@ -24,25 +21,17 @@ struct MarkdownDiffDocument: Equatable {
     let additions: Int
     let deletions: Int
 
-    /// Whether the block is long enough to collapse to `collapsedLineLimit` lines.
     var isCollapsible: Bool { lines.count > MarkdownDiffFormatter.collapsedLineLimit }
 
-    /// The rows to draw: every line when expanded or short, otherwise the first `collapsedLineLimit`.
     func visibleLines(showingAll: Bool) -> [MarkdownDiffLine] {
         isCollapsible && !showingAll ? Array(lines.prefix(MarkdownDiffFormatter.collapsedLineLimit)) : lines
     }
 }
 
-/// Classifies the lines of a diff or patch fence by prefix in one pass on the main
-/// actor, so chat tints them natively and never sends them through Highlightr.
-/// Handles git and plain `diff -u` output, multi-file patches with or without
-/// `diff --git` lines, and hand-written diffs with bare or missing `@@` headers.
 enum MarkdownDiffFormatter {
-    /// A settled diff block shows this many lines until the reader expands it.
     static let collapsedLineLimit = 80
 
     private static let languages: Set<String> = ["diff", "patch"]
-    /// Lines outside a counted hunk that describe a file rather than change it.
     private static let fileHeaderPrefixes = [
         "diff ",
         "index ",
@@ -60,16 +49,11 @@ enum MarkdownDiffFormatter {
         "copy to"
     ]
 
-    /// Whether a fence language is diff or patch. Reads only the language, so it is a cheap gate.
     static func isDiffLanguage(_ language: String?) -> Bool {
         guard let normalized = MarkdownHighlightPolicy.normalizedLanguage(from: language) else { return false }
         return languages.contains(normalized)
     }
 
-    /// The styled document for a code fence, or nil when the fence renders as plain code:
-    /// it is still streaming, is not diff or patch, is empty, or is past the highlighter's
-    /// size guards (characters, lines, line length). Styled documents are cached by source,
-    /// so a body pass from the wrap toggle, Show all, or appearance never re-parses.
     static func document(for code: String, language: String?, isStreaming: Bool) -> MarkdownDiffDocument? {
         guard !isStreaming,
               let normalized = MarkdownHighlightPolicy.normalizedLanguage(from: language),
@@ -79,21 +63,15 @@ enum MarkdownDiffFormatter {
         let key = code as NSString
         if let cached = cache.object(forKey: key) { return cached.document }
         let document = fitsSizeGuards(code) ? parse(code) : nil
-        // Only styled documents are kept, so an oversized plain fence never pins its source here.
         if let document { cache.setObject(CacheBox(document), forKey: key) }
         return document
     }
 
-    /// Whether diff source is non-empty and within the highlighter's size guards
-    /// (characters, lines, line length), so drawing it row by row stays cheap.
     static func fitsSizeGuards(_ code: String) -> Bool {
-        // Diff reaches `.highRiskLanguage` only after the empty and size guards pass.
         MarkdownHighlightPolicy.decision(for: code, language: "diff", isStreaming: false)
             == .plain(reason: .highRiskLanguage, normalizedLanguage: "diff")
     }
 
-    /// Settled diff documents keyed by the exact fence source (diff and patch parse the
-    /// same). `NSCache` evicts under memory pressure and is thread-safe.
     private static let cache: NSCache<NSString, CacheBox> = {
         let cache = NSCache<NSString, CacheBox>()
         cache.countLimit = 64
@@ -105,23 +83,16 @@ enum MarkdownDiffFormatter {
         init(_ document: MarkdownDiffDocument) { self.document = document }
     }
 
-    /// Classifies every line. An `@@ -a,b +c,d @@` header opens a hunk whose counts
-    /// bound it, so a counted `--- x` or `+++ y` line is a change, and the next file's
-    /// `---`/`+++` lines are headers once the counts run out. Outside a counted hunk
-    /// (before the first `@@`, after a bare `@@`, or past the counts), prefix rules
-    /// apply with `--- `/`+++ ` and git's metadata lines read as file headers.
     static func parse(_ code: String) -> MarkdownDiffDocument {
         var lines: [MarkdownDiffLine] = []
         var additions = 0
         var deletions = 0
-        // Old and new lines left in the current counted hunk; nil outside one.
         var remaining: (old: Int, new: Int)?
 
         for (index, text) in MarkdownPlainCodeFormatter.rawLines(in: code).enumerated() {
             let kind: MarkdownDiffLineKind
             if text.hasPrefix("@@") {
                 kind = .hunk
-                // Compared, never summed: a header like `-1,9223372036854775807` must not overflow.
                 remaining = hunkCounts(in: text).flatMap { $0.old > 0 || $0.new > 0 ? $0 : nil }
             } else if var counts = remaining, let counted = countedKind(of: text) {
                 kind = counted
@@ -155,9 +126,6 @@ enum MarkdownDiffFormatter {
         return MarkdownDiffDocument(lines: lines, additions: additions, deletions: deletions)
     }
 
-    /// Inside a counted hunk the first character alone decides; nil for a line that
-    /// cannot belong to a hunk, which ends it. An empty line is context whose space
-    /// was trimmed.
     private static func countedKind(of line: String) -> MarkdownDiffLineKind? {
         switch line.first {
         case "+": .added
@@ -178,8 +146,6 @@ enum MarkdownDiffFormatter {
         }
     }
 
-    /// The old and new line counts of `@@ -a[,b] +c[,d] @@`, where an omitted count
-    /// means 1. Nil for a bare `@@` or any header that does not parse.
     private static func hunkCounts(in line: String) -> (old: Int, new: Int)? {
         let scanner = Scanner(string: line)
         guard scanner.scanString("@@") != nil,
@@ -195,9 +161,6 @@ enum MarkdownDiffFormatter {
     }
 }
 
-/// The horizontal-scroll layout of a settled diff. It owns the viewport width so the
-/// post-layout width write re-renders only this view, not `ChatCodeBlock` (which
-/// would re-parse the diff).
 struct DiffCodeBlockScrollBody: View {
     let lines: [MarkdownDiffLine]
 
@@ -212,15 +175,9 @@ struct DiffCodeBlockScrollBody: View {
     }
 }
 
-/// The settled body of a diff fence inside `ChatCodeBlock`: one row per line, tinted
-/// edge to edge by kind with the text kept primary and the `+`/`-` prefix visible,
-/// so color is never the only signal. Tints match the Git review sheet.
 struct DiffCodeBlockText: View {
     let lines: [MarkdownDiffLine]
-    /// See `PlainCodeBlockText.wraps`.
     var wraps = false
-    /// The scroll viewport's width in the horizontal-scroll layout, so a short line's
-    /// tint still reaches the block's trailing edge.
     var minRowWidth: CGFloat = 0
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -278,7 +235,6 @@ struct DiffCodeBlockText: View {
         }
     }
 
-    /// "added, <text>" / "removed, <text>" without the prefix, like the review sheet's rows.
     static func accessibilityLabel(for line: MarkdownDiffLine) -> String {
         let change: String
         switch line.kind {

@@ -2,13 +2,7 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// `HermesConversation`, the engine every Hermes chat attaches through, over #901's
-/// socket-level host and `BotFixtureWire`: a stored session attaches by its key, a new
-/// session is created once, a bot's chat is found by its title, frames are held and handed
-/// over in order, and a drop reconnects on a backoff that only reads.
 @MainActor final class HermesConversationTests: XCTestCase {
-    /// A stored session resumes its own key with no title lookup, and its frames reach the
-    /// owner in order: the replay, then the snapshot, then frames that landed meanwhile.
     func testASessionAttachesByItsKeyAndHandsOverOrderedFrames() async {
         let host = runningTurn()
         let (conversation, owner, _) = attach(host, .session(profile: profile, key: "tip"))
@@ -20,8 +14,6 @@ import Observation
         XCTAssertEqual(host.transcriptReads(since: 0), [false, false], "the owner reads history itself (#1047)")
         XCTAssertEqual(owner.log, ["root tip", "replay 1", "replay 2", "replay 3", "snapshot", "connected"])
 
-        // Seq 4 and 5 were missed while away; 6 lands live ahead of the replay reply,
-        // behind a copy of 4.
         let missed = [frame(4), frame(5)]
         host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 5, events: missed),
                                                 before: [missed[0], frame(6)]))
@@ -32,7 +24,6 @@ import Observation
         conversation.suspend()
     }
 
-    /// A hole in the live stream, or a frame without a `seq`, is the rebuild signal.
     func testASessionSignalsARebuildOnAGap() async {
         let host = runningTurn()
         let (conversation, owner, client) = attach(host, .session(profile: profile, key: "tip"))
@@ -49,9 +40,6 @@ import Observation
         conversation.suspend()
     }
 
-    /// `session.create` mints the session once; its reduced resume reply (no `session_key`,
-    /// no `running`) is accepted, and the stored key comes from `stored_session_id`. A drop
-    /// reattaches to that session and only reads.
     func testANewSessionIsCreatedOnceAndAcceptsTheReducedReply() async {
         let host = BotSocketHost()
         let reduced = BotJSON.object([
@@ -85,8 +73,6 @@ import Observation
         conversation.suspend()
     }
 
-    /// A bot's chat keeps the draft key it always had. Every other target has its own draft,
-    /// which survives a relaunch and leaves with its connection.
     func testEachTargetKeepsItsOwnDraft() async throws {
         let server = URL(string: "https://hermes.example")!, connectionID = UUID()
         let chat = ConversationTarget.canonicalChat(profile: profile)
@@ -113,11 +99,6 @@ import Observation
         XCTAssertTrue(afterRemoval.isEmpty, "a removed connection takes its session drafts too")
     }
 
-    // MARK: A bot's chat
-
-    /// A bot's chat is found by its exact title on every attach: the row's `id` is the
-    /// canonical root, its `resolved_id` the tip `session.resume` attaches, and the runtime is
-    /// the resume reply's. The resume never closes the session when the socket drops.
     func testABotChatKeepsItsRootTipAndRuntimeSeparate() async {
         let wire = BotFixtureWire()
         let (conversation, owner) = attach(wire, .canonicalChat(profile: profile))
@@ -134,8 +115,6 @@ import Observation
         conversation.suspend()
     }
 
-    /// A compaction moves the tip and keeps the root. Another root under the title is the
-    /// host's new Bot Chat (#1339): the attach follows it, and tells the owner first.
     func testABotChatFollowsANewTipAndARootTheHostReplaced() async {
         let wire = BotFixtureWire()
         let (conversation, owner) = attach(wire, .canonicalChat(profile: profile))
@@ -154,7 +133,6 @@ import Observation
         conversation.suspend()
     }
 
-    /// A lookup that finds no chat, or fails, never creates a replacement.
     func testAMissingOrFailedLookupNeverCreatesABotChat() async {
         for failure in [BotFailure.missingChat, .rejected(5000)] {
             let wire = BotFixtureWire(); wire.lookupFailure = failure
@@ -166,9 +144,6 @@ import Observation
         }
     }
 
-    // MARK: Reconnecting
-
-    /// A transient drop reattaches on its own and only reads.
     func testATransientDropReconnectsWithoutSendingAnything() async {
         for failure in [BotFailure.transport, .rejected(503), .rejected(429)] {
             let wire = BotFixtureWire()
@@ -186,7 +161,6 @@ import Observation
         }
     }
 
-    /// The backoff doubles to 30 s and stops at a refused password, which is never retried.
     func testReconnectBacksOffAndStopsForARefusedPassword() async {
         let wire = BotFixtureWire()
         var delays: [Duration] = []
@@ -206,8 +180,6 @@ import Observation
         conversation.suspend()
     }
 
-    /// Only what can clear on its own is retried: a proxy's 502 is, while a refused password,
-    /// an address that is not a dashboard and a refused gateway upgrade wait for the user.
     func testOnlyFailuresThatCanClearOnTheirOwnRetry() async {
         let cases: [(BotFailure, Bool)] = [(.rejected(502), true), (.rejected(401), false),
                                            (.notDashboard, false), (.upgradeRefused(403), false)]
@@ -244,7 +216,6 @@ import Observation
         XCTAssertEqual(conversation.connectionState, .disconnected)
     }
 
-    /// A screen that leaves while `session.resume` is out takes nothing from its late reply.
     func testSuspendingDuringResumeDropsTheLateReply() async {
         let wire = BotFixtureWire()
         let reached = expectation(description: "resume requested")
@@ -261,8 +232,6 @@ import Observation
         XCTAssertEqual(conversation.connectionState, .disconnected)
     }
 
-    /// The host answers 4007 while it swaps in a replacement runtime and 4009 while an
-    /// interrupt settles: both clear on their own, so the attach retries quietly.
     func testAResumeRefusedWhileTheHostSwapsOrSettlesTheRuntimeReconnects() async {
         for code in [4007, 4009] {
             let host = runningTurn()
@@ -302,7 +271,6 @@ import Observation
         conversation.suspend()
     }
 
-    /// Only `session.resume`'s refusals wait out the window.
     func testA4007FromTheBotChatLookupIsNotRetried() async {
         let wire = BotFixtureWire(); wire.lookupFailure = .rejected(4007)
         let (conversation, owner) = attach(wire, .canonicalChat(profile: profile),
@@ -313,10 +281,6 @@ import Observation
         conversation.suspend()
     }
 
-    // MARK: Held frames
-
-    /// The host can write a frame after reading the replay it is about to send: it is handed
-    /// over once, after the replay, and the cursor never moves back.
     func testAFrameAheadOfAnUnchangedReplayIsHandedOverOnceAfterIt() async {
         let host = runningTurn()
         let (conversation, owner, _) = attach(host, .session(profile: profile, key: "tip"))
@@ -330,7 +294,6 @@ import Observation
         conversation.suspend()
     }
 
-    /// A held frame past a hole in the replay is handed over as a gap.
     func testAGapAfterTheHeldFramesIsHandedOverAsAGap() async {
         let host = runningTurn()
         let (conversation, owner, _) = attach(host, .session(profile: profile, key: "tip"))
@@ -344,8 +307,6 @@ import Observation
         conversation.suspend()
     }
 
-    /// Past the replay ring's 512 frames the hold has lost some, so the owner rebuilds
-    /// instead of applying what was kept.
     func testFramesPastTheHoldLimitAreLost() async {
         let host = runningTurn()
         let (conversation, owner, _) = attach(host, .session(profile: profile, key: "tip"))
@@ -359,12 +320,6 @@ import Observation
         conversation.suspend()
     }
 
-    // MARK: Canonical sockets
-
-    /// On a canonical socket (#1341) a Bot Chat's resume carries no `close_on_disconnect`, its
-    /// canonical snapshot (no `session_key`) is this attach's, and the replay goes under the
-    /// snapshot's own epoch, never `gateway.ready`'s. A drop reattaches from the cursor and hands
-    /// over each frame once, though the live copy of seq 3 landed ahead of its replay.
     func testACanonicalBotChatReplaysUnderItsOwnEpochAndReconnectsDeliveringEachFrameOnce() async {
         let host = BotSocketHost()
         host.always("session.resume", .init(result: canonicalSnapshot()))
@@ -395,7 +350,6 @@ import Observation
         conversation.suspend()
     }
 
-    /// A canonical snapshot of the Bot Chat at `tip`, under `session-epoch`.
     private func canonicalSnapshot() -> BotJSON {
         .object([
             "session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string("session-epoch"),
@@ -405,7 +359,6 @@ import Observation
         ])
     }
 
-    /// Each `session.events.since` the host received: its cursor, epoch and Profile.
     private func replays(_ host: BotSocketHost) -> [(lastSeen: Int?, epoch: String?, profile: String?)] {
         host.requests.filter { $0["method"].text == "session.events.since" }
             .map { ($0["params"]["last_seen"].integer, $0["params"]["replay_epoch"].text, $0["params"]["profile"].text) }
@@ -413,14 +366,12 @@ import Observation
 
     private let profile = "inbox-triage"
 
-    /// A host whose replay holds the running turn through seq 3.
     private func runningTurn() -> BotSocketHost {
         let host = BotSocketHost()
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 3, events: [frame(1), frame(2), frame(3)])))
         return host
     }
 
-    /// An engine on `target` over a fresh connection to `host`, with an owner that logs.
     private func attach(_ host: BotSocketHost, _ target: ConversationTarget,
                         now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
                         // test-wait: a factory default; a reconnect waits 1 s or more, so a test that
@@ -433,7 +384,6 @@ import Observation
         return (conversation, owner, client)
     }
 
-    /// An engine on `target` over `wire`, with an owner that logs.
     private func attach(_ wire: any BotTransport, _ target: ConversationTarget,
                         now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
                         // test-wait: a factory default; a reconnect waits 1 s or more, so a test that
@@ -458,7 +408,6 @@ import Observation
     }
 }
 
-/// Logs what the engine hands over, in order.
 @MainActor private final class RecordingOwner: HermesConversationOwner {
     var log: [String] = []
 

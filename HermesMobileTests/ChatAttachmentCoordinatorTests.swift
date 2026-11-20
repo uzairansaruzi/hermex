@@ -408,8 +408,6 @@ final class ChatAttachmentCoordinatorTests: APIClientTestCase {
             draftAttachment: record
         )
 
-        // Restore failures must not surface a per-item banner or delegate
-        // error; the caller reports in aggregate and keeps the draft record.
         XCTAssertNil(restored)
         XCTAssertTrue(coordinator.pendingAttachments.isEmpty)
         XCTAssertNil(coordinator.uploadAttachmentErrorMessage)

@@ -2,10 +2,6 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// Hermes projects as folder lanes (#1052) on the scripted gateway: a real `BotClient` and
-/// `HermesGateway` over `BotSocketHost`'s socket, and `HermesHostFixture` for the list's pages, in
-/// the shapes the 0.21.5 pin answers (`tui_gateway/methods_projects.py`, `project_tree.py`,
-/// `methods_session.py` `session.workspace.move`).
 @MainActor final class HermesProjectsTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let record = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
@@ -25,11 +21,6 @@ import Observation
         super.tearDown()
     }
 
-    // MARK: Lanes
-
-    /// The lanes are the user's projects, then the automatic per-repository ones, in the host's
-    /// order; its "No project" bucket is the unfiltered list, never a lane. Each row shows in the
-    /// lane that claims it.
     func testLanesAreTheHostsProjectsWithoutNoProject() async throws {
         let host = BotSocketHost()
         let connection = host.connection(record)
@@ -56,8 +47,6 @@ import Observation
         XCTAssertEqual(writes(host, ["projects.tree"]), [["profile": .string("default")]])
     }
 
-    /// A lane reads pages until it holds every session the host named for it, then stops, though
-    /// the list itself goes on.
     func testALanePagesUntilItHoldsEverySessionTheHostNamed() async {
         let host = BotSocketHost()
         let connection = host.connection(record)
@@ -78,9 +67,6 @@ import Observation
         XCTAssertEqual(pageOffsets(), [0, 100])
     }
 
-    /// The lanes are read after a list read's rows are in. A "Load more" that starts during that
-    /// read keeps paging held until its own page lands, so a second read of the same page can't
-    /// start and end the list early.
     func testALoadMoreDuringTheLaneReadKeepsPagingHeldUntilItsPageLands() async {
         let host = BotSocketHost()
         let connection = host.connection(record)
@@ -115,11 +101,6 @@ import Observation
         XCTAssertEqual(pageOffsets(), [0, 0, 100])
     }
 
-    // MARK: Create, rename, delete
-
-    /// New Project sends its name, color and folder, the folder as the primary. A folder another
-    /// project has as its primary is refused (5063) with the host's words, which stay in the
-    /// sheet; a created project shows as a lane.
     func testCreateSendsItsFolderAndADuplicateFolderShowsTheHostsWords() async throws {
         let host = BotSocketHost()
         let connection = host.connection(record)
@@ -144,8 +125,6 @@ import Observation
         XCTAssertEqual(lane("p_9", in: list), ["a"])
     }
 
-    /// A lane read that began before a create can answer after the read the create made. Only
-    /// the latest read applies, so the created project stays.
     func testAnOlderLaneReadAnsweringLastKeepsTheCreatedProject() async throws {
         let host = BotSocketHost()
         let connection = host.connection(record)
@@ -178,9 +157,6 @@ import Observation
         XCTAssertEqual(lane("p_9", in: list), ["a"])
     }
 
-    /// Rename and recolor are one `projects.update`. Delete removes only the project: its session
-    /// stays listed, and the reply's `active_id`, which can still name the deleted project, is
-    /// never read.
     func testRenameAndDeleteChangeOnlyTheProject() async throws {
         let host = BotSocketHost()
         let connection = host.connection(record)
@@ -212,10 +188,6 @@ import Observation
         XCTAssertNil(list.sessions.first?.projectId)
     }
 
-    // MARK: Move
-
-    /// Move to Project names the stored session and the project's folder under the row's
-    /// Profile. A folder the host lacks (4017) says so, and there is nothing to undo.
     func testMoveNamesTheFolderAndAMissingFolderSaysSo() async throws {
         let host = BotSocketHost()
         let connection = host.connection(record)
@@ -234,8 +206,6 @@ import Observation
         ])
     }
 
-    /// A moved session shows in the lane that claims its new folder. Undo is the same move back
-    /// to the folder it left, which takes it out again.
     func testAMovedSessionJoinsItsNewLaneAndUndoMovesItBack() async throws {
         let host = BotSocketHost()
         let connection = host.connection(record)
@@ -262,10 +232,6 @@ import Observation
         XCTAssertEqual(writes(host, ["session.workspace.move"]).map { $0["cwd"] }, [.string("/Users/me/launch"), .string("/Users/me/old")])
     }
 
-    /// New Project from a row's Move menu ends with the session in the project: saved on the
-    /// session's own folder, the session is already the project's; saved on any other, a parent
-    /// included (a deeper project may still claim it), it asks the same Move to Project. The
-    /// list's New Project moves nothing.
     func testANewProjectFromAMoveMenuAsksToMoveTheSessionOnlyWhenItWorksElsewhere() throws {
         let session = SessionSummary(sessionId: "a", workspace: "/Users/me/launch/app", profile: "default")
         let fromMenu = HermesProjectCreation(folder: "/Users/me/launch/app", session: session)
@@ -280,10 +246,6 @@ import Observation
         XCTAssertTrue(move.isBusy)
     }
 
-    // MARK: Folder field
-
-    /// The folder field's suggestions are the host's folders under the typed parent, typed as the
-    /// user typed it and ending in `/`; files, and hidden folders until a `.` is typed, are left out.
     func testFolderSuggestionsAreTheHostsFoldersUnderTheTypedParent() {
         let listing = BotJSON.object(["items": .array([
             .object(["text": .string("../src/"), "display": .string("src/"), "meta": .string("dir")]),
@@ -298,13 +260,9 @@ import Observation
         XCTAssertEqual(
             HermesFolderCompletion.suggestions(from: hidden, typed: "/Users/me/.g"), .init(folders: ["/Users/me/.git/"])
         )
-        // A listing under the host's limit is complete, so offering nothing needs no hint.
         XCTAssertEqual(HermesFolderCompletion.suggestions(from: hidden, typed: "~/"), .init())
     }
 
-    /// The host lists 30 entries, hidden ones first, so a home folder's listing can end before
-    /// any folder the field offers. The field then asks for more of the name instead of
-    /// showing nothing.
     func testAFullListingOfHiddenEntriesAsksForMoreOfTheName() {
         let hiddenHome = BotJSON.object(["items": .array((0..<30).map { index in
             .object(["text": .string("~/.cache\(index)/"), "display": .string(".cache\(index)/"), "meta": .string("dir")])
@@ -316,11 +274,6 @@ import Observation
         )
     }
 
-    // MARK: Chat folder picker (#1117)
-
-    /// A chat's folder picker offers its current folder first, then the user's project folders,
-    /// then the folders the Profile's recent sessions worked in, each once. Automatic lanes and
-    /// rows another Profile names are left out.
     func testFolderChoicesAreCurrentThenProjectsThenRecentFolders() {
         let projects = HermesProjectTree(reply: tree([
             node("p_launch", "Launch", path: "/Users/me/launch", sessions: []),
@@ -345,8 +298,6 @@ import Observation
                        "a host that answers nothing offers nothing")
     }
 
-    // MARK: Fixtures
-
     private func makeList(_ connection: HermesConnection) -> SessionListViewModel {
         SessionListViewModel(server: server, unreadStore: SessionUnreadStore(defaults: defaults), hermes: HermesSessionListSource(
             connection: record, profile: "default", makeWire: { _ in BotClient(http: connection) }, preferences: defaults,
@@ -354,8 +305,6 @@ import Observation
         ))
     }
 
-    /// Answers the list's page reads by offset; a page past the last is empty. Call it after
-    /// `BotSocketHost.connection`, whose sign-in script it replaces.
     private func serve(_ pages: [Int: [BotJSON]]) {
         _ = HermesHostFixture.configuration { request in
             if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
@@ -366,7 +315,6 @@ import Observation
         }
     }
 
-    /// The offsets of the list's own page reads: not its scheduled pages or its Archived count.
     private func pageOffsets() -> [Int] {
         HermesHostFixture.requests.filter { $0.url?.path == "/api/sessions" && HermesHostFixture.emptyScheduledPage($0) == nil }.compactMap { request in
             let items = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems
@@ -375,21 +323,17 @@ import Observation
         }
     }
 
-    /// One `/api/sessions` row in the host's shape.
     private func row(_ id: String, lastActive: Double = 100, cwd: String? = nil, profile: String = "default") -> BotJSON {
         var fields: [String: BotJSON] = ["id": .string(id), "last_active": .number(lastActive), "profile": .string(profile)]
         if let cwd { fields["cwd"] = .string(cwd) }
         return .object(fields)
     }
 
-    /// One `projects.tree` reply (`methods_config.py`): the lanes, Desktop's `active_id`, and
-    /// every claimed session id.
     private func tree(_ nodes: [BotJSON], activeID: String? = nil) -> BotJSON {
         .object(["projects": .array(nodes), "active_id": activeID.map(BotJSON.string) ?? .null,
                  "scoped_session_ids": .array(nodes.flatMap { $0["sessionIds"].list ?? [] })])
     }
 
-    /// One lane in `project_tree._project_node`'s wire shape.
     private func node(_ id: String, _ label: String, path: String?, sessions: [String], color: String? = nil,
                       isAuto: Bool = false, isNoProject: Bool = false) -> BotJSON {
         .object([
@@ -401,21 +345,16 @@ import Observation
         ])
     }
 
-    /// The session ids the lane `projectID` shows.
     private func lane(_ projectID: String, in list: SessionListViewModel) -> [String] {
         list.visibleSessions(searchText: "", selectedProjectID: projectID).compactMap(\.sessionId)
     }
 
-    /// The params of every call to one of `methods`, in order.
     private func writes(_ host: BotSocketHost, _ methods: Set<String>) -> [[String: BotJSON]] {
         host.requests.filter { methods.contains($0["method"].text ?? "") }.compactMap { $0["params"].fields }
     }
 
-    /// The list's client, with one `projects.tree` reply held back on request, so an older lane
-    /// read can answer after a newer one.
     private final class HeldTreeWire: BotTransport {
         private let inner: BotClient
-        /// Fulfilled when the next lane read's reply is held; its reply waits for `release()`.
         var holdNext: XCTestExpectation?
         private var held: CheckedContinuation<Void, Never>?
 

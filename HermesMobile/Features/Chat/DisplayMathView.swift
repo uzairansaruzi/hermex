@@ -3,14 +3,6 @@ import SwiftMath
 import SwiftUI
 import UIKit
 
-/// Renders block/display LaTeX (`$$…$$`, `\[…\]`) with the SwiftMath TeX
-/// layout engine when the expression parses, and falls back to the Unicode
-/// approximation (`MarkdownMathFormatter`) for anything SwiftMath can't parse.
-///
-/// Tolerant by design: an unparseable or partial expression degrades to the
-/// previous Unicode rendering instead of crashing or showing SwiftMath's
-/// inline red error. The Unicode approximation is also used as the VoiceOver
-/// label on both paths, so the drawn math stays accessible.
 struct DisplayMathView: View {
     let latex: String
 
@@ -37,13 +29,9 @@ struct DisplayMathView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(approximation)
         .padding(.vertical, 2)
-        // Math/LaTeX is read left-to-right regardless of the chat direction (#259);
-        // mirroring it would reverse equations inside an RTL message.
         .forcedLeftToRight()
     }
 
-    /// The pre-SwiftMath Unicode/serif rendering, kept verbatim as the graceful
-    /// fallback for expressions SwiftMath cannot parse.
     private var fallback: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             Text(approximation)
@@ -61,21 +49,12 @@ struct DisplayMathView: View {
 }
 
 enum MathLaTeX {
-    /// Renderability is a pure, deterministic function of the trimmed LaTeX
-    /// string, so we memoize it. `DisplayMathView`/`MathFenceOrCodeBlock`
-    /// re-check on every layout pass, and markdown-ui rebuilds code blocks on
-    /// each streaming chunk — without this cache the same expression is parsed
-    /// many times over. `NSCache` is thread-safe and self-evicts under memory
-    /// pressure.
     nonisolated(unsafe) private static let renderableCache: NSCache<NSString, NSNumber> = {
         let cache = NSCache<NSString, NSNumber>()
         cache.countLimit = 256
         return cache
     }()
 
-    /// True when SwiftMath can parse `latex` into a math list without error.
-    /// Used to choose the SwiftMath path vs. the Unicode fallback before the
-    /// `MTMathUILabel` is ever mounted, so failures never reach the screen.
     static func isRenderable(_ latex: String) -> Bool {
         let trimmed = latex.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
@@ -93,15 +72,9 @@ enum MathLaTeX {
     }
 }
 
-/// Fenced-code languages that should render as display math rather than source
-/// code (e.g. ```math, ```latex, ```tex). Models sometimes wrap a standalone
-/// equation in a math fence instead of `$$…$$`; those reach the renderer as a
-/// code block, so we re-route the math ones (parity-plus over Hermes WebUI,
-/// which shows these as code).
 enum MathFenceLanguage {
     static let languages: Set<String> = ["math", "latex", "tex"]
 
-    /// True when a fenced code block's info string names a math language.
     static func matches(_ language: String?) -> Bool {
         guard let normalized = MarkdownHighlightPolicy.normalizedLanguage(from: language) else {
             return false
@@ -110,9 +83,6 @@ enum MathFenceLanguage {
     }
 }
 
-/// Wraps SwiftMath's `MTMathUILabel` (a UIKit view) for use in SwiftUI.
-/// Sized to its intrinsic content so long equations scroll horizontally in the
-/// surrounding `ScrollView` instead of clipping.
 private struct SwiftMathLabelView: UIViewRepresentable {
     let latex: String
     let fontSize: CGFloat
@@ -123,8 +93,6 @@ private struct SwiftMathLabelView: UIViewRepresentable {
         let label = MTMathUILabel()
         label.labelMode = .display
         label.textAlignment = .left
-        // We pick the fallback view for unparseable input, so the inline red
-        // error should never appear.
         label.displayErrorInline = false
         label.contentInsets = .zero
         configure(label)
@@ -143,8 +111,6 @@ private struct SwiftMathLabelView: UIViewRepresentable {
         uiView.intrinsicContentSize
     }
 
-    /// Applies the current inputs, skipping no-op writes so repeated SwiftUI
-    /// updates (e.g. during streaming) don't force needless re-typesetting.
     private func configure(_ label: MTMathUILabel) {
         if label.fontSize != fontSize {
             label.fontSize = fontSize
@@ -160,15 +126,11 @@ private struct SwiftMathLabelView: UIViewRepresentable {
         }
     }
 
-    /// Resolves the dynamic label color against the SwiftUI color scheme so the
-    /// Core Graphics-drawn math matches the surrounding text in light and dark.
     private static func resolvedTextColor(for colorScheme: ColorScheme, appearance: AppAppearance) -> MTColor {
         appearance.theme(for: colorScheme).resolvedText(isDark: colorScheme == .dark)
     }
 }
 
-// MarkdownUI draws inline images as Text attachments. SwiftMath supplies their
-// intrinsic size and baseline; paragraphs and lists retain their native flow.
 struct InlineMathImageProvider: InlineImageProvider {
     let fontSize: CGFloat
     let colorScheme: ColorScheme
@@ -204,12 +166,8 @@ enum InlineMathSource {
 
 }
 
-/// Serializes SwiftMath work off the main actor. One bounded cache serves every
-/// Markdown consumer; keys include all raster inputs, never a streaming reply.
 actor InlineMathImageCache {
     static let shared = InlineMathImageCache()
-    // NSCache is thread-safe. Warm reads must not hop through the actor and
-    // publish another view update on each token; only cold rendering is isolated.
     nonisolated(unsafe) private let storage = NSCache<NSString, UIImage>()
     private(set) var renderCount = 0
 
@@ -244,7 +202,6 @@ actor InlineMathImageCache {
             }
             image = scaled.withBaselineOffset(fromBottom: layout.descent)
         } else {
-            // Unknown commands remain readable source, never SwiftMath's error UI.
             let source = "$" + latex + "$" as NSString
             let font = UIFont.systemFont(ofSize: fontSize)
             let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
@@ -272,9 +229,6 @@ extension EnvironmentValues {
     }
 }
 
-/// Adapts only math-bearing inline leaves. MarkdownUI still owns block layout,
-/// list identity and every math-free leaf. Foundation retains nested inline
-/// styles and links while SwiftUI Text attachments share the prose baseline.
 struct MathMarkdownLabel<Label: View>: View {
     let content: MarkdownContent
     let label: Label
@@ -320,7 +274,6 @@ struct MathInlineText: View {
     @Environment(\.displayScale) private var displayScale
     @State private var loaded: (style: InlineMathImageStyle, images: [URL: Image])?
 
-    /// Matches the surrounding Markdown prose, which `Theme.chat` sizes the same way.
     private var fontSize: CGFloat { ChatTypography(dynamicTypeSize: dynamicTypeSize).bodySize }
 
     private var request: InlineMathTextRequest {
@@ -387,7 +340,6 @@ struct InlineMathTextRequest: Equatable {
         InlineMathImageStyle(fontSize: fontSize, dark: dark, theme: theme, scale: scale, tintImages: tintImages)
     }
 
-    /// Token-only appends must not cancel an unchanged image download.
     func imageLoadIdentity() throws -> InlineMathImageLoadIdentity {
         let attributed = try parsed()
         var seen: Set<URL> = []
@@ -398,8 +350,6 @@ struct InlineMathTextRequest: Equatable {
         return InlineMathImageLoadIdentity(style: imageStyle, sources: sources)
     }
 
-    /// The usual streaming path: source changes, but every completed expression
-    /// is already cached. Compose the new Text without async work or state writes.
     func cachedResult(images suppliedImages: [URL: Image] = [:]) throws -> InlineMathTextResult? {
         let attributed = try parsed()
         var images = suppliedImages
@@ -414,7 +364,6 @@ struct InlineMathTextRequest: Equatable {
         return compose(attributed, images: images)
     }
 
-    /// Always compose current prose, retaining any already available attachments.
     func placeholder(images suppliedImages: [URL: Image] = [:]) throws -> InlineMathTextResult {
         let attributed = try parsed()
         var images = suppliedImages
@@ -427,8 +376,6 @@ struct InlineMathTextRequest: Equatable {
         return compose(attributed, images: images)
     }
 
-    /// Retry missing assets without refetching successes. The owning view task
-    /// cancels both provider work and backoff when its assets change or it leaves.
     @MainActor
     func renderWithRetries(
         provider: (any InlineImageProvider)? = nil,
@@ -464,8 +411,6 @@ struct InlineMathTextRequest: Equatable {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                // A failed ordinary image must not remove the sentence or equations.
-                // Its alt text remains the fallback, as on the normal Markdown path.
             }
         }
         try Task.checkCancellation()
@@ -473,12 +418,10 @@ struct InlineMathTextRequest: Equatable {
     }
 
     func parsed() throws -> AttributedString {
-        // Foundation drops image attributes inside links. Recover image attributes
-        // from the parser's source spans without parsing Markdown delimiters here.
         var previous: UInt8 = 0
         let mayContainLink = markdown.utf8.contains { byte in
             defer { previous = byte }
-            return byte == 0x5B && previous != 0x21 // An opening bracket outside image syntax.
+            return byte == 0x5B && previous != 0x21
         }
         guard mayContainLink else {
             return try AttributedString(markdown: markdown, options: .init(interpretedSyntax: .full))
@@ -507,7 +450,6 @@ struct InlineMathTextRequest: Equatable {
     }
 
     private func compose(_ attributed: AttributedString, images: [URL: Image]) -> InlineMathTextResult {
-        // Prose runs share one `Text`: a `+` per run nests as deep as the paragraph is long.
         var text = Text("")
         var prose = AttributedString()
         var selectable = ""
@@ -518,8 +460,6 @@ struct InlineMathTextRequest: Equatable {
                 let alt = InlineMathSource.latex(from: url) ?? String(attributed[run.range].characters)
                 let attachment: Text
                 if let link = run.link {
-                    // SwiftUI drops links on interpolated image attachments.
-                    // Keep the destination usable with readable source/alt text.
                     var linked = AttributedString(alt)
                     linked.link = link
                     attachment = Text(linked)

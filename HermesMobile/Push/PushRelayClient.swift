@@ -2,7 +2,6 @@ import CryptoKit
 import Foundation
 import OSLog
 
-/// Registering and revoking this device at one install's relay.
 @MainActor protocol PushRelayRegistering {
     func registerDevice(token: String, identity: PushBuildIdentity, pairing: PushPairing) async throws
     func deleteDevice(token: String, pairing: PushPairing) async throws
@@ -14,36 +13,18 @@ import OSLog
 }
 
 enum PushRelayError: Error, Equatable {
-    /// The relay answered, but not with success. 400 means the body or the
-    /// environment was wrong, 409 that the install is at its 32-device limit,
-    /// 503 that the relay could not reach storage or APNs and a retry may work.
     case http(statusCode: Int)
-    /// The install key is not the 64 lowercase hex characters the relay expects.
     case malformedInstallKey
     case transport
 }
 
-/// What the relay said about Settings' test notification (#874). Any 200 is delivered:
-/// Apple accepted every banner, or the relay had already sent this event.
 enum PushRelayTestOutcome: Equatable {
     case delivered
-    /// No answer at all: this iPhone is offline, or the relay's host is down.
     case unreachable
-    /// This pairing's install or preview key is not one the relay or the extension
-    /// could use, so nothing was sent.
     case unusablePairing
-    /// Any other answer. `result` is the relay's own code (`apns_rejected`,
-    /// `delivery_retry`, `event_limit`, …), nil when the body was not the relay's JSON,
-    /// such as Cloudflare's own refusal page (#834).
     case rejected(statusCode: Int, result: String?)
 }
 
-/// The relay is a different host from the user's Hermes server and speaks a tiny
-/// contract of its own, so it does not go through `Endpoint`/`APIClient`. Shapes
-/// are from `relay/README.md` and `relay/src/contract.ts` in `uzairansaruzi/hermex-push`.
-///
-/// The install key is a bearer capability and it sits in the *path*, so no URL
-/// built here is ever logged, attached to an error, or shown to the user.
 @MainActor struct PushRelayClient: PushRelayRegistering, PushActivityRelaying {
     private static let logger = Logger(subsystem: "com.uzairansar.hermesmobile", category: "push")
 
@@ -53,14 +34,10 @@ enum PushRelayTestOutcome: Equatable {
         self.session = session
     }
 
-    /// Registering the same token again replaces that device's preferences, so
-    /// this is the launch-time refresh as well as the first pairing's call.
     func registerDevice(token: String, identity: PushBuildIdentity, pairing: PushPairing) async throws {
         var request = URLRequest(url: try Self.devicesURL(pairing: pairing))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // The relay replaces preferences on registration, including launch refresh
-        // and token rotation, so always send this server's confirmed choices.
         request.httpBody = try JSONEncoder().encode(
             DeviceRegistration(deviceToken: token, bundleID: identity.bundleID, environment: identity.environment,
                                prefs: pairing.effectivePreferences)
@@ -68,7 +45,6 @@ enum PushRelayTestOutcome: Equatable {
         try await send(request, describedAs: "register")
     }
 
-    /// Idempotent: a token the relay has already revoked still answers 200.
     func deleteDevice(token: String, pairing: PushPairing) async throws {
         var request = URLRequest(url: try Self.devicesURL(pairing: pairing).appending(path: token))
         request.httpMethod = "DELETE"
@@ -89,11 +65,6 @@ enum PushRelayTestOutcome: Equatable {
         try await send(request, describedAs: "delete activity")
     }
 
-    /// Posts one `reply` event down the plugin's own route, so the test crosses the
-    /// real relay → APNs → notification service path to every iPhone paired with this
-    /// install. One call is one request, with no retry: each tap costs relay quota.
-    /// A fresh `event_id` keeps a second test from being deduplicated as the first; the
-    /// fixed thread and collapse ids make it replace the first banner instead of stacking.
     func sendTestNotification(pairing: PushPairing) async -> PushRelayTestOutcome {
         let keys = PushPreviewKeys(installKey: pairing.installKey, previewKey: pairing.previewKey)
         let preview = PushPreview(title: String(localized: "Hermex test notification"),
@@ -122,7 +93,6 @@ enum PushRelayTestOutcome: Equatable {
     }
 
     static func activityURL(sessionID: String, deviceToken: String, pairing: PushPairing) throws -> URL {
-        // A session is one opaque path segment, including any slash or percent sign.
         let base = try devicesURL(pairing: pairing).appending(path: deviceToken).appending(path: "activities")
         var parts = URLComponents(url: base, resolvingAgainstBaseURL: false)!
         let unreserved = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
@@ -171,10 +141,7 @@ enum PushRelayTestOutcome: Equatable {
         }
     }
 
-    /// Exactly the relay's strict notify schema (`relay/src/contract.ts`): an unknown or
-    /// missing key is a 400. `source: other` makes a tap only open the app.
     private struct TestNotification: Encodable {
-        /// "7e57", repeated: fixed, so a new test banner replaces the last one.
         private static let group = String(repeating: "7e57", count: 8)
         let v = 1
         let eventID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
@@ -194,18 +161,13 @@ enum PushRelayTestOutcome: Equatable {
         }
     }
 
-    /// Every relay answer is `{"result": …}`; anything else decodes to nothing.
     private struct RelayAnswer: Decodable { let result: String? }
 }
 
 extension PushPreview {
-    /// The inverse of `open`, for the one preview the phone writes itself: Settings'
-    /// test notification. It lives in the app target because the extension never seals.
-    /// Nil only for a preview key that is not base64 of 32 bytes.
     static func seal(_ preview: PushPreview, keys: PushPreviewKeys) -> String? {
         guard let rawKey = Data(base64Encoded: keys.previewKey), rawKey.count == 32,
               let plaintext = try? JSONEncoder().encode(preview),
-              // A nil nonce is a fresh random 12 bytes, so `combined` is nonce || ciphertext || tag.
               let combined = try? AES.GCM.seal(plaintext, using: SymmetricKey(data: rawKey),
                                                 authenticating: keys.previewAAD).combined
         else { return nil }

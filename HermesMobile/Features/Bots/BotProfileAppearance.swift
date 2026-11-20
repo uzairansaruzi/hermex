@@ -1,27 +1,18 @@
 import SwiftUI
 import UIKit
 
-/// Static Bot Mode presentation shared with Hermes Desktop. The raw metadata
-/// dictionary remains the source of truth; this projection only edits the keys
-/// Hermex owns on the Profile screen.
 struct BotProfileAppearance: Equatable, Sendable {
     var title: String
     var shape: String?
     var color: String?
     var custom: Bool
     var imageKind: String?
-    /// A `BotAvatarExpression` raw value. Hermex-owned: Desktop keeps the key but renders its own eyes.
     var expression: String?
-    /// An avatar the host's model drew from a description. Hermex-owned, like `expression`.
     var generated: BotGeneratedAvatar? { didSet { storedGenerated = nil } }
-    /// The value as the host stored it, until the user picks a face. A save writes it back as it
-    /// was, so a newer build's fields, or a format this build can't read, are never lost.
     private var storedGenerated: BotJSON?
 
     init(profile: BotProfile) { self.init(look: profile.look, fallbackTitle: profile.name) }
 
-    /// Reads a look object directly, so the editor can rebuild its appearance from the
-    /// look it last saved instead of the roster row it was opened with.
     init(look: [String: BotJSON], fallbackTitle: String) {
         let storedTitle = look["title"]?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         title = storedTitle.isEmpty ? fallbackTitle : storedTitle
@@ -36,8 +27,6 @@ struct BotProfileAppearance: Equatable, Sendable {
         }
     }
 
-    /// Applies only the compatible static appearance fields while retaining
-    /// Desktop-owned organization, groups, timestamps and future fields.
     func merging(into received: [String: BotJSON]) -> [String: BotJSON] {
         var result = received
         Self.set(title, key: "title", in: &result)
@@ -64,15 +53,11 @@ struct BotProfileAppearance: Equatable, Sendable {
     }
 }
 
-/// The swatches the editor and the create sheet offer for a drawn face. The first,
-/// stored as Desktop's `#ffffff`, is the adaptive one: white on a dark screen and
-/// black on a light one, so it never disappears into the background.
 struct BotAvatarColor: Identifiable {
     let hex: String
     let name: LocalizedStringResource
     var id: String { hex }
     var localizedName: String { String(localized: name) }
-    /// What the swatch and the face paint for this entry.
     var swatch: Color { Color.botBody(hex) }
 
     static let adaptiveHex = "#ffffff"
@@ -94,8 +79,6 @@ enum BotAvatarShape: String, CaseIterable, Identifiable, Sendable {
     case controller, barbell, mug, lightbulb, chat, sprout, wateringCan = "watering-can"
     var id: String { rawValue }
 
-    /// The original shapes. Name-seeded faces pick only from these, so adding an avatar never
-    /// changes a bot that nobody customized.
     static let classic: [BotAvatarShape] = [.circle, .blob, .squircle, .pill, .triangle, .hexagon, .cloud, .drop]
 
     var localizedName: String {
@@ -144,7 +127,6 @@ enum BotAvatarExpression: String, CaseIterable, Identifiable, Sendable {
     struct Eye: Equatable { let width: Double; let height: Double; let tilt: Double }
     struct Geometry: Equatable { let left: Eye; let right: Eye; let split: Double }
 
-    /// An unknown or missing stored value reads as neutral rather than failing the row.
     static func resolve(_ raw: String?) -> BotAvatarExpression { raw.flatMap(BotAvatarExpression.init(rawValue:)) ?? .neutral }
 
     var geometry: Geometry {
@@ -193,14 +175,11 @@ enum BotAvatarExpression: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// One frame of Desktop's classic shape vocabulary. It has no clock of its own:
-/// `BotAnimatedFaceView` supplies the pose, and tile grids draw it at rest.
 struct BotAvatarMarkView: View {
     let name: String
     let appearance: BotProfileAppearance
     let size: CGFloat
     var pose: BotFacePose = .rest
-    /// Replaces the shape's own eye placement, so a card's face keeps one set of eyes on any shape.
     var eyeLayout: BotAvatarEyeLayout?
 
     private var presentation: BotAvatarPresentation {
@@ -226,8 +205,6 @@ struct BotAvatarMarkView: View {
         .accessibilityHidden(true)
     }
 
-    /// Bloub measures eyes against the body radius; the neutral eye maps onto the
-    /// layout's capsule, with its lean.
     private func eye(_ eye: BotAvatarExpression.Eye, _ layout: BotAvatarEyeLayout) -> some View {
         Capsule().fill(presentation.eyeColor)
             .frame(width: size * layout.width * eye.width / 0.186, height: size * layout.height * eye.height / 0.412 * pose.lid)
@@ -235,13 +212,9 @@ struct BotAvatarMarkView: View {
     }
 }
 
-/// What a bot's chat title face shows for the current turn (#757). Waiting and failed
-/// override the pinned expression, since a pin is only the resting face; every other
-/// surface keeps the pin. Only `.working` moves beyond a blink.
 enum BotTitleFace {
     case resting, working, waiting, failed
 
-    /// The eyes that replace the pinned expression, or nil to keep it.
     var expression: BotAvatarExpression? {
         switch self {
         case .waiting: return .curious
@@ -250,13 +223,10 @@ enum BotTitleFace {
         }
     }
 
-    /// The motion for an active scene: only work sways (from `beatStart`); every other
-    /// face just blinks, so a pending approval never runs the 15 fps beat.
     func motion(beatStart: Date) -> BotFaceMotion {
         self == .working ? .working(since: beatStart) : .idle
     }
 
-    /// What VoiceOver adds after the bot's name; nil when the face shows no state.
     var accessibilityValue: String? {
         switch self {
         case .waiting: return String(localized: "Needs attention")
@@ -266,9 +236,6 @@ enum BotTitleFace {
     }
 }
 
-/// A bot's chat title (#757): its face and name in one pill beside Back, and the way into the
-/// bot's profile. The face shows the turn's state (`BotTitleFace`) and stays hidden from
-/// VoiceOver, which hears the state as the pill's value instead.
 struct BotChatTitlePill: View {
     let profile: BotProfile
     let avatar: UIImage?
@@ -290,7 +257,6 @@ struct BotChatTitlePill: View {
     }
 }
 
-/// Before iOS 26 the toolbar draws no glass of its own, so the pill supplies a material.
 struct BotChatTitlePillFallback: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 26, *) {
@@ -302,10 +268,6 @@ struct BotChatTitlePillFallback: ViewModifier {
     }
 }
 
-/// A bot's chat's pill in `ChatView` (#1145): `BotChatTitlePill` over the chat's turn. It owns
-/// the working face's beat (#776), so only the pill redraws as the turn moves: one 30 s sway
-/// when work starts or the chat returns from the background mid-turn, then a still lean, and
-/// no motion while the scene is not active.
 struct HermesBotChatPill: View {
     let turn: HermesChatTurnCoordinator
     let onOpen: () -> Void
@@ -323,21 +285,16 @@ struct HermesBotChatPill: View {
                 face: face, onOpen: onOpen
             )
             .onChange(of: turn.botTurn) { workingBeat.observe(turn.botTurn, at: Date()) }
-            // The background drops the socket, so the turn is seen again on return: a new beat.
             .onChange(of: scenePhase) { if scenePhase == .background { workingBeat.rearm() } }
         }
     }
 }
 
-/// An asset wins over the compatible static mark. The fallback now honors the
-/// same shape and color fields the editor writes instead of inventing a letter tile.
 struct BotAvatarView: View {
     let profile: BotProfile
     let avatar: UIImage?
     let size: CGFloat
-    /// Photos never move; a drawn face blinks unless the caller asks for a frozen frame.
     var motion: BotFaceMotion = .idle
-    /// Replaces the pinned expression on a drawn face, for a state the title shows; photos ignore it.
     var expression: BotAvatarExpression? = nil
 
     var body: some View {
@@ -357,20 +314,15 @@ struct BotAvatarView: View {
     }
 }
 
-/// Where a face's eyes sit, as fractions of the mark: center offset, neutral eye size, lean,
-/// the gap between the eyes, and how much of a look's travel they take.
 struct BotAvatarEyeLayout: Equatable {
     let x: Double, y: Double, width: Double, height: Double, lean: Double, gap: Double, travel: Double
 
-    /// The classic mark's leaning eyes, off to one side.
     static let classic = BotAvatarEyeLayout(x: 0.12, y: -0.08, width: 0.075, height: 0.22, lean: -18, gap: 0.1, travel: 1)
 
-    /// The same eyes centered at a point, as fractions of the mark from its center.
     func centered(x: Double, y: Double) -> BotAvatarEyeLayout {
         BotAvatarEyeLayout(x: x, y: y, width: width, height: height, lean: lean, gap: gap, travel: travel)
     }
 
-    /// Upright eyes at a placement. A smaller travel keeps a look inside a narrow body.
     init(_ eyes: BotAvatarEyes) {
         let width = 0.04 * eyes.scale
         self.init(x: eyes.x / 100 - 0.5, y: eyes.y / 100 - 0.5, width: width, height: 0.11 * eyes.scale, lean: 0,
@@ -386,7 +338,6 @@ private struct BotAvatarPresentation {
     let shape: BotAvatarShape
     let color: Color
     let eyeColor: Color
-    /// A generated avatar's body, parsed once. Nil for a bad stored path, which draws the shape.
     let generatedPath: Path?
     let eyeLayout: BotAvatarEyeLayout
 
@@ -496,8 +447,6 @@ private struct BotAvatarBody: Shape {
 }
 
 extension Color {
-    /// The body color for a stored hex. Desktop's white is drawn adaptively here:
-    /// white in dark appearance, black in light.
     static func botBody(_ hex: String) -> Color {
         if hex.lowercased() == BotAvatarColor.adaptiveHex {
             return Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? .white : .black })
@@ -505,7 +454,6 @@ extension Color {
         return Color(botHex: hex) ?? .purple
     }
 
-    /// Eyes that contrast with `botBody(hex)` in both appearances.
     static func botEyes(on hex: String) -> Color {
         if hex.lowercased() == BotAvatarColor.adaptiveHex {
             return Color(uiColor: UIColor { $0.userInterfaceStyle == .dark

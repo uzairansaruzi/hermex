@@ -2,8 +2,6 @@ import UserNotifications
 import XCTest
 @testable import HermesMobile
 
-/// Move to Hermes's commit point and pairing carry (#1215): the destination's record, its
-/// acknowledged save, removal of either server, and when a push pairing is copied.
 @MainActor
 final class MoveToHermesCommitTests: XCTestCase {
     private let source = URL(string: "https://a.test")!
@@ -13,14 +11,11 @@ final class MoveToHermesCommitTests: XCTestCase {
         MovedWebuiProfile(source: "work", destination: .keepOnWebui),
     ]
 
-    // MARK: - Commit
-
     func testCommitAddsTheDestinationWithTheSourcesIdentityAndStaysOnTheSource() throws {
         let (manager, keychain) = try makeManager()
         let staleSource = try XCTUnwrap(manager.activeServer)
         manager.updateServerIdentity(staleSource, displayName: "Studio", initials: "ST", headerLogoColorHex: "#123456")
 
-        // The copy a screen read before the edit still gets the edited identity.
         let committed = try manager.commitMove(from: staleSource, to: connection(), profiles: mappings)
 
         XCTAssertEqual(committed.id, destination.absoluteString)
@@ -49,7 +44,6 @@ final class MoveToHermesCommitTests: XCTestCase {
         XCTAssertEqual(reloaded(keychain), before)
         XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: destination), orphan)
 
-        // A sign-in that can't be saved stops the commit before the registry is written.
         keychain.failingKeys = [.botConnection]
         XCTAssertThrowsError(try manager.commitMove(from: try XCTUnwrap(manager.activeServer), to: connection(), profiles: mappings)) {
             XCTAssertEqual($0 as? AuthManager.MoveCommitError, .saveFailed)
@@ -72,7 +66,6 @@ final class MoveToHermesCommitTests: XCTestCase {
         XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: destination)?.password, "secret")
         XCTAssertEqual(manager.state, .loggedIn(server: destination))
 
-        // A failed save leaves the adopted server as it was, sign-in included.
         let otherSource = try addWebui(manager, "https://b.test")
         keychain.failingKeys = [.servers]
         XCTAssertThrowsError(try manager.commitMove(from: otherSource, to: connection(), profiles: mappings))
@@ -110,7 +103,6 @@ final class MoveToHermesCommitTests: XCTestCase {
         let atWebui = BotConnection(id: UUID(), name: "B", address: URL(string: webuiDestination.urlString)!, username: "me", password: "p")
 
         XCTAssertEqual(refusal(sourceAccount, sameAddress, mappings), .sameAddress)
-        // A webui id keeps its host's case; a Hermes address is lowercased.
         let mixedCase = try addWebui(manager, "https://Studio.Example")
         let lowercased = BotConnection(id: UUID(), name: "S", address: URL(string: "https://studio.example")!, username: "me", password: "p")
         XCTAssertEqual(refusal(mixedCase, lowercased, mappings), .sameAddress)
@@ -206,8 +198,6 @@ final class MoveToHermesCommitTests: XCTestCase {
         XCTAssertEqual(roundTrip, account)
     }
 
-    // MARK: - Pairing carry
-
     func testTheSameInstallIsCopiedWithItsRegistrationAndNoRelayCall() async throws {
         let harness = PairingHarness()
         var stored = pairing(install: "a")
@@ -263,8 +253,6 @@ final class MoveToHermesCommitTests: XCTestCase {
         XCTAssertEqual(harness.relay.calls, 0)
     }
 
-    // MARK: - Helpers
-
     private func connection(password: String = "secret") -> BotConnection {
         BotConnection(id: UUID(), name: "Studio", address: destination, username: "me", password: password,
                       hermesVersion: "0.21.5")
@@ -275,8 +263,6 @@ final class MoveToHermesCommitTests: XCTestCase {
                     previewKey: Data(repeating: 1, count: 32).base64EncodedString())
     }
 
-    /// The webui server `a.test` signed in and active, with its own custom header, and Bot
-    /// Mode (beta) off, which a move never needs (#712).
     private func makeManager() throws -> (AuthManager, FailingKeychain) {
         let keychain = FailingKeychain()
         let preferences = UserDefaults.ephemeral()
@@ -299,7 +285,6 @@ final class MoveToHermesCommitTests: XCTestCase {
         return (manager, keychain)
     }
 
-    /// Adds a second webui server without switching to it.
     private func addWebui(_ manager: AuthManager, _ address: String) throws -> ServerAccount {
         let active = try XCTUnwrap(manager.activeServer)
         manager.serverRegistry.activate(url: try XCTUnwrap(URL(string: address)))
@@ -308,13 +293,11 @@ final class MoveToHermesCommitTests: XCTestCase {
         return try XCTUnwrap(manager.servers.first { $0.id == address })
     }
 
-    /// The registry as a relaunch would load it from `keychain`.
     private func reloaded(_ keychain: FailingKeychain) -> [ServerAccount] {
         ServerRegistry(keychain: keychain, identityDefaults: .ephemeral()).servers
     }
 }
 
-/// An in-memory Keychain whose writes to `failingKeys` throw, as a full or locked Keychain would.
 final class FailingKeychain: KeychainStoring {
     struct WriteFailed: Error {}
     var failingKeys: Set<KeychainStore.Key> = []
@@ -335,7 +318,6 @@ final class FailingKeychain: KeychainStoring {
     func scopedValue(_ key: KeychainStore.Key, scope: String) -> String? { base.scopedValue(key, scope: scope) }
 }
 
-/// A real `PushRegistrar` over an in-memory pairing store and a relay that counts calls.
 @MainActor
 private final class PairingHarness {
     let store = MemoryPairingStore()
@@ -344,7 +326,6 @@ private final class PairingHarness {
     private lazy var registrar = PushRegistrar(store: store, relay: relay, remoteNotifications: NoRemoteNotifications(),
                                                authorization: NoAuthorization(), identity: nil)
 
-    /// Carries `source`'s pairing to `destination`, whose host reads as `reads` (nil fails).
     func carry(_ source: URL, _ destination: URL, reads pairing: PushPairing?, configured: Bool = true) async -> MovePushPairingOutcome {
         await MovePushPairing.carry(from: source, to: destination, registrar: registrar,
                                     isConfigured: { _ in configured }) {

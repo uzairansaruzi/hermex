@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The two-up grid of window totals under the chart. It reflows to one column at
-/// accessibility text sizes, where two cells no longer fit side by side.
 struct UsageTotalsGrid: View {
     let cells: [UsageTotalsCell]
 
@@ -23,8 +21,6 @@ struct UsageTotalsGrid: View {
     }
 }
 
-/// One label / value / detail stack. It reads as a single VoiceOver element so
-/// the grid does not turn into three swipes per figure.
 private struct UsageMetricCell: View {
     let cell: UsageTotalsCell
 

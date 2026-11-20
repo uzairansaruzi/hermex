@@ -179,8 +179,6 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
     }
 
-    /// The stale-result rule end to end: a transcript landing after an edit leaves the
-    /// edit alone and says why.
     func testServerTranscriptAfterAnEditLeavesTheDraftAndExplains() async {
         let recorder = DictationTestRecorder()
         let controller = ComposerVoiceInputController(
@@ -205,7 +203,6 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertEqual(controller.errorMessage, "Speech-to-text is not available right now.")
     }
 
-    /// A Hermes host answers a quiet recording with `{ok: true, transcript: ""}` (#1071).
     func testServerSilenceLeavesTheDraftAndShowsNoError() async {
         let recorder = DictationTestRecorder()
         let controller = ComposerVoiceInputController(
@@ -227,7 +224,6 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
     }
 
-    /// webui's empty `{ok: true}` stays the failure it was before #1071; only a Hermes host's is silence.
     func testWebuiEmptyTranscriptStillFails() async throws {
         let transcribe = makeClient { request in
             apiTestJSONResponse(#"{"ok":true,"transcript":"  "}"#, for: request)
@@ -236,7 +232,6 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertNil(reply.ok, "An empty webui reply must not read as a Hermes host's silence")
     }
 
-    /// With no on-device recognizer, the server is the only provider and its reason shows as is.
     func testServerOnlyShowsTheHostsReason() async {
         let recorder = DictationTestRecorder()
         let controller = ComposerVoiceInputController(
@@ -250,7 +245,6 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
     }
 
-    /// Server first retries a refused recording on-device, which here has no speech permission.
     func testServerFirstFallsBackOnDeviceAfterTheHostRefuses() async {
         let recorder = DictationTestRecorder()
         var authorizations = 0
@@ -270,7 +264,6 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
     }
 
-    /// Stops a server recording and waits for its transcription to settle.
     private func finishRecording(_ controller: ComposerVoiceInputController) async {
         controller.stopKeepingTranscript()
         XCTAssertEqual(controller.state, .transcribing)
@@ -329,10 +322,6 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertEqual(dataLoadCount, 0)
     }
 
-    // Server First records with these settings on a real device, where an AAC
-    // sample-rate and bitrate pair the encoder rejects only shows up as a
-    // recording that fails to start. Encode a short clip with the same settings
-    // and check the file comes out in the configured format.
     func testServerRecordingSettingsAreAcceptedByTheAACEncoder() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString).m4a")
@@ -357,8 +346,6 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
     }
 }
 
-/// Reports an on-device model without the simulator's speech service. Tests that
-/// use it are denied speech authorization first, so recognition never starts.
 private final class OnDeviceTestRecognizer: ComposerSpeechRecognizing {
     let supportsOnDeviceRecognition = true
     func recognitionTask(
@@ -385,8 +372,6 @@ private final class DictationTestRecorder: ComposerServerRecording {
     var decibels: Float? { nil }
 }
 
-/// The composer's side of dictation: a live draft the controller reads and writes,
-/// with the caret at the end unless a test says otherwise.
 @MainActor
 private final class DictationTestDraft {
     var text: String
@@ -405,7 +390,6 @@ private final class DictationTestDraft {
         onWrite(update.text)
     }
 
-    /// A keystroke as the editor publishes one: new text and a new generation.
     func type(_ text: String) {
         self.text = text
         selection.publishGeneration += 1

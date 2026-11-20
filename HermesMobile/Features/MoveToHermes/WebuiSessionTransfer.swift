@@ -1,13 +1,10 @@
 import Foundation
 
-/// The webui server a Move copies from (#1213): its address, its own custom headers and the
-/// cookies that sign the app in to it. The copy sends them from a cookie jar of its own.
 struct WebuiSource {
     let baseURL: URL
     let headers: [CustomHeader]
     let cookies: [HTTPCookie]
 
-    /// `cookies` defaults to the shared jar's for `baseURL`, the app's sign-in to that server.
     init(baseURL: URL, headers: [CustomHeader], cookies: [HTTPCookie]? = nil) {
         self.baseURL = baseURL
         self.headers = headers
@@ -15,67 +12,35 @@ struct WebuiSource {
     }
 }
 
-/// Move to Hermes's copy (#1213): exports chats from the webui one source Profile at a time,
-/// converts each to the host's import shape, and imports them in batches under the host's limits.
-///
-/// Each source Profile's exports need the webui's Profile cookie, which only
-/// `POST /api/profile/switch` issues. The copy switches in a cookie jar of its own
-/// (`APIClient.moveCopyClient`), so no screen sees or changes it; on the server a switch clears
-/// two caches and restarts that Profile's gateway watcher. Run it only after the user confirms Move.
-///
-/// One run is one attempt. Every batch is rechecked by exact id in every Hermes Profile, then
-/// `willDispatch` records it, then it is sent once. A 400 or 413 means the host wrote nothing,
-/// so the run drops the refused chats or splits the batch and sends the rest; any other 4xx
-/// refuses the batch. A rate limit (429), a write fence 409, a timeout or a lost reply leaves it
-/// `.uncertain`: the runner (#1216) owns replaying those, by running them again, since the host
-/// skips an id it already has.
 enum WebuiSessionTransfer {
-    /// The host's import limits at the pin (`hermes_state.py`, `web_routers/sessions.py`).
     static let sessionsPerImport = 500
     static let messagesPerImport = 50_000
     static let bytesPerImport = 25 * 1024 * 1024
     static let messagesPerSession = HermesSessionDuplication.messageLimit
     static let bytesPerSession = HermesSessionDuplication.byteLimit
 
-    /// One chat to copy and the Hermes Profile Review mapped it to.
     struct Item: Codable, Equatable, Sendable {
         let chat: MoveToHermesSourceChat
         let destination: String
     }
 
-    /// What one attempt did with a chat. Only `.uncertain` may be in Hermes without the run
-    /// knowing; every other outcome is settled for this attempt.
     enum Outcome: Codable, Equatable, Sendable {
         case imported(profile: String)
-        /// Hermes already had it: the recheck found it, or the import skipped its id.
         case alreadyPresent(profile: String)
         case ambiguous(profiles: [String])
-        /// Past the host's per-session limits, 10,000 messages or 5 MB. Never trimmed.
         case oversized
-        /// The host refused it, with its reason; nothing of its import was written.
         case rejected(reason: String)
-        /// The webui didn't hand it over: its Profile switch or its export failed.
         case unreadable
-        /// A recheck read failed, so it wasn't sent.
         case unknown
-        /// Sent, but not settled: the result never arrived, the host or a proxy was rate-limiting
-        /// (429), or the reply left it out. The runner replays these.
         case uncertain(profile: String)
-        /// Not sent: the run was cancelled, or `willDispatch` failed, first.
         case notSent
     }
 
-    /// What `willDispatch` records before an import goes out: where, and every id in it.
     struct Dispatch: Codable, Equatable, Sendable {
         let destination: String
         let ids: [String]
     }
 
-    /// Copies `items` from `source` into `hermes`, rechecking against every one of
-    /// `hermesProfiles`, and returns each chat's outcome. `willDispatch` runs before every
-    /// import request; when it throws, nothing more is sent and the rest are `.notSent`.
-    /// `progress` gets the chats settled so far out of all of them. `configuration` is only for
-    /// tests' protocol classes.
     @MainActor
     static func run(_ items: [Item], hermesProfiles: [String], source: WebuiSource, hermes: any BotTransport,
                     configuration: URLSessionConfiguration = .ephemeral,
@@ -98,16 +63,12 @@ enum WebuiSessionTransfer {
             let group = groups[profile] ?? []
             guard attempt.canSend else { attempt.settle(group.map(\.chat.id), .notSent); continue }
             do {
-                // A reply naming an error or another Profile would export under the wrong cookie.
                 let reply = try await webui.switchProfile(name: profile)
                 guard (reply.error ?? "").isEmpty, (reply.active ?? profile) == profile else { throw BotFailure.unsupported }
             } catch {
                 attempt.settle(group.map(\.chat.id), Task.isCancelled ? .notSent : .unreadable)
                 continue
             }
-            // One batch is held at a time, so memory stays near one import (25 MB) plus the
-            // exports in flight. Review maps each source Profile to one destination, so a group
-            // rarely flushes early for a change of destination.
             var pending: (destination: String, batch: [Prepared])?
             for start in stride(from: 0, to: group.count, by: MoveToHermesRequests.perServer) {
                 let window = Array(group[start..<min(start + MoveToHermesRequests.perServer, group.count)])
@@ -133,27 +94,17 @@ enum WebuiSessionTransfer {
         return attempt.outcomes
     }
 
-    /// One converted chat, encoded once, ready to batch.
     struct Prepared: Equatable, Sendable {
         let id: String
         let encoded: Data
         let messageCount: Int
     }
 
-    /// A chat's export ready to batch, or why it can't go.
     enum Preparation: Equatable, Sendable {
         case ready(Prepared)
         case failed(Outcome)
     }
 
-    /// The import row for one webui export (`GET /api/session/export?format=json`, redacted by
-    /// the webui), or nil when it isn't the chat `id` with its messages. It keeps the id and
-    /// follows the webui's own state.db mapping (`api/state_sync.py`): the model, and the token,
-    /// cache and estimated-cost totals, dated by `created_at` so Insights counts them on their
-    /// own days. It sends no title (titles are reconciled after, #1214), folder, pin or parent.
-    /// Messages keep their role, content as exported (image parts included), tool calls and
-    /// timestamps; only user, assistant and tool messages are kept. A 0.21.5 host stored all of it,
-    /// read back from one disposable import on 2026-10-11.
     nonisolated static func importRow(fromExport export: BotJSON, id: String) -> BotJSON? {
         guard export["session_id"].text == id, let messages = export["messages"].list else { return nil }
         var row: [String: BotJSON] = ["id": .string(id), "source": .string("webui"),
@@ -168,8 +119,6 @@ enum WebuiSessionTransfer {
         return .object(row)
     }
 
-    /// One webui message in the host's import shape, or nil for a role the host doesn't replay.
-    /// Every text field the host type-checks is sent only as text.
     private nonisolated static func importMessage(_ message: BotJSON) -> BotJSON? {
         guard let fields = message.fields, let role = fields["role"]?.text, ["user", "assistant", "tool"].contains(role)
         else { return nil }
@@ -186,7 +135,6 @@ enum WebuiSessionTransfer {
         return .object(out)
     }
 
-    /// `export` converted and encoded for import, or why it can't go.
     nonisolated static func prepare(export: Data, id: String) -> Preparation {
         guard let json = try? JSONDecoder().decode(BotJSON.self, from: export),
               let row = importRow(fromExport: json, id: id) else { return .failed(.unreadable) }
@@ -194,14 +142,10 @@ enum WebuiSessionTransfer {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .withoutEscapingSlashes
         guard let encoded = try? encoder.encode(row) else { return .failed(.unreadable) }
-        // The host measures each session as compact JSON; this encoding is close, and a session
-        // it still measures over is refused by name and reported the same way.
         guard count <= messagesPerSession, encoded.count <= bytesPerSession else { return .failed(.oversized) }
         return .ready(Prepared(id: id, encoded: encoded, messageCount: count))
     }
 
-    /// The import request for `batch` into `destination`: `{"sessions": [...], "profile": ...}`,
-    /// joined from each chat's encoding so megabytes of messages are never encoded twice.
     nonisolated static func body(_ batch: [Prepared], destination: String) -> Data {
         var body = Data(#"{"sessions":["#.utf8)
         for (index, prepared) in batch.enumerated() {

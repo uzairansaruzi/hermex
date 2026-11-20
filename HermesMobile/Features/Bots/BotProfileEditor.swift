@@ -48,9 +48,6 @@ struct BotProfileDetails: Equatable, Sendable {
     }
 }
 
-/// One connection/Profile editor. The initial roster row contributes Desktop's
-/// appearance revision; `profiles.describe` contributes Profile-scoped content.
-/// Successful sections advance their own baseline, while failed sections remain dirty.
 @MainActor @Observable final class BotProfileEditor {
     enum LoadState: Equatable { case idle, loading, loaded, failed(String) }
     enum Field: String, CaseIterable, Hashable, Identifiable {
@@ -135,8 +132,6 @@ struct BotProfileDetails: Equatable, Sendable {
         return fields
     }
     var canSave: Bool { state == .loaded && !isSaving && !dirtyFields.isEmpty }
-    /// True while the editor holds its client: from a load or Save until `close()`,
-    /// `suspend()`, a failed load or a lost socket.
     var holdsConnection: Bool { wire != nil }
 
     func load() async {
@@ -154,8 +149,6 @@ struct BotProfileDetails: Equatable, Sendable {
             try ensureOwner(owner, client)
             let details = BotProfileDetails(detailsPayload, expectedName: profile.id)
             guard details.name == profile.id else { throw BotFailure.wrongIdentity }
-            // A bot chat's pill opens this with a bare row until its roster read answers. Saving
-            // that would claim revision 0 and read as a change made elsewhere, so read the real one.
             if lookRevision == nil, let roster = try? await client.call(.profilesList(includeSessions: false), validateDispatch: validate(owner)) {
                 try ensureOwner(owner, client)
                 if let row = roster["profiles"].list?.first(where: { $0["name"].text == profile.id }), let fresh = BotProfile(row) {
@@ -169,8 +162,6 @@ struct BotProfileDetails: Equatable, Sendable {
                 try ensureOwner(owner, client)
                 modelGroups = []
             }
-            // The look comes from what was last received or saved, not the roster row the
-            // editor opened with, so a foreground reload after a save keeps the saved look.
             let loaded = Draft(appearance: BotProfileAppearance(look: receivedLook, fallbackTitle: profile.name),
                                description: details.description,
                                instructions: details.instructions, model: details.model, skills: details.skills,
@@ -191,9 +182,6 @@ struct BotProfileDetails: Equatable, Sendable {
         isSaving = false; confirmation = nil
     }
 
-    /// Backgrounding can make an in-flight write ambiguous. Preserve every
-    /// draft and make that uncertainty visible; the next deliberate Save opens
-    /// a fresh socket but never retries automatically.
     func suspend() {
         let fields = dirtyFields
         let wasSaving = isSaving
@@ -219,7 +207,6 @@ struct BotProfileDetails: Equatable, Sendable {
         clearOutcome(.appearance); clearOutcome(.avatar)
     }
 
-    /// Takes an avatar the host's model drew. The stored `shape` stays, for Desktop and older builds.
     func setGenerated(_ generated: BotGeneratedAvatar) {
         if draft.appearance.shape.flatMap(BotAvatarShape.init(rawValue:)) == nil {
             draft.appearance.shape = BotAvatarShape.circle.rawValue
@@ -231,7 +218,6 @@ struct BotProfileDetails: Equatable, Sendable {
         clearOutcome(.appearance); clearOutcome(.avatar)
     }
 
-    /// One tool-free model call under this bot, for "Describe It".
     func sendAvatarPrompt(_ prompt: String) async throws -> String {
         guard let client = wire else { throw BotFailure.stale }
         return try await BotAvatarGeneration.ask(prompt, profile: profile.id, transport: client, validateDispatch: validate(generation))
@@ -249,8 +235,6 @@ struct BotProfileDetails: Equatable, Sendable {
         clearOutcome(.avatar)
     }
 
-    /// Only the eyes change: an uploaded photo, the `custom` flag and the default
-    /// bot's fixed look are left alone, so the expression shows once no photo covers it.
     func setExpression(_ expression: BotAvatarExpression) {
         draft.appearance.expression = expression == .neutral ? nil : expression.rawValue
         clearOutcome(.appearance)
@@ -303,8 +287,6 @@ struct BotProfileDetails: Equatable, Sendable {
         outcomes[.model] = .failed(String(localized: "Model confirmation was declined. Your selection is still unsaved."))
     }
 
-    /// Refreshes only Desktop appearance after a compare-and-swap conflict.
-    /// Other unsaved Profile fields stay untouched.
     func reloadAppearance() async {
         guard let client = wire else { return }
         let owner = generation
@@ -317,7 +299,6 @@ struct BotProfileDetails: Equatable, Sendable {
             let appearance = BotProfileAppearance(profile: fresh)
             baseline.appearance = appearance; draft.appearance = appearance
             avatarChange = .unchanged; outcomes.removeValue(forKey: .appearance); outcomes.removeValue(forKey: .avatar)
-            // One bot's asset only: a roster-wide refresh would drop every other bot's image.
             var image: UIImage?
             if fresh.hasAvatar {
                 let reply = try await client.call(.profilesGetAsset(name: fresh.id), validateDispatch: validate(owner))
@@ -445,9 +426,7 @@ struct BotProfileDetails: Equatable, Sendable {
         let reply = try await client.call(.profilesSetAsset(name: profile.id, avatar: change), validateDispatch: validate(owner))
         try ensureOwner(owner, client)
         guard reply["ok"].flag == true, reply["asset"].text == "avatar" else { throw BotFailure.unsupported }
-        // The shared store holds thumbnails only; the full picture stays with this editor.
         avatarStore.setImage(avatar.flatMap(BotAvatarStore.thumbnail), connectionID: connection.id, profile: profile.id, revision: lookRevision)
-        // The look revision stays, so the Bot widget's copy is current only until deleted here (#1643).
         BotWidgetPublisher.shared.forgetAvatar(server: server, profile: profile.id)
         avatarChange = .unchanged; outcomes[.avatar] = .saved
     }

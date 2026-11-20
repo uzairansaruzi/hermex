@@ -1,19 +1,14 @@
 import Foundation
 import Observation
 
-/// The Skills list on one server: a webui server's skills, or one Profile's on a Hermes host
-/// (#1069), whichever `client` reads.
 @MainActor
 @Observable
 final class SkillsViewModel {
     private(set) var skills: [SkillSummary] = []
-    /// True from the start: the screen loads as it appears, and until then "none" would be a guess
-    /// that drew the empty state for a frame before the spinner.
     private(set) var isLoading = true
     private(set) var errorMessage: String?
     private(set) var lastError: Error?
     private(set) var togglingSkillNames: Set<String> = []
-    /// Why the last toggle failed, such as a Hermes host's refusal, until it is dismissed.
     private(set) var toggleErrorMessage: String?
 
     let client: any SkillsDataClient

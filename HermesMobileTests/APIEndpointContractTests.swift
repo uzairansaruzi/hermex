@@ -230,8 +230,6 @@ final class ContractReadinessTests: XCTestCase {
             .init(name: "cron update", method: "POST", endpoint: .cronUpdate, path: "/api/crons/update"),
             .init(name: "cron delete", method: "POST", endpoint: .cronDelete, path: "/api/crons/delete"),
             .init(name: "cron run", method: "POST", endpoint: .cronRun, path: "/api/crons/run"),
-            // Same path as the POST above, different operation: GET reads one
-            // past run's output.
             .init(
                 name: "cron run detail",
                 method: "GET",
@@ -302,7 +300,6 @@ final class ContractReadinessTests: XCTestCase {
         }
     }
 
-    /// The server decodes a query's `+` as a space, so a path holding one must go out escaped.
     func testQueryValuesEscapePlus() throws {
         let url = Endpoint.file(sessionID: "s1", path: "src/C++ notes/a+b.md")
             .url(relativeTo: URL(string: "https://example.test")!)

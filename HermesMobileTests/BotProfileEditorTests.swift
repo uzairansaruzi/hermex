@@ -41,8 +41,6 @@ import SwiftUI
         XCTAssertEqual(params["disabled_skills"], .array([.string("research")]))
     }
 
-    /// Control Center and banners (`.inactive`) keep the editor's connection; only the
-    /// background drops it, and the return reloads once (#902).
     func testOnlyTheBackgroundDropsTheEditorAndTheReturnReloadsOnce() async throws {
         let (editor, wire, _) = try makeEditor(details: details())
         await editor.load()

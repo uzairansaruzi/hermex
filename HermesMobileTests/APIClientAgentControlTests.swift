@@ -119,8 +119,6 @@ final class APIClientAgentControlTests: APIClientTestCase {
     }
 
     func testApprovalRespondResponseDecodesStaleFieldsTolerantly() async throws {
-        // Upstream signals a benign stale click with 200 {"ok": true, "stale_cleared": true}
-        // and gateway relays with "relayed" (issue #25).
         let client = makeClient { request in
             apiTestJSONResponse(
                 #"{"ok": true, "choice": "once", "stale_cleared": true, "relayed": "true", "future": {"x": 1}}"#,
@@ -213,8 +211,6 @@ final class APIClientAgentControlTests: APIClientTestCase {
         XCTAssertEqual(Self.label(outcome), "delivered")
     }
 
-    /// Every `fallback` `_handle_chat_steer` can return, plus the failures that
-    /// never reach it, lands on the outcome the chat acts on (#856).
     func testSteerOutcomeMapsEveryFallback() async throws {
         let cases: [(reply: String, expected: String)] = [
             (#"{"accepted":false,"fallback":"gateway_steer_queued","stream_id":"s"}"#, "serverQueued"),
@@ -244,7 +240,6 @@ final class APIClientAgentControlTests: APIClientTestCase {
         XCTAssertEqual(Self.label(badRequestOutcome), "refused(http 400)")
     }
 
-    /// A comparable name for an outcome: `refused` carries a non-`Equatable` error.
     private static func label(_ outcome: ChatSteerOutcome) -> String {
         switch outcome {
         case .delivered:

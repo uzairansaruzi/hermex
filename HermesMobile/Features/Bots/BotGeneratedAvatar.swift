@@ -1,14 +1,9 @@
 import Foundation
 import SwiftUI
 
-/// An avatar the host's model drew from a description: one path, its eyes and a short name,
-/// stored inline under a Hermex-owned key in `ui_meta["hermes-bots"]`, the way `expression` is.
-/// Desktop and older Hermex builds ignore the key and keep drawing the stored `shape`.
 struct BotGeneratedAvatar: Equatable, Sendable {
     static let lookKey = "hermexAvatar"
-    /// How much of a host's plain-text answer the sheet shows.
     private static let maxSaidCharacters = 400
-    /// The trailing line of the host's failure copy (`agent/turn_failure_copy.py`).
     private static let hostFailureMarkers = ["\n\nProvider said:", "\n\nDetails:"]
 
     var name: String
@@ -19,7 +14,6 @@ struct BotGeneratedAvatar: Equatable, Sendable {
         self.name = name; self.path = path; self.eyes = eyes
     }
 
-    /// Reads a stored value, or a model's answer before `validate` checks it. Unknown fields are ignored.
     init?(json: BotJSON) {
         let eyes = json["eyes"]
         guard let path = json["path"].text, let x = eyes["x"].number, let y = eyes["y"].number,
@@ -34,10 +28,7 @@ struct BotGeneratedAvatar: Equatable, Sendable {
         ])
     }
 
-    /// Reads a model's answer, which may be wrapped in prose or a code fence. Returns the avatar, the
-    /// problems in words a repair prompt can act on, or what the host said if it sent no JSON.
     static func read(answer: String) -> Result<BotGeneratedAvatar, BotAvatarGeneration.Failure> {
-        // A failed call comes back as ordinary text, and its provider detail can hold JSON of its own.
         let isHostFailure = hostFailureMarkers.contains { answer.contains($0) }
         guard !isHostFailure, let open = answer.firstIndex(of: "{"), let close = answer.lastIndex(of: "}"), open < close else {
             let said = answer.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -57,15 +48,11 @@ struct BotGeneratedAvatar: Equatable, Sendable {
         return copy
     }
 
-    /// Whether the eye numbers are sane. A damaged or newer stored value that fails this draws
-    /// the bot's shape instead, and a save still writes the value back unchanged.
     var hasDrawableEyes: Bool {
         (0.6...1.8).contains(eyes.scale) && eyes.spacing >= 7 * eyes.scale && eyes.spacing <= 40
             && (0...100).contains(eyes.x) && (0...100).contains(eyes.y)
     }
 
-    /// What stops this avatar drawing properly. The path must parse and fill most of the box's
-    /// safe area, and both neutral eyes must sit fully on the body.
     var problems: [String] {
         guard let body = BotAvatarPathData.path(path) else {
             return ["path must use only absolute M, L, Q, C and Z commands, at most \(BotAvatarPathData.maxSegments) segments"]
@@ -89,8 +76,6 @@ struct BotGeneratedAvatar: Equatable, Sendable {
     }
 }
 
-/// Stored avatar paths, parsed once. The grammar is deliberately small: absolute M, L, Q, C and Z,
-/// which every ready-made path uses and the design prompt asks the model for.
 enum BotAvatarPathData {
     static let maxCharacters = 6000
     static let maxSegments = 400
@@ -102,7 +87,6 @@ enum BotAvatarPathData {
         return cache
     }()
 
-    /// The path for `data`, or nil when it breaks the grammar. Safe from any thread.
     static func path(_ data: String) -> Path? {
         let key = data as NSString
         if let hit = cache.object(forKey: key) { return hit.path }

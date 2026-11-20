@@ -1,13 +1,9 @@
 import SwiftUI
 
-/// Settings > Appearance > Thinking Slider: every look running side by side. Each slider can be
-/// tapped and dragged like the real one, which sends nothing to any host, and the buttons above set
-/// them all to one level to compare. Applies on this iPhone to every server.
 struct ThinkingSliderPickerView: View {
     @AppStorage(ThinkingSliderLook.storageKey) private var selectedLook = ThinkingSliderLook.defaultLook
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @State private var sharedLevel = SharedLevel.high
-    /// Levels the user has dragged a look to since last setting them all.
     @State private var triedLevels: [ThinkingSliderLook: String] = [:]
 
     private enum SharedLevel: String, CaseIterable, Identifiable {
@@ -19,8 +15,6 @@ struct ThinkingSliderPickerView: View {
     var body: some View {
         AppList {
             Section {
-                // Buttons, not a segmented picker: pressing the current level has to put back any
-                // slider that has been dragged away from it.
                 HStack(spacing: 8) {
                     ForEach(SharedLevel.allCases) { level in
                         Button {
@@ -59,7 +53,6 @@ struct ThinkingSliderPickerView: View {
     }
 }
 
-/// The name line selects the look, and the slider below it is only for trying.
 private struct ThinkingSliderPickerRow: View {
     let look: ThinkingSliderLook
     let level: String

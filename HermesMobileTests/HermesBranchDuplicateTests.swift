@@ -2,11 +2,6 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// Fork From Here, `/branch` and `/fork`, the "Forked from" row, and Duplicate in a Hermes
-/// session (#1051), over #901's socket-level host and `HermesHostFixture` for REST. Every shape
-/// is one `scripts/local-hermes` answered at the `HERMES_AGENT_TESTED_SHA` pin (0.21.5,
-/// `ca678285`), where a branch kept exactly the rows these counts name, tool turns and an
-/// in-place compaction included.
 @MainActor final class HermesBranchDuplicateTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let record = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
@@ -26,11 +21,6 @@ import Observation
         super.tearDown()
     }
 
-    // MARK: Count
-
-    /// The host keeps the first `count` rows of its visible history: user and assistant rows
-    /// with text, a compacted turn's and the hidden compaction summary included, never a tool
-    /// row or one without text. A row the branch can't end at has no count.
     func testTheCountIsTheHostsVisibleRowsThroughTheChosenOne() {
         let image = BotJSON.array([.object(["type": .string("text"), "text": .string(" ")]),
                                    .object(["type": .string("image_url"), "image_url": .object(["url": .string("a.png")])])])
@@ -52,11 +42,6 @@ import Observation
         XCTAssertNil(HermesBranchCount.count(through: 99, in: rows))
     }
 
-    // MARK: Fork From Here
-
-    /// Fork From Here on the second reply sends `session.branch` on the runtime with the count
-    /// through it, and opens the branch on top, naming this session as its parent. The branch's
-    /// runtime is this phone's, so a later delete can close it.
     func testForkFromHereBranchesThroughTheChosenReplyAndOpensIt() async throws {
         let chat = await openChat(pages: [0: twoToolTurns])
         chat.host.always("session.branch", .init(result: branched("fork", runtime: "fork-runtime")))
@@ -75,8 +60,6 @@ import Observation
         XCTAssertTrue(chat.connection.attachedRuntimes.contains("fork-runtime"))
     }
 
-    /// The host counts from the session's first row, so a fork in a long session reads every
-    /// older page before it counts.
     func testForkInALongSessionReadsTheOlderPagesFirst() async throws {
         let chat = await openChat(pages: [0: (101...200).map(alternating), 100: (1...100).map(alternating), 200: []])
         chat.host.always("session.branch", .init(result: branched("fork")))
@@ -89,10 +72,6 @@ import Observation
         XCTAssertEqual(chat.writes("session.branch"), [["session_id": .string("runtime"), "count": .number(150)]])
     }
 
-    /// The host counts from the first row of every session this one continues, which this chat's
-    /// pages never hold, so a fork in a session whose own row has a parent other than the one it
-    /// branched from is refused before anything is read or sent, and `/branch` still copies all of
-    /// it. A branch of a branch stands alone, so it forks.
     func testAForkInASessionThatContinuesAnotherIsRefused() async throws {
         var config: BotJSON = .string("{\"_reset_from\": \"root\"}")
         let chat = await openChat(pages: [0: twoToolTurns]) { request in
@@ -122,7 +101,6 @@ import Observation
         XCTAssertEqual(chat.writes("session.branch").last, ["session_id": .string("runtime"), "count": .number(3)])
     }
 
-    /// A prompt the host has not saved yet has no row to count to, so it offers no fork.
     func testAnUnsavedPromptOffersNoFork() async throws {
         let chat = await openChat(pages: [0: twoToolTurns])
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -133,10 +111,6 @@ import Observation
         XCTAssertEqual(chat.model.actionContext(for: chat.model.messages[sent], visibleIndex: sent)?.offersFork, false)
     }
 
-    // MARK: /branch and /fork
-
-    /// `/branch <name>` and `/fork` copy the whole transcript, with the name and without a
-    /// count, and open the branch on top. The host's own command never runs.
     func testBranchAndForkCopyTheWholeTranscriptAndOpenIt() async {
         let chat = await openChat(pages: [0: twoToolTurns])
         chat.host.always("session.branch", .init(result: branched("named")))
@@ -156,8 +130,6 @@ import Observation
         XCTAssertEqual(chat.writes("slash.exec"), [])
     }
 
-    /// A chat with nothing to copy (4008), and a name already in use (5008), keep the draft and
-    /// say why; nothing opens.
     func testABranchTheHostRefusesSaysWhy() async {
         let chat = await openChat(pages: [0: twoToolTurns])
         let inUse = "branch failed: Title 'Experiment' is already in use by session 20261008_002836_2369bc"
@@ -173,11 +145,6 @@ import Observation
         XCTAssertEqual(chat.model.sendErrorMessage, inUse)
     }
 
-    // MARK: Forked from
-
-    /// A branch's own row names its parent, and `model_config._branched_from` (a JSON string, as
-    /// stored) says `session.branch` made it: the row reads the parent's title, and opens the
-    /// parent. A reset continuation also has a parent, but is no branch, so it gets no row.
     func testABranchShowsForkedFromItsParentAndAResetChildDoesNot() async throws {
         var config = "{\"_branched_from\": \"parent\"}"
         let chat = await openChat(pages: [0: twoToolTurns]) { Self.branchRows($0, config: config) }
@@ -198,8 +165,6 @@ import Observation
         XCTAssertEqual(HermesHostFixture.count("/api/sessions/tip"), reads + 1, "a chat opened without a parent reads nothing")
     }
 
-    /// The chat asks once as it opens; when its first attach failed, the connect that follows
-    /// asks again, so a branch opened on a cold or dropped connection still gets its row.
     func testForkedFromWaitsForALaterAttach() async {
         let (retry, release) = AsyncStream<Void>.makeStream()
         let chat = await openChat(pages: [0: twoToolTurns], refusedFirst: true, reconnectDelay: { _ in
@@ -216,11 +181,6 @@ import Observation
         XCTAssertEqual(HermesHostFixture.count("/api/sessions/tip"), 1)
     }
 
-    // MARK: Duplicate
-
-    /// The copy is the export under a new id: no parent, lineage or timings, no message ids, no
-    /// title, neither archived nor pinned. Everything else stays as exported, tool rows and
-    /// timestamps included.
     func testTheCopyIsTheExportUnderANewIDWithoutItsParent() throws {
         let tool = BotJSON.object(["id": .number(795), "session_id": .string("tip"), "role": .string("tool"),
                                    "content": .string("{\"output\": \"1\", \"exit_code\": 0, \"error\": null}"),
@@ -244,7 +204,6 @@ import Observation
         XCTAssertNil(HermesSessionDuplication.copy(of: .object(["id": .string("tip")]), id: "x"), "an export without messages")
     }
 
-    /// A new id has the host's own shape, `YYYYMMDD_HHMMSS_<6 hex>`, at the time it was made.
     func testANewIDHasTheHostsShape() throws {
         let date = try XCTUnwrap(Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 8,
                                                                             hour: 0, minute: 24, second: 20)))
@@ -253,8 +212,6 @@ import Observation
         XCTAssertNotNil(id.wholeMatch(of: #/\d{8}_\d{6}_[0-9a-f]{6}/#), id)
     }
 
-    /// Duplicate exports the row, imports the copy under the row's Profile, titles it "<title>
-    /// (copy)", or "(copy 2)" when the host has that title, and opens the copy.
     func testDuplicateImportsTheCopyTitlesItAndOpensIt() async throws {
         var imported: [BotJSON] = []
         var titles: [(path: String, body: BotJSON)] = []
@@ -296,7 +253,6 @@ import Observation
         XCTAssertNil(copy?.parentSessionId, "a copy has no parent")
     }
 
-    /// A copy the host would not title stays untitled, and still opens: it was imported whole.
     func testACopyTheHostWontTitleStillOpens() async throws {
         let list = await openList { request in
             switch (request.httpMethod, request.url?.path) {
@@ -317,9 +273,6 @@ import Observation
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.httpMethod == "PATCH" }.count, 1, "no retry after a failure")
     }
 
-    /// A session past the host's import limits (10,000 messages) is refused before anything is
-    /// sent; one the host refuses as too large (413) says the same. Neither leaves a copy, and an
-    /// import that skipped the copy's id opens nothing.
     func testATooLargeOrSkippedImportOpensNothing() async throws {
         var export = Self.export
         var reply = HermesHostFixture.Reply.json(413, .object(["detail": .string("Session import payload is too large")]))
@@ -352,8 +305,6 @@ import Observation
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.httpMethod == "PATCH" }.count, 0)
     }
 
-    // MARK: Fixtures
-
     private struct Chat {
         let model: ChatViewModel
         let turn: HermesChatTurnCoordinator
@@ -366,10 +317,6 @@ import Observation
         }
     }
 
-    /// A chat attached to an idle session `tip` in `default` on runtime `runtime`, whose history
-    /// the host serves as `pages`, by offset; `answer` serves any other REST route first, and
-    /// `tip`'s own row otherwise has no parent. `refusedFirst` refuses the first attach (4007),
-    /// which the engine retries after `reconnectDelay`.
     private func openChat(pages: [Int: [BotJSON]], refusedFirst: Bool = false,
                           // test-wait: a factory default; a reconnect waits 1 s or more, so a test that
                           // reaches one passes its own delay.
@@ -400,8 +347,6 @@ import Observation
         return Chat(model: model, turn: turn, host: host, connection: connection, pages: script)
     }
 
-    /// The Sessions list of `research`, showing one row `tip` titled "Plan"; `answer` serves any
-    /// other REST route first.
     private func openList(_ answer: @escaping (URLRequest) -> HermesHostFixture.Reply?) async -> SessionListViewModel {
         let connection = BotSocketHost().connection(record)
         let page = BotJSON.object(["sessions": .array([.object(["id": .string("tip"), "title": .string("Plan"),
@@ -418,7 +363,6 @@ import Observation
         return list
     }
 
-    /// The transcript pages the scripted host serves for `tip`, by offset, and the offsets read.
     private final class Pages: @unchecked Sendable {
         private let lock = NSLock()
         private let pages: [Int: [BotJSON]]
@@ -440,8 +384,6 @@ import Observation
         }
     }
 
-    /// Two tool turns as the stub model runs them: a prompt, a reply that calls `terminal`, the
-    /// tool's row, and the closing reply.
     private var twoToolTurns: [BotJSON] {
         [row(1, "user", "Question 1"), row(2, "assistant", "Let me run a quick check.", calls: true),
          row(3, "tool", "{\"output\": \"1\", \"exit_code\": 0, \"error\": null}"), row(4, "assistant", "The command returned: 1."),
@@ -449,7 +391,6 @@ import Observation
          row(7, "tool", "{\"output\": \"1\", \"exit_code\": 0, \"error\": null}"), row(8, "assistant", "The command returned: 1.")]
     }
 
-    /// One export as the host streams it: the session's row and its four messages.
     private static let export = BotJSON.object([
         "id": .string("tip"), "title": .string("Plan"), "parent_session_id": .null, "archived": .number(0),
         "pinned": .number(0), "source": .string("tui"), "model_config": .null, "message_count": .number(4),
@@ -464,7 +405,6 @@ import Observation
         ])
     ])
 
-    /// One display row as the transcript handler returns it.
     private func row(_ id: Int, _ role: String, _ content: String, calls: Bool = false, active: Bool = true,
                      _ extra: [String: BotJSON] = [:]) -> BotJSON {
         row(id, role, .string(content), calls: calls, active: active, extra)
@@ -486,19 +426,15 @@ import Observation
         return .object(fields)
     }
 
-    /// Row `id` of a plain conversation: odd ids are prompts, even ones replies.
     private func alternating(_ id: Int) -> BotJSON {
         id.isMultiple(of: 2) ? row(id, "assistant", "Answer \(id)") : row(id, "user", "Question \(id)")
     }
 
-    /// A `session.branch` result: the branch `key` on its own runtime, from `tip`.
     private func branched(_ key: String, runtime: String = "branch-runtime") -> BotJSON {
         .object(["session_id": .string(runtime), "stored_session_id": .string(key), "title": .string("branch"),
                  "parent": .string("tip"), "message_count": .number(6), "messages": .array([]), "info": .object([:])])
     }
 
-    /// `tip`'s own row, a branch whose `model_config` is `config`, and its parent's row, titled
-    /// "Plan the launch".
     private static func branchRows(_ request: URLRequest, config: String) -> HermesHostFixture.Reply? {
         switch request.url?.path {
         case "/api/sessions/tip":

@@ -1,8 +1,5 @@
 import Foundation
 
-/// `GET /api/crons/recent`: one entry per job that has ever run, built from
-/// each job's `last_run_at` and `last_status`. Upstream emits them in job
-/// order, not by time, so the Tasks list sorts `completions` itself.
 struct CronRecentCompletionsResponse: Decodable, Equatable {
     let completions: [CronRecentCompletion]?
 
@@ -17,10 +14,7 @@ struct CronRecentCompletionsResponse: Decodable, Equatable {
     }
 }
 
-/// One job's latest finished run, as the recent-runs group shows it.
 struct CronRecentCompletion: Decodable, Equatable, Identifiable {
-    /// One completion per job on the wire, so the job is the identity; a
-    /// nameless, idless entry falls back to its timestamp.
     var id: String {
         jobId ?? name ?? String(completedAt.timeIntervalSince1970)
     }
@@ -73,8 +67,6 @@ struct CronRecentCompletion: Decodable, Equatable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
-        // Without a time the row has nothing to sort or show, so it is dropped
-        // by `LossyCronRecentCompletion` rather than rendered.
         guard let completedAt = (try? container.decodeIfPresent(CronDateValue.self, forKey: .completedAt)) ?? nil else {
             throw DecodingError.dataCorruptedError(
                 forKey: .completedAt,
@@ -91,14 +83,11 @@ struct CronRecentCompletion: Decodable, Equatable, Identifiable {
         messageCount = container.decodeLossyIntIfPresent(forKey: .messageCount)
     }
 
-    /// Newest first, which is the only order the group is shown in.
     static func newestFirst(_ completions: [CronRecentCompletion]) -> [CronRecentCompletion] {
         completions.sorted { $0.completedAt > $1.completedAt }
     }
 }
 
-/// Wraps one array element so a single malformed completion is skipped
-/// instead of failing the whole feed.
 private struct LossyCronRecentCompletion: Decodable {
     let completion: CronRecentCompletion?
 

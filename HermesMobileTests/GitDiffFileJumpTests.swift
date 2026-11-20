@@ -7,7 +7,6 @@ final class GitDiffFileJumpTests: XCTestCase {
         GitFile(path: path, status: "M", staged: false, unstaged: true, untracked: false, conflict: false, additions: 1, deletions: 0)
     }
 
-    /// Lands every file's text answer, as the loader's last publish does.
     private func land(_ review: inout ReviewDiffProgress, _ files: [GitFile]) throws {
         var inputs: [ReviewDiffFileInput] = []
         var patches: [String: Int] = [:]
@@ -20,10 +19,6 @@ final class GitDiffFileJumpTests: XCTestCase {
         review.apply(ReviewDiffRowBuilder.rows(for: inputs), patches: patches)
     }
 
-    /// A jump lands on the file's header with its diff open, and picking it again scrolls again.
-    /// A default-folded lockfile stays open through later loads and reopened reviews of the same
-    /// range, and a viewed file keeps its mark. A branch review's jump stays out of the
-    /// uncommitted review's progress, keyed as `GitDiffView` keys it (#1386).
     func testJumpOpensAFoldedFileForGoodKeepsItsViewedMarkAndScrollsAgainOnEveryPick() throws {
         let git = HermesGitHost.client { HermesGitHost.repositoryReply($0) }
         let branch = git.progressScope(.branch, base: "1a2b3c")
@@ -53,7 +48,6 @@ final class GitDiffFileJumpTests: XCTestCase {
         XCTAssertEqual(try open(in: git.progressScope(.uncommitted, base: nil)).collapsedFileIDs, [lockfile.id])
     }
 
-    /// Search matches the folder as well as the name, in any case.
     func testSearchMatchesFolderOrNameIgnoringCase() {
         let files = [file("README.md"), file("HermesMobile/Features/Chat/ChatView.swift"), file("docs/chat.md"), file("Package.swift")]
 

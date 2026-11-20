@@ -4,16 +4,9 @@ actor APIClient {
     let baseURL: URL
     let session: URLSession
     let publicMediaSession: URLSession
-    /// The redirect guard passed as the per-task delegate on every request this
-    /// client sends. Strips the user's custom headers when the server redirects a
-    /// same-origin request to a cross-origin host (#277). `nonisolated` so tests
-    /// can drive the exact delegate the client installs; it is immutable and
-    /// `Sendable`.
     nonisolated let redirectHeaderStripper: CrossOriginHeaderStripper
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
-    /// Read when building each request so live edits apply without rebuilding the
-    /// client. Defaults to the process-wide store; tests inject a fixed list (#255).
     private let customHeaderProvider: @Sendable () -> [CustomHeader]
 
     init(
@@ -25,21 +18,11 @@ actor APIClient {
         self.baseURL = baseURL
         self.customHeaderProvider = customHeaderProvider
 
-        // One redirect guard per client (its origin + header provider), attached
-        // to each request as a per-task delegate so a server-issued same-origin →
-        // cross-origin redirect can't forward the user's custom headers off-origin
-        // (#277). It is per-task, not per-session, so every client can share the
-        // process-wide sessions below.
         self.redirectHeaderStripper = CrossOriginHeaderStripper(
             baseURL: baseURL,
             customHeaderProvider: customHeaderProvider
         )
 
-        // Process-wide sessions by default, so a newly opened chat reuses the warm
-        // connection pool (keep-alive, HTTP/2, TLS) the session list already holds
-        // instead of paying a fresh handshake (#688). They carry nothing
-        // server-specific: cookies live in the shared jar either way, and custom
-        // headers are applied per request.
         self.session = session ?? Self.sharedSession
         self.publicMediaSession = publicMediaSession ?? Self.sharedPublicMediaSession
 
@@ -130,12 +113,6 @@ actor APIClient {
         ).0
     }
 
-    /// Same request/error contract as `sendData`, but also returns the
-    /// `HTTPURLResponse` so callers can read response headers (e.g. the
-    /// `Content-Disposition` filename on `GET /api/session/export`).
-    ///
-    /// `accept` overrides the default `application/json` Accept header for
-    /// endpoints whose 2xx response is a file download rather than JSON.
     func sendDataReturningResponse(
         endpoint: Endpoint,
         method: String,
@@ -146,10 +123,7 @@ actor APIClient {
         var request = URLRequest(url: endpoint.url(relativeTo: baseURL))
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        // Slow server work (e.g. LLM commit-message generation) needs more than the
-        // 60s session default, so callers can widen the per-request timeout.
         if let timeout { request.timeoutInterval = timeout }
-        // Custom headers first, then built-ins so Accept/Content-Type always win.
         customHeaderProvider().apply(to: &request)
         request.setValue(accept, forHTTPHeaderField: "Accept")
 
@@ -161,10 +135,6 @@ actor APIClient {
         return try await sendPreparedRequest(request)
     }
 
-    /// A file GET that reads at most `limit` bytes, with `sendData`'s custom headers,
-    /// redirect guard and `APIError` mapping. A 2xx `Content-Length` over the limit
-    /// throws `BotArtifactFailure.tooLarge` before the body is read, and a body
-    /// without one throws it at the limit. Cancelling the task stops the read.
     func sendBoundedData(endpoint: Endpoint, limit: Int) async throws -> Data {
         var request = URLRequest(url: endpoint.url(relativeTo: baseURL))
         request.httpMethod = "GET"
@@ -204,16 +174,9 @@ actor APIClient {
         }
         try buffer.append(chunk)
 
-        // Error bodies are read too: they carry the server's message, as with `sendData`.
         return try Self.mappedHTTPResponse(data: buffer.data, response: response, requireSuccess: true).0
     }
 
-    /// Multipart POST using the same URLSession + `APIError` mapping as `sendData`.
-    /// Custom headers first, then the multipart Content-Type so it always wins
-    /// over a caller-supplied `Content-Type` (#61).
-    ///
-    /// `requireSuccess` defaults to the sendData 2xx guard. Transcribe opts out
-    /// so it can decode `{error: ...}` bodies on non-2xx (except 401).
     func sendMultipart(
         endpoint: Endpoint,
         body: Data,
@@ -229,7 +192,6 @@ actor APIClient {
         return try await sendPreparedRequest(request, requireSuccess: requireSuccess)
     }
 
-    /// Shared URLSession hop + status mapping for JSON and multipart sends.
     private func sendPreparedRequest(
         _ request: URLRequest,
         requireSuccess: Bool = true
@@ -249,8 +211,6 @@ actor APIClient {
         )
     }
 
-    /// 401 → `.unauthorized`; other non-2xx → `.http` when `requireSuccess`.
-    /// Non-HTTP responses map to `.http(statusCode: -1)` like `sendData`.
     private static func mappedHTTPResponse(
         data: Data,
         response: URLResponse,
@@ -284,12 +244,6 @@ actor APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        // Same-origin media (incl. the user's own server via the cookie-less
-        // publicMediaSession) traverses the proxy, so it carries the custom
-        // headers. But downloadData also fetches *external* transcript media
-        // (third-party image URLs); those must NOT receive the headers, which may
-        // be secrets — that would leak them off-origin. Built-in Accept set after
-        // so it wins (#255).
         if Self.isSameOrigin(url, as: baseURL) {
             customHeaderProvider().apply(to: &request)
         }
@@ -352,10 +306,6 @@ actor APIClient {
 }
 
 extension APIClient {
-    /// The default session every `APIClient` shares, so connections are pooled
-    /// across clients (#688). Cookie-bearing: the shared jar holds each server's
-    /// auth cookie. No session delegate; redirects are guarded per task.
-    /// Never invalidate it.
     static let sharedSession: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.httpCookieStorage = .shared
@@ -364,8 +314,6 @@ extension APIClient {
         return URLSession(configuration: configuration)
     }()
 
-    /// The cookie-less session every `APIClient` shares for public and
-    /// third-party transcript media. Never invalidate it.
     static let sharedPublicMediaSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
@@ -381,30 +329,6 @@ private struct LoginRequest: Encodable {
 
 private struct EmptyBody: Encodable {}
 
-/// A `URLSession` redirect guard that removes the user's custom request headers
-/// when the server redirects a **same-origin** request to a **cross-origin** host.
-///
-/// `APIClient` only attaches custom headers (e.g. `Authorization`, `X-Api-Key`)
-/// to same-origin requests (#255). But if the server answers a same-origin
-/// request with a 3xx redirect to another host, `URLSession` would by default
-/// forward those headers to the new host. `URLSession` already strips
-/// `Authorization` (and a few sensitive headers) on cross-origin redirects, so
-/// the realistic residual leak is a non-`Authorization` custom header (e.g.
-/// `X-Api-Key`) — which may be a secret. This delegate closes that gap (#277).
-///
-/// Same-origin → same-origin redirects keep the headers (a proxy path rewrite
-/// still needs them); a request with no custom headers is left byte-identical.
-/// A cross-origin redirect of anything but GET or HEAD is refused outright: a
-/// 307 or 308 resends the method and body, which can carry a password or token,
-/// so the caller gets the 3xx instead of the body reaching another origin.
-/// `APIClient` passes it as the per-task delegate on each request. Only
-/// `willPerformHTTPRedirection` is implemented, so every other delegate
-/// responsibility (TLS trust, auth challenges) falls back to `URLSession`'s
-/// default handling.
-///
-/// `@unchecked Sendable` is safe: both stored properties are immutable and
-/// `Sendable` (the header provider is `@Sendable`); `NSObject` just isn't
-/// `Sendable` on its own.
 final class CrossOriginHeaderStripper: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let baseURL: URL
     private let customHeaderProvider: @Sendable () -> [CustomHeader]
@@ -421,31 +345,17 @@ final class CrossOriginHeaderStripper: NSObject, URLSessionTaskDelegate, @unchec
         newRequest request: URLRequest,
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
-        // Same-origin (or an indeterminate destination): follow the redirect with
-        // headers untouched. We only strip when we can prove the hop is off-origin.
         guard let destination = request.url,
               !APIClient.isSameOrigin(destination, as: baseURL) else {
             completionHandler(request)
             return
         }
 
-        // A 302 or 303 turns the method into a bodiless GET; a 307 or 308 keeps the
-        // method and body, so anything but GET or HEAD stops here.
         guard ["GET", "HEAD"].contains(request.httpMethod?.uppercased() ?? "GET") else {
             completionHandler(nil)
             return
         }
 
-        // Cross-origin hop: drop every configured custom header by name so none of
-        // the user's (possibly secret) headers reach the new host. Names match
-        // case-insensitively because HTTP field names are case-insensitive.
-        //
-        // The strip set is read from the live config here — the same source that
-        // applied the headers. If the user removed a header from the store between
-        // a request being sent and its redirect arriving, that header's value could
-        // slip through unstripped (a sub-second live-edit race; see #277 review).
-        // Accepted as a known narrow gap; closing it would require carrying the
-        // applied-name set through the redirect.
         let namesToStrip = Set(
             customHeaderProvider()
                 .filter { $0.isApplicable }
@@ -456,10 +366,6 @@ final class CrossOriginHeaderStripper: NSObject, URLSessionTaskDelegate, @unchec
             return
         }
 
-        // Remove each matching header by its real (original-case) name. We clear
-        // fields individually via `setValue(nil:)` rather than reassigning
-        // `allHTTPHeaderFields`, because that setter merges new keys instead of
-        // deleting omitted ones, so a filtered dictionary would not drop anything.
         var sanitized = request
         for name in fields.keys where namesToStrip.contains(name.lowercased()) {
             sanitized.setValue(nil, forHTTPHeaderField: name)

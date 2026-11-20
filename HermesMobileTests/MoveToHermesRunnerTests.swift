@@ -1,9 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Move to Hermes's runner and journal (#1216): nothing before the commit, intents on disk before
-/// sending, import-only replay, report-only settling, presence apart from copying, a durable
-/// final report, and conservative reading of a torn, damaged or unreadable journal.
 @MainActor
 final class MoveToHermesRunnerTests: XCTestCase {
     private let webui = URL(string: "https://webui.example")!
@@ -15,9 +12,7 @@ final class MoveToHermesRunnerTests: XCTestCase {
     private var host: MoveHermesHost!
     private var drafts: RunnerDrafts!
     private var registrar: RunnerRegistrar!
-    /// Writes the next run's journal refuses, as a full disk or a crash at that point would.
     private var failingWrite: ((MoveToHermesJournal.Write) -> Bool)?
-    /// Runs inside `removeServer`'s push teardown: after its drafts are discarded, before its entry goes.
     private var duringRemoval: (@MainActor () async -> Void)?
 
     override func setUp() async throws {
@@ -42,12 +37,9 @@ final class MoveToHermesRunnerTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        // The removal test runs on the app's own journal folder; delete only its move there.
         try? FileManager.default.removeItem(at: root == MoveToHermesJournal.defaultRoot ? folder : root)
         MoveWebuiFixture.reset()
     }
-
-    // MARK: Start and commit
 
     func testAFirstMoveCopiesFillsMovesDraftsAndFinishes() async throws {
         let entries = [entry("new", title: "Trip plan", pinned: true, workspace: "/srv/trip"), entry("had", location: .present(profile: "default"))]
@@ -119,10 +111,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(journalEvents().first, .pairing(.copied))
     }
 
-    // MARK: Imports
-
-    /// The import landed but its reply was lost. The replay resends only the import, the host
-    /// skips the id, and the report says Hermes has it without claiming this move copied it.
     func testALostImportReplyIsReplayedAndReportedAsPresentNotCopied() async throws {
         host.loseNextImportReply = true
         exports("a")
@@ -142,8 +130,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertNotEqual(host.rows["default|a"]?["pinned"], .bool(true), "No pin without a confirmed copy")
     }
 
-    /// Documented limit: a chat whose unconfirmed import landed and was then deleted in Hermes
-    /// during the pause is imported again by the replay, and the reply confirms that copy.
     func testAReplayRecreatesAChatDeletedDuringThePause() async throws {
         host.loseNextImportReply = true
         exports("a")
@@ -159,15 +145,12 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(host.imports.map(\.profile), ["default", "default"], "The replay goes to the frozen Profile")
     }
 
-    /// The import's reply arrived but its outcome line never reached disk. The next attempt
-    /// can't tell that send from any other, so the chat is present or sent, never copied.
     func testALostCopyOutcomeKeepsTheEarlierSendUnconfirmed() async throws {
         exports("a", "b")
         failingWrite = { if case .event(.copied) = $0 { true } else { false } }
         await makeRunner().start(review([entry("a", pinned: true), entry("b")]))
         XCTAssertEqual(Set(host.imports.flatMap(\.ids)), ["a", "b"])
         failingWrite = nil
-        // b's retry can't even export, so nothing says whether the first send landed.
         MoveWebuiFixture.exports["b"] = nil
         host.rows["default|b"] = nil
 
@@ -197,10 +180,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(outcomes, ["a": .notSent])
     }
 
-    // MARK: Metadata
-
-    /// A write landed, its outcome line never made it to disk, and the user changed the field
-    /// in Hermes during the pause. Resume reads it and reports it unconfirmed; it never resends.
     func testAWriteThatLandedBeforeItsOutcomeWasSavedIsSettledNotResent() async throws {
         exports("a")
         failingWrite = { if case .event(.changed) = $0 { true } else { false } }
@@ -221,8 +200,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(report.changesUnconfirmed.map(\.id), ["a"])
     }
 
-    /// A torn last line is either an outcome after a complete intent, which stays in flight and
-    /// is only settled, or an intent whose write never finished, which was never sent.
     func testATornLastLineKeepsACompleteIntentInFlightAndDropsAnUnfinishedOne() async throws {
         exports("a", "b")
         failingWrite = { if case .event(.changed) = $0 { true } else { false } }
@@ -240,7 +217,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
             return XCTFail("The torn tail is cut off, so lines written after it stay readable")
         }
 
-        // An intent cut off mid-write was never acted on, so the write still goes out once.
         try FileManager.default.removeItem(at: root)
         host = MoveHermesHost()
         failingWrite = { if case .event(.changing) = $0 { true } else { false } }
@@ -254,8 +230,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(second.changesApplied, 1)
         XCTAssertEqual(host.rows["default|b"]?["title"], .string("Notes"))
     }
-
-    // MARK: Damaged and unreadable journals
 
     func testADamagedLineStopsAllWorkAndAFreshStartRecovers() async throws {
         exports("a")
@@ -275,8 +249,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(host.calls, calls, "Nothing is read or sent from a damaged journal")
         XCTAssertEqual(MoveToHermesPending.all(in: auth.servers, root: root).map(\.status), [.damaged])
 
-        // Starting over is Copy Missing Chats Again: it fills only what it confirms copying, and
-        // a chat that landed earlier is one Hermes already has.
         host.rows["default|a"] = ["id": .string("a")]
         let recovery = makeRunner()
         await recovery.start(review([entry("a", title: "Trip")]))
@@ -286,7 +258,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(report.changesApplied, 0)
     }
 
-    /// A planned write that names another chat than its plan's is damage, never a write.
     func testAPlanNamingAnotherChatIsDamaged() async throws {
         exports("a")
         host.failingReads = ["a"]
@@ -304,8 +275,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(host.calls, calls)
     }
 
-    /// A repeat move keeps the record's mapping even when Review no longer lists its Profile;
-    /// an unconfirmed import to it is the runner's own history, not damage.
     func testARepeatMoveToAProfileReviewNoLongerListsResumes() async throws {
         exports("a", "b")
         let first = makeRunner()
@@ -323,7 +292,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(report.sentUnconfirmed + report.presentUnconfirmed + report.copied, ["b"])
     }
 
-    /// A plan whose log is gone has lost the record of what was sent.
     func testAMissingLogIsDamaged() async throws {
         exports("a")
         host.failingReads = ["a"]
@@ -381,8 +349,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: held.path))
     }
 
-    // MARK: Finishing
-
     func testTheReportIsOnDiskBeforeTheRecordCompletesAndSurvivesAFailedRecordSave() async throws {
         exports("a")
         failingWrite = { if case .event(.finished) = $0 { true } else { false } }
@@ -430,8 +396,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(summary.unchecked, 2)
     }
 
-    /// The destination's removal is part way through while a chat's row is read for its draft:
-    /// its drafts are discarded but its entry is still there. The draft stays on the webui.
     func testADraftReadWhileTheDestinationIsBeingRemovedStaysOnTheWebui() async throws {
         root = MoveToHermesJournal.defaultRoot
         host.rows["default|had"] = ["id": .string("had"), "title": .string("Mine")]
@@ -447,7 +411,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         host.onRead = { [unowned self] key in
             guard key == "had" else { return }
             reads += 1
-            // The second read is the draft step's; the first is planning's.
             guard reads == 2, let destination = self.auth.servers.first(where: { $0.id == self.hermes.absoluteString }) else { return }
             removal = Task { await self.auth.removeServer(destination) }
             await self.fulfillment(of: [held], timeout: 5)
@@ -466,8 +429,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
     }
 
-    /// Each chat's draft result is saved before the next chat's transfer, so a stop part way
-    /// through keeps the results of drafts already moved.
     func testADraftResultIsSavedBeforeTheNextChatsTransfer() async throws {
         exports("a", "b")
         await drafts.seed([sourceDraft("a"): ChatDraft(text: "first"), sourceDraft("b"): ChatDraft(text: "second")])
@@ -506,8 +467,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(saved[hermesDraft("a")]?.text, "hermes")
     }
 
-    // MARK: Repeat moves and removal
-
     func testCopyMissingChatsAgainKeepsTheRecordsMappingAndFillsOnlyWhatItCopies() async throws {
         exports("a")
         let first = makeRunner()
@@ -545,8 +504,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(runner.state, .idle)
         XCTAssertEqual(host.calls, calls)
     }
-
-    // MARK: Helpers
 
     private var folder: URL {
         MoveToHermesJournal.folder(source: webui.absoluteString, destination: hermes.absoluteString, in: root)
@@ -623,7 +580,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
 
     private func logText() throws -> String { try String(contentsOf: logURL, encoding: .utf8) }
 
-    /// Appends bytes as a write cut short by a crash leaves them: no newline.
     private func appendRaw(_ text: String) throws {
         let handle = try FileHandle(forWritingTo: logURL)
         defer { try? handle.close() }
@@ -632,39 +588,27 @@ final class MoveToHermesRunnerTests: XCTestCase {
     }
 }
 
-/// The scripted Hermes host the Move to Hermes tests share: Profiles, scan listings, rows by
-/// `profile|id`, imports, the title, pin and folder writes, and the failures a test asks for.
 @MainActor final class MoveHermesHost: BotTransport {
     var replayEpoch: String? = "epoch"
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     var profiles = ["default", "research"]
-    /// The Profile `profiles.list` marks `is_default`.
     var defaultProfile: String?
     var connectFailure: BotFailure?
-    /// Ids each Profile's scan listing shows; a listed id without a row reads as a bare row.
     var listed: [String: [String]] = [:]
     var rows: [String: [String: BotJSON]] = [:]
-    /// Ids whose reads fail.
     var failingReads: Set<String> = []
     var titlesInUse: Set<String> = []
     var missingFolders: Set<String> = []
-    /// Ids whose next write loses its reply: true when the write still landed.
     var lostReplies: [String: Bool] = [:]
-    /// Ids whose next write the host's write fence refuses (#1300); nothing is written.
     var fenceRefusals: [String: HermesSessionFenceRefusal] = [:]
-    /// The next import lands but its reply is lost.
     var loseNextImportReply = false
-    /// Runs inside each row read, before it answers.
     var onRead: (@MainActor (String) async -> Void)?
-    /// Runs as each import arrives, before it is answered.
     var onImport: (() -> Void)?
-    /// Runs as each write arrives, with its field, before it is answered.
     var onWrite: ((String) -> Void)?
     private(set) var imports: [(profile: String, ids: [String])] = []
     var writes: [(id: String, field: String)] = []
     private(set) var connects = 0
-    /// Every read and write the host answered.
     private(set) var calls = 0
 
     func connect() async throws {
@@ -751,7 +695,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
     }
 }
 
-/// The registrar's side of the pairing carry, counting host reads.
 @MainActor private final class RunnerRegistrar: PushPairingCopying {
     var sourcePaired = false
     private(set) var reads = 0
@@ -768,14 +711,12 @@ final class MoveToHermesRunnerTests: XCTestCase {
         .copied
     }
 
-    /// Counted through `readPairing` when the runner reads the host.
     func read() {
         reads += 1
         onRead?()
     }
 }
 
-/// Drafts on "disk".
 private actor RunnerDrafts: ChatDraftPersisting {
     private(set) var values: [ChatDraftKey: ChatDraft] = [:]
 

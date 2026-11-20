@@ -1,27 +1,17 @@
 import SwiftUI
 
-/// How a drawn bot face moves. `.still` is one frozen frame, used by the picker
-/// tiles, Reduce Motion and the extensions. `.idle` blinks on a sparse schedule.
-/// `.working` is Desktop's lean-and-sway pose for the open bot while its turn is live:
-/// it sways for one `BotWorkingSchedule.beat` from `since`, then holds a still lean
-/// that only blinks, so a long turn never keeps a 15 fps loop running.
 enum BotFaceMotion: Equatable, Sendable {
     case still, idle
     case working(since: Date)
 
-    /// Reduce Motion collapses every mode to a still face.
     func honoring(reduceMotion: Bool) -> BotFaceMotion { reduceMotion ? .still : self }
 }
 
-/// One frame of a face: gaze offset as a fraction of the mark size, head roll in
-/// degrees and the lid factor applied to eye height (1 open, 0.06 shut).
 struct BotFacePose: Equatable, Sendable {
     var gazeX = 0.0
     var gazeY = 0.0
     var roll = 0.0
     var lid = 1.0
-    /// Vertical lift as a fraction of the mark size (positive is up) and the
-    /// squash-and-stretch scale, used only by the playful bits.
     var lift = 0.0
     var scaleX = 1.0
     var scaleY = 1.0
@@ -29,7 +19,6 @@ struct BotFacePose: Equatable, Sendable {
     static let rest = BotFacePose()
     static let blink = BotFacePose(lid: 0.06)
 
-    /// Desktop's `work` pose (`avatar.tsx` facePose), scaled from head degrees onto the mark.
     static func working(at t: Double) -> BotFacePose {
         let turn = -11 + sin(t * 0.48) * 8
         let tilt = sin(t * 0.42) * 8 + sin(t * 1.1) * 1.6
@@ -38,14 +27,9 @@ struct BotFacePose: Equatable, Sendable {
         return BotFacePose(gazeX: turn * 0.0025, gazeY: -tilt * 0.0025, roll: roll, lid: blink ? 0.06 : 1)
     }
 
-    /// The working lean with the sway taken out: gaze held aside at the pose's
-    /// centre turn, no tilt or roll. Still reads "busy, looking at its work".
     static let settledWorking = BotFacePose(gazeX: -11 * 0.0025)
 }
 
-/// A `TimelineView` schedule that fires only at blink edges: shut, then open 180 ms
-/// later, every 3 to 5 seconds. The period and phase are seeded by the bot's name so
-/// a list of faces never blinks in unison. Nothing repaints between entries.
 struct BotBlinkSchedule: TimelineSchedule, Equatable {
     static let shutDuration = 0.18
     let period: Double
@@ -57,11 +41,9 @@ struct BotBlinkSchedule: TimelineSchedule, Equatable {
         phase = Double((hash >> 20) % 5000) / 1000
     }
 
-    /// Whether the eyes are shut at `date`; the same rule the entries are cut from.
     func isShut(at date: Date) -> Bool {
         let offset = (date.timeIntervalSinceReferenceDate - phase).truncatingRemainder(dividingBy: period)
         let position = offset < 0 ? offset + period : offset
-        // The open entry lands exactly at shutDuration; keep float error from reading it as shut.
         return position + 0.0001 < Self.shutDuration
     }
 
@@ -69,8 +51,6 @@ struct BotBlinkSchedule: TimelineSchedule, Equatable {
         let period = period, shut = Self.shutDuration
         let base = start.timeIntervalSinceReferenceDate
         let firstShut = phase + (floor((base - phase) / period) + 1) * period
-        // Starting inside a blink still needs that blink's open edge, or the eyes
-        // would stay shut until the next cycle.
         let pendingOpen: Date? = isShut(at: start) ? Date(timeIntervalSinceReferenceDate: firstShut - period + shut) : nil
         return AnySequence { () -> AnyIterator<Date> in
             var index = -1
@@ -86,10 +66,6 @@ struct BotBlinkSchedule: TimelineSchedule, Equatable {
     }
 }
 
-/// The working face's `TimelineView` schedule: 15 fps for `beat` seconds from `start`,
-/// then only the bot's blink edges. `start` is when the current beat began (the turn
-/// started working, or the app came back to the foreground mid-turn), so a two-hour
-/// run stops repainting after the beat. A waiting face never uses it (#757).
 struct BotWorkingSchedule: TimelineSchedule, Equatable {
     static let beat = 30.0
     static let frameInterval = 1.0 / 15
@@ -98,7 +74,6 @@ struct BotWorkingSchedule: TimelineSchedule, Equatable {
 
     private var end: Date { start.addingTimeInterval(Self.beat) }
 
-    /// The swaying pose inside the beat, then the settled lean with the blink's lid.
     func pose(at date: Date) -> BotFacePose {
         if date < end { return .working(at: date.timeIntervalSinceReferenceDate) }
         var pose = BotFacePose.settledWorking
@@ -112,7 +87,6 @@ struct BotWorkingSchedule: TimelineSchedule, Equatable {
         let first = max(date, start), blink = blink
         return AnySequence { () -> AnyIterator<Date> in
             var frame = 0
-            // The blink schedule's first entry is `end` itself, which paints the settled pose.
             let settled = blink.entries(from: end, mode: mode).makeIterator()
             return AnyIterator {
                 let next = first.addingTimeInterval(Double(frame) * Self.frameInterval)
@@ -124,20 +98,12 @@ struct BotWorkingSchedule: TimelineSchedule, Equatable {
     }
 }
 
-/// A bot's chat turn as its title face reads it (`HermesChatTurnCoordinator.botTurn`):
-/// `.unknown` while not connected, so a reconnect inside a turn starts no new beat.
 enum BotTurnState { case unknown, idle, running, needsAttention, interrupted }
 
-/// When a bot's chat title face starts a working beat. A beat starts only when the turn
-/// enters work after being seen not working (a new prompt, an answered approval) or
-/// after the chat opened or came back to the foreground. A same-turn reconnect passes
-/// through `.unknown`; that and an arriving approval never start one, so a long turn settles.
 struct BotWorkingBeat: Equatable {
-    /// `.distantPast` until the first beat, so a face that never saw work start holds the lean.
     private(set) var start = Date.distantPast
     private var armed = true
 
-    /// Called when the chat returns to the foreground; the next entry into work starts a beat.
     mutating func rearm() { armed = true }
 
     mutating func observe(_ turn: BotTurnState, at date: Date) {
@@ -149,16 +115,12 @@ struct BotWorkingBeat: Equatable {
     }
 }
 
-/// One short, self-ending piece of business for the hero face, after Bloub's state
-/// catalogue: it starts and ends at rest so it can cut straight in and out of the
-/// blink schedule. `pose(at:)` takes progress 0…1 and uses ease-outs, never springs.
 enum BotFaceBit: CaseIterable, Equatable, Sendable {
     case glanceLeft, glanceRight, glanceDown, doubleBlink, wobble, hop, spin
 
     var duration: Double {
         switch self {
         case .glanceLeft, .glanceRight: return 0.9
-        // Long enough to cover a burst of typing; repeated cues never restart it.
         case .glanceDown: return 1.6
         case .doubleBlink: return 0.5
         case .wobble: return 0.7
@@ -168,10 +130,8 @@ enum BotFaceBit: CaseIterable, Equatable, Sendable {
     }
 
     func pose(at progress: Double) -> BotFacePose {
-        // The edges are exactly rest, so float noise never leaves a face a hair off.
         guard progress > 0, progress < 1 else { return .rest }
         let p = progress
-        // Out for the first third, hold, back over the last third.
         let hold = p < 0.3 ? Self.easeOut(p / 0.3) : p > 0.7 ? 1 - Self.easeOut((p - 0.7) / 0.3) : 1
         switch self {
         case .glanceLeft: return BotFacePose(gazeX: -0.07 * hold)
@@ -195,9 +155,6 @@ enum BotFaceBit: CaseIterable, Equatable, Sendable {
     private static func easeOut(_ t: Double) -> Double { 1 - pow(1 - t, 3) }
 }
 
-/// When the hero face does something on its own: every 4 to 9 seconds, seeded by
-/// the bot's name so two faces never move in step, one bit from the repertoire.
-/// A spin is rare: it lands at most every tenth slot, so at least 40 seconds apart.
 struct BotPlayfulSchedule: Equatable {
     let seed: UInt64
 
@@ -205,7 +162,6 @@ struct BotPlayfulSchedule: Equatable {
         self.seed = seed.utf8.reduce(UInt64(1_469_598_103_934_665_603)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }
     }
 
-    /// The wait before slot `index` and what plays there.
     func entry(_ index: Int) -> (delay: Double, bit: BotFaceBit) {
         var state = seed ^ (UInt64(index) &* 0x9E37_79B9_7F4A_7C15)
         state ^= state >> 30; state &*= 0xBF58_476D_1CE4_E5B9
@@ -218,22 +174,17 @@ struct BotPlayfulSchedule: Equatable {
     }
 }
 
-/// A screen's request for one bit, such as a hop when a shape is picked. A new
-/// identity replays the same bit once the previous run has finished.
 struct BotFaceCue: Equatable {
     let id = UUID()
     let bit: BotFaceBit
     init(_ bit: BotFaceBit) { self.bit = bit }
 }
 
-/// A drawn face that moves per `motion`. The still and Reduce Motion paths render a
-/// plain `BotAvatarMarkView` with no timeline at all.
 struct BotAnimatedFaceView: View {
     let name: String
     let appearance: BotProfileAppearance
     let size: CGFloat
     var motion: BotFaceMotion = .idle
-    /// Extra gaze, as a fraction of the mark size, layered onto the motion's pose.
     var gaze = CGSize.zero
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -263,14 +214,6 @@ struct BotAnimatedFaceView: View {
     }
 }
 
-/// The hero face on the create and edit screens, after Bloub: it blinks on its own,
-/// its eyes follow a finger dragged over it, a tap makes it squish and pull a
-/// surprised face for a moment, and every few seconds it plays one short bit
-/// (a glance, a double blink, a wobble, a hop, rarely a spin). The screen can cue
-/// a bit for what the user just did. A bit runs its own short timeline and then
-/// hands back to the blink schedule, so nothing repaints while the face is left
-/// alone. Reduce Motion keeps the eyes still, plays no bits and drops the squish,
-/// but still answers a tap with the expression.
 struct BotInteractiveFaceView: View {
     let name: String
     let appearance: BotProfileAppearance
@@ -281,7 +224,6 @@ struct BotInteractiveFaceView: View {
     @State private var playing: (bit: BotFaceBit, start: Date)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// How far the eyes travel, as a fraction of the mark, and the reaction's length.
     private static let reach = 0.07
     private static let reactionDuration: Duration = .milliseconds(650)
 
@@ -316,12 +258,9 @@ struct BotInteractiveFaceView: View {
             .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.4), value: reaction > 0)
             .accessibilityHidden(true)
             .onChange(of: cue?.id) { if let cue { play(cue.bit) } }
-            // Reduce Motion is part of the identity so flipping it restarts, or stops, the idle loop.
             .task(id: "\(name)|\(reduceMotion)") { await playIdleBits() }
     }
 
-    /// Runs the seeded idle repertoire while the face is on screen. A slot whose
-    /// moment finds the face busy (a cue, a tap) is simply skipped.
     private func playIdleBits() async {
         guard !reduceMotion else { return }
         let schedule = BotPlayfulSchedule(seed: name)
@@ -334,12 +273,8 @@ struct BotInteractiveFaceView: View {
         }
     }
 
-    /// A cue for the bit already on screen is ignored, so fast typing looks down
-    /// once for the whole burst instead of jittering with every letter.
-    /// The bit's pose at `date`, with a finger on the face still steering the eyes.
     private func bitPose(_ playing: (bit: BotFaceBit, start: Date), at date: Date) -> BotFacePose {
         var pose = playing.bit.pose(at: date.timeIntervalSince(playing.start) / playing.bit.duration)
-        // A glance plus a drag stays within the eyes' travel, so they never leave the body.
         pose.gazeX = max(-Self.reach, min(Self.reach, pose.gazeX + gaze.width))
         pose.gazeY = max(-Self.reach, min(Self.reach, pose.gazeY + gaze.height))
         return pose

@@ -49,17 +49,12 @@ struct AgentRunLiveActivityWidget: Widget {
                     .agentRunPalette(on: .host)
             }
             .widgetURL(AgentRunTapTarget.url(attributes: context.attributes, sessionID: context.presentedState.sessionID, activityID: context.activityID))
-            // The keyline only rings the iPhone's black Island, so it keeps the dark hues.
             .keylineTint(AgentRunPalette.dark.status(context.presentedState.status, isStale: context.presentedState.isStale))
         }
         .supplementalActivityFamilies([.small])
     }
 }
 
-/// The activity's content view for every family: the two-line small layout on the
-/// Apple Watch Smart Stack and CarPlay (#1400), the Lock Screen card everywhere else.
-/// The family is read here because ActivityConfiguration's builder closures get no
-/// environment.
 private struct AgentRunActivityContent: View {
     let context: ActivityViewContext<AgentRunActivityAttributes>
     @Environment(\.activityFamily) private var family
@@ -73,9 +68,6 @@ private struct AgentRunActivityContent: View {
     }
 }
 
-/// Title first, then state (#1400): the full ask or outcome title, the elapsed timer
-/// while working, or the latest-status wording for stale work. Stale asks stay asks.
-/// No excerpt, chips or pill: the card has to make sense at a glance without a tap.
 private struct AgentRunSmallView: View {
     let state: AgentRunActivityAttributes.ContentState
     let isBot: Bool
@@ -90,7 +82,6 @@ private struct AgentRunSmallView: View {
                     .font(.footnote.weight(.bold))
                     .foregroundStyle(palette.status(state.status, isStale: state.isStale))
                     .widgetAccentable()
-                    // Working has no status words on the second line, so the glyph names the phase.
                     .accessibilityLabel(state.status.title)
                     .accessibilityHidden(presentation != .working)
 
@@ -135,13 +126,10 @@ private struct AgentRunExpandedIslandBottomView: View {
     let isBot: Bool
     @Environment(\.agentRunPalette) private var palette
 
-    /// One line without reply text: what the agent is doing, then its counts.
     private var countsLine: String {
         AgentRunStaleBotPresentation.expandedCountsLine(state: state, isBot: isBot)
     }
 
-    /// A stale approval or clarification keeps its ask in this line. Every other
-    /// state still yields the line to reply text.
     private var showsStaleWaitingAnswer: Bool {
         AgentRunStaleBotPresentation.prefersWaitingAnswer(state: state, isBot: isBot)
     }
@@ -177,13 +165,9 @@ private struct AgentRunLockScreenView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             activityRow
-            // A stale ask stays on the chips, including its answer action, even when
-            // reply text would otherwise take this row. Counts stay counts.
             if isBot, (showsStaleWaitingAnswer || context.presentedState.responseExcerpt.isEmpty), !botChips.isEmpty {
                 AgentRunChipRow(chips: botChips.map(AgentRunDetailChip.text), isDimmed: context.presentedState.isStale)
             } else if !isBot, context.presentedState.responseExcerpt.isEmpty {
-                // No reply text to show: the relay's counts and freshness, or nothing
-                // at all rather than filler (#644).
                 let chips = context.presentedState.detailChips
                 if !chips.isEmpty { AgentRunChipRow(chips: chips, isDimmed: false) }
             } else {
@@ -203,7 +187,6 @@ private struct AgentRunLockScreenView: View {
         }
 
         if context.presentedState.isStale {
-            // Stale webui names the card as stale. A disconnected Bot is handled above.
             return String(localized: "Latest status shown")
         }
 
@@ -214,7 +197,6 @@ private struct AgentRunLockScreenView: View {
         return context.presentedState.currentActivity
     }
 
-    /// The bot's counts. A stale activity adds one action: answer, or reconnect.
     private var botChips: [String] {
         AgentRunStaleBotPresentation.lockScreenChips(state: context.presentedState, isBot: isBot)
     }
@@ -288,8 +270,6 @@ private struct AgentRunLockScreenView: View {
     }
 }
 
-/// Bounded detail chips: a bot's counts, or a webui run's counts and freshness (#644).
-/// Only the system-drawn relative time moves; the app never repaints this row.
 private struct AgentRunChipRow: View {
     let chips: [AgentRunDetailChip]
     let isDimmed: Bool
@@ -323,8 +303,6 @@ private extension AgentRunDetailChip {
     var isCount: Bool { if case .text = self { true } else { false } }
 }
 
-/// The bot's avatar with its status as a corner badge, or the plain status dot for a
-/// session and for a bot whose avatar file is missing.
 private struct AgentRunLeadingMark: View {
     let bot: AgentRunActivityBot?
     let status: AgentRunActivityStatus
@@ -405,8 +383,6 @@ private struct AgentRunIslandStatusView: View {
     }
 }
 
-/// The compact leading and minimal glyph. It names the working phase on its own, so
-/// it carries the full status for VoiceOver (#1398).
 private struct AgentRunIslandCompactMark: View {
     let state: AgentRunActivityAttributes.ContentState
     let isBot: Bool
@@ -429,8 +405,6 @@ private struct AgentRunIslandCompactMark: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
-    /// "Hermex, Thinking". Stale work says it shows the latest status, or for a Bot
-    /// that it is disconnected; a stale Bot also says how to recover (#584).
     private var accessibilityLabel: String {
         let compact = AgentRunCompactPresentation(state: state)
         let stale = AgentRunStaleBotPresentation.presentation(state: state, isBot: isBot)
@@ -447,9 +421,6 @@ private struct AgentRunIslandCompactMark: View {
     }
 }
 
-/// Compact trailing: empty while working, one short word for an ask, an outcome, or
-/// stale work (#1398). The leading mark already reads the full status, so VoiceOver
-/// skips the word.
 private struct AgentRunCompactTrailingView: View {
     let state: AgentRunActivityAttributes.ContentState
     @Environment(\.agentRunPalette) private var palette
@@ -535,12 +506,6 @@ private struct AgentRunElapsedTimerText: View {
     let startedAt: Date
     var alignment: TextAlignment = .trailing
 
-    // `Text(timerInterval:)` reserves layout width for the largest value its range
-    // could ever show, then draws the shorter live value leading-aligned inside that
-    // leftover slack — which left-shifted the digits in the Dynamic Island and the
-    // Lock Screen pill (#247). Bounding the range keeps an MM:SS-sized box, and an
-    // explicit `multilineTextAlignment` pins the digits to the edge each call site
-    // wants (trailing under the Dynamic Island status, centered in the pill).
     private static let maxDisplayInterval: TimeInterval = 99 * 60 + 59
 
     var body: some View {
@@ -555,30 +520,19 @@ private struct AgentRunElapsedTimerText: View {
     }
 }
 
-/// Every color the Live Activity draws, chosen from the surface under it and from how the
-/// system renders it (#1399). `agentRunPalette(on:)` builds one per surface; views read it
-/// from the environment. Status glyphs and words carry status in every treatment.
 struct AgentRunPalette {
-    /// What the activity draws on.
     enum Surface {
-        /// The fixed near-black card: dark whatever the system appearance.
         case darkCard
-        /// System material or a host's own background (the iPhone Island, a Mac menu
-        /// bar): light or dark per the environment's `colorScheme`.
         case host
 
-        /// iOS 26 and later asks for system material; iOS 18–25 keeps the dark card.
         static var lockScreen: Surface {
             if #available(iOS 26, *) { .host } else { .darkCard }
         }
 
-        /// nil asks for the system default material.
         var backgroundTint: Color? { self == .darkCard ? AgentRunPalette.darkCardBackground : nil }
         var actionForeground: Color? { self == .darkCard ? .white : nil }
     }
 
-    /// Today's look: the dark card in full color. The environment default, and the
-    /// Island keyline's colors.
     static let dark = AgentRunPalette(surface: .darkCard, colorScheme: .dark, renderingMode: .fullColor,
                                       isLuminanceReduced: false, increasedContrast: false)
 
@@ -587,18 +541,11 @@ struct AgentRunPalette {
     let primaryText: Color
     let secondaryText: Color
     let stroke: Color
-    /// Chip and timer pill fill: kept faint so the background shows through.
     let fill: Color
-    /// Rings the avatar's status badge so it reads as cut out of the background.
     let avatarOutline: Color
     private let isDark: Bool
-    /// Replaces every status hue: secondary when luminance is reduced (Always-On),
-    /// primary when the system tints or desaturates the activity.
     private let statusOverride: Color?
 
-    /// Rules in order: reduced luminance mutes status, accented or vibrant rendering
-    /// draws in hierarchical primary and secondary, and full color contrasts with the
-    /// actual background, which is always dark for the dark card.
     init(surface: Surface, colorScheme: ColorScheme, renderingMode: WidgetRenderingMode,
          isLuminanceReduced: Bool, increasedContrast: Bool) {
         isDark = surface == .darkCard || colorScheme == .dark
@@ -625,14 +572,12 @@ struct AgentRunPalette {
         return isDark ? hue.dark : hue.light
     }
 
-    /// The working dot beside the timer.
     var liveDot: Color {
         statusOverride ?? (isDark ? Color(red: 0.35, green: 0.95, blue: 0.7) : Color(red: 0.06, green: 0.5, blue: 0.32))
     }
 
     private static let neutral = (dark: Color.white.opacity(0.54), light: Color.black.opacity(0.45))
 
-    /// Bright hues for dark backgrounds, darker variants of the same hue for light ones.
     private static func hue(for status: AgentRunActivityStatus) -> (dark: Color, light: Color) {
         switch status {
         case .starting, .thinking, .responding:
@@ -660,13 +605,9 @@ struct AgentRunPalette {
 }
 
 extension EnvironmentValues {
-    /// Set by `agentRunPalette(on:)`; defaults to the dark card.
     @Entry var agentRunPalette = AgentRunPalette.dark
 }
 
-/// Reads how the system draws this view and hands the matching palette down. The reads
-/// live in a view modifier because ActivityConfiguration's builder closures get no
-/// environment.
 private struct AgentRunPaletteScope: ViewModifier {
     let surface: AgentRunPalette.Surface
     @Environment(\.colorScheme) private var colorScheme

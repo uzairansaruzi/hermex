@@ -64,8 +64,6 @@ struct SubmittedGoal: Decodable, Equatable {
         case pausedReasonSnake = "paused_reason"
     }
 
-    /// A goal read from somewhere other than the webui, such as a Hermes session's
-    /// `session.control` snapshot (#1013).
     init(goal: String?, status: String?, turnsUsed: Int?, maxTurns: Int?, lastVerdict: String?,
          lastReason: String?, pausedReason: String?) {
         self.goal = goal

@@ -1,14 +1,9 @@
 #if DEBUG
 import SwiftUI
 
-/// Debug-only gallery of every provider ID the Hermes docs list
-/// (https://hermes-agent.nousresearch.com/docs/integrations/providers), so the
-/// glyph mapping can be checked against the real model picker without having
-/// each provider configured on a server. Not localized.
 struct ProviderGlyphGalleryView: View {
     @State private var showsPicker = false
 
-    /// Provider IDs as the docs spell them, with their display names.
     private static let documentedProviders: [(id: String, name: String)] = [
         ("nous", "Nous Portal"),
         ("openai-codex", "OpenAI Codex"),
@@ -59,10 +54,6 @@ struct ProviderGlyphGalleryView: View {
         ("custom", "Custom Endpoint"),
     ]
 
-    /// Two sample models per provider, except OpenRouter, which gets the size
-    /// the server really returns for it: 15 visible models and a 385-model
-    /// `extra_models` tail, so "Show all models" and search can be checked
-    /// against a large catalog.
     private static let sampleGroups: [ModelCatalogGroup] = documentedProviders.map { provider in
         let samples = [
             ModelCatalogOption(id: "\(provider.id)-sample-1", displayName: "\(provider.name) Sample", providerID: provider.id),

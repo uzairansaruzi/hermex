@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Skills on a Hermes host (#1069): `HermesSkillsClient` against a scripted host whose replies
-/// are the shapes `scripts/local-hermes` answered at the pin (0.21.5, ca678285).
 @MainActor final class HermesSkillsClientTests: XCTestCase {
     func testTheListIsTheProfilesBareArrayWithEnabledReadAsDisabled() async throws {
         let client = Self.client { request in
@@ -92,8 +90,6 @@ import XCTest
             XCTAssertEqual(error.localizedDescription, "The server rejected the request: Profile 'research' does not exist.")
         }
     }
-
-    // MARK: Linked files (#1070)
 
     func testDetailListsTheSkillFolderTwoLevelsDeepByRelativePath() async throws {
         let folder = Self.folder
@@ -198,7 +194,6 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.requests.count, sent)
     }
 
-    /// A client for the `research` Profile on a scripted host.
     private static func client(_ script: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> HermesSkillsClient {
         let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                    username: "user", password: "secret")
@@ -206,21 +201,17 @@ import XCTest
                                   profile: "research")
     }
 
-    /// The skill's folder on the host, which only the content reply names.
     nonisolated private static let folder = "/home/agent/.hermes/profiles/research/skills/research/arxiv"
     nonisolated private static let skillMd = HermesHostFixture.Reply.json(200, .object([
         "name": .string("arxiv"), "content": .string("# arXiv"), "path": .string(folder + "/SKILL.md")
     ]))
 
-    /// `GET /api/fs/list`'s reply for `directory`, each entry's `path` resolved the way the host
-    /// resolves it (`/private/…` on a Mac), which the client never reads.
     nonisolated private static func listing(_ directory: String, _ entries: [(String, Bool)]) -> HermesHostFixture.Reply {
         .json(200, .object(["entries": .array(entries.map { name, isDirectory in
             .object(["name": .string(name), "path": .string("/private\(directory)/\(name)"), "isDirectory": .bool(isDirectory)])
         })]))
     }
 
-    /// The host path a request names in its query.
     nonisolated private static func queryPath(_ request: URLRequest) -> String? {
         request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?
             .queryItems?.first { $0.name == "path" }?.value

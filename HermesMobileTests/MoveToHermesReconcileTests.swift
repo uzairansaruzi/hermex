@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Move to Hermes's reconcile (#1214): fill-only metadata from recorded starting values,
-/// report-only settling of writes with unknown results, and draft moves that keep both sides.
 @MainActor
 final class MoveToHermesReconcileTests: XCTestCase {
     private typealias Reconcile = MoveToHermesReconcile
@@ -10,8 +8,6 @@ final class MoveToHermesReconcileTests: XCTestCase {
     private let webui = URL(string: "https://webui.example")!
     private let hermes = URL(string: "https://hermes.example")!
     private let connection = UUID()
-
-    // MARK: Planning
 
     func testPlanRecordsSnapshotValuesAndFillsOnlyEmptyFields() async {
         let wire = MoveHermesHost()
@@ -28,7 +24,6 @@ final class MoveToHermesReconcileTests: XCTestCase {
             .init(id: "copied", profile: "dev", change: .pinned(from: false, to: true)),
             .init(id: "copied", profile: "dev", change: .folder(from: nil, to: "/srv/trip")),
         ])))
-        // A chat Hermes already had keeps its title, folder, pin and archive state.
         XCTAssertEqual(planned["present"], .plan(.init(target: present, draftSession: "present", operations: [])))
         XCTAssertTrue(wire.writes.isEmpty)
     }
@@ -77,8 +72,6 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertTrue(suffixed.hasSuffix("x (6789ab)"))
     }
 
-    // MARK: Applying
-
     func testApplyRecordsEachWriteBeforeSendingIt() async {
         let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a"), "pinned": .bool(false)]
@@ -98,7 +91,6 @@ final class MoveToHermesReconcileTests: XCTestCase {
         let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a")]
         let operations = await plannedOperations(target("a", title: "Notes", pinned: true, workspace: "/srv/a"), on: wire)
-        // Between planning and dispatch, the user names it, pins it and moves it.
         wire.rows["dev|a"] = ["id": .string("a"), "title": .string("Mine"), "pinned": .number(1), "cwd": .string("/srv/mine")]
         var recorded: [Reconcile.Operation] = []
 
@@ -185,8 +177,6 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertEqual(wire.writes.count, 2, "one send each; the unconfirmed one isn't sent again")
     }
 
-    /// A write the fence refused (#1300) is never resent in the run: a busy session reports why,
-    /// and a stale revision, which wrote nothing, is left for the next run to apply.
     func testFenceRefusalIsNeverResent() async {
         let wire = MoveHermesHost()
         wire.rows["dev|busy"] = ["id": .string("busy")]
@@ -216,17 +206,12 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertTrue(wire.writes.isEmpty)
     }
 
-    // MARK: Settling
-
-    /// The success/acknowledgement gap: each write landed, the journal never heard, and the user
-    /// then undid it in Hermes. Resuming must report it, not send it again.
     func testResumeAfterRemoteSuccessAndExternalEditsReportsUncertainWithoutWriting() async {
         let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a")]
         let operations = await plannedOperations(target("a", title: "Notes", pinned: true, workspace: "/srv/a"), on: wire)
         _ = await Reconcile.apply(operations, on: wire) { _ in }
         wire.writes = []
-        // The user unpins it, renames it and moves it back to having no folder.
         wire.rows["dev|a"] = ["id": .string("a"), "title": .string("Renamed"), "pinned": .bool(false), "cwd": .null]
 
         let settled = await Reconcile.settle(operations, on: wire)
@@ -254,8 +239,6 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertEqual(settled[gone], .missing)
         XCTAssertTrue(wire.writes.isEmpty)
     }
-
-    // MARK: Drafts
 
     func testDraftMovesToTheVerifiedSessionKeyWithoutItsSettings() async throws {
         let quote = ComposerQuote(text: "quoted")
@@ -292,7 +275,6 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertEqual(saved.count, 1)
     }
 
-    /// A plan can be old: the session may since be deleted, hidden or continued, or unreadable.
     func testDraftStaysWhenTheSessionChangedSincePlanning() async {
         let ids = ["gone", "hidden", "child", "unreadable"]
         let persistence = ReconcileDrafts(values: Dictionary(uniqueKeysWithValues: ids.map { (source($0), ChatDraft(text: $0)) }))
@@ -326,8 +308,6 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertNil(saved[destination("a")])
     }
 
-    /// A failed save of the source's removal, like a quit between copy and delete, leaves the
-    /// draft in both places; the next move finishes it.
     func testFailedRemovalKeepsBothAndTheNextMoveFinishes() async throws {
         let persistence = ReconcileDrafts(values: [source("a"): ChatDraft(text: "unsent")])
         let store = ChatDraftStore(persistence: persistence)
@@ -348,8 +328,6 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertNil(saved[source("a")])
         XCTAssertEqual(saved[destination("a")]?.text, "unsent")
     }
-
-    // MARK: Helpers
 
     private func target(_ id: String, title: String? = nil, pinned: Bool = false, archived: Bool = false,
                         workspace: String? = nil, copied: Bool = true) -> Reconcile.Target {
@@ -387,10 +365,8 @@ private extension MoveToHermesReconcile.Change {
     }
 }
 
-/// Drafts on "disk", with the next writes failing on request.
 private actor ReconcileDrafts: ChatDraftPersisting {
     private(set) var values: [ChatDraftKey: ChatDraft]
-    /// The write, counting from 1 after `failWrites`, that throws.
     private var failingWrite: Int?
     private var writesSinceArmed = 0
 

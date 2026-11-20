@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// The Usage screen: a window picker, one hero figure with a chart under it, the
-/// window totals, and the per-model breakdown. On a webui server every figure comes from
-/// `GET /api/insights`, or from local session metadata when that call fails. On a Hermes host
-/// (#1074) they are one Profile's analytics, which the title names (`HermesInsightsClient`).
 struct InsightsView: View {
     let onAPIError: (Error) -> Void
     private let profile: String?
@@ -14,8 +10,6 @@ struct InsightsView: View {
         self.init(client: APIClient(baseURL: server), onAPIError: onAPIError)
     }
 
-    /// The usage `client` reads: on a Hermes host, `profile`'s, whose limits also go to the Limits
-    /// widget under `limitsScope` (#1409).
     init(client: any InsightsDataClient, profile: String? = nil, limitsScope: ProviderLimitsPublisher.Scope? = nil,
          onAPIError: @escaping (Error) -> Void) {
         self.onAPIError = onAPIError
@@ -32,9 +26,6 @@ struct InsightsView: View {
                     Button {
                         Task { await refresh() }
                     } label: {
-                        // The spinner marks a re-fetch of something already on
-                        // screen. A first load has its own placeholder, and a
-                        // server that never answers must not pin it on here.
                         if viewModel.isRefreshing {
                             ProgressView()
                         } else {
@@ -47,13 +38,6 @@ struct InsightsView: View {
             .task(id: viewModel.selectedTimeframe) {
                 await loadInsights()
             }
-            // A separate, unkeyed task on purpose: a cold account-limits probe
-            // can take several seconds upstream and the chart must not wait on
-            // it, and quota does not depend on the window. Keying it to the
-            // window would restart the probe on every picker change, wasting
-            // traffic and letting the restarted load supersede an in-flight
-            // explicit refresh. This load never passes `refresh` — that belongs
-            // to explicit gestures.
             .task {
                 await viewModel.loadLimits()
             }
@@ -66,8 +50,6 @@ struct InsightsView: View {
         } else if viewModel.features.fallsBackToSessions {
             placeholder
         } else {
-            // Without a sessions fallback (Hermes) a failed window replaces the figures, so the
-            // picker stays above the placeholder, where it sits once loaded, to leave that window.
             VStack(spacing: 0) {
                 windowPicker
                     .padding(.horizontal, 16)
@@ -78,7 +60,6 @@ struct InsightsView: View {
         }
     }
 
-    /// What stands in for the figures before any have loaded: progress, the error, or no data.
     @ViewBuilder
     private var placeholder: some View {
         if viewModel.isLoading {
@@ -173,9 +154,6 @@ struct InsightsView: View {
         }
     }
 
-    /// An explicit refresh gesture: the toolbar button and pull-to-refresh. Only
-    /// these bypass the server's 45 s quota cache. Both calls are started before
-    /// either is awaited so the slower one does not serialize behind the other.
     private func refresh() async {
         let limits = Task { await viewModel.loadLimits(refresh: true) }
         await loadInsights()
@@ -191,8 +169,6 @@ struct InsightsView: View {
     }
 }
 
-/// Titles the Usage screen. On a Hermes host it also names the Profile the figures are for:
-/// under the title on iOS 26, and after it before that.
 private struct UsageTitle: ViewModifier {
     let profile: String?
 

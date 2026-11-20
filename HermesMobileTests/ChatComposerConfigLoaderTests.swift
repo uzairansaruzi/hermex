@@ -71,12 +71,10 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.currentModelProvider, "openrouter")
         XCTAssertEqual(result.state.currentWorkspace, "/tmp/workspace")
         XCTAssertEqual(result.state.selectedReasoningEffort, "medium")
-        // Older server: no supported_efforts / supports_reasoning_effort fields.
         XCTAssertNil(result.state.supportedReasoningEfforts)
         XCTAssertNil(result.state.supportsReasoningEffort)
         XCTAssertEqual(result.state.workspaceSuggestions, ["/tmp/workspace"])
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
-        // The profile-scoped requests wait for the switch; reasoning waits for models.
         let paths = requestPaths.values
         XCTAssertEqual(Array(paths.prefix(2)), ["/api/profiles", "/api/profile/switch"])
         XCTAssertEqual(
@@ -91,8 +89,6 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
     }
 
     func testLoadRequestsWorkspacesAndCommandsWhileModelsIsInFlight() async throws {
-        // `/api/models` answers only once the workspaces and commands requests
-        // have arrived, which a serial chain could never satisfy.
         let concurrentRequests = DispatchGroup()
         concurrentRequests.enter()
         concurrentRequests.enter()
@@ -200,8 +196,6 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.currentModelProvider, "openai")
         XCTAssertEqual(result.state.selectedProfileName, "work")
         XCTAssertEqual(result.state.selectedReasoningEffort, "high")
-        // The reasoning query is scoped to the session's model/provider so the
-        // gating fields are model-accurate (issue #18).
         XCTAssertEqual(reasoningQueryItems["model"], sessionModel)
         XCTAssertEqual(reasoningQueryItems["provider"], "openai")
         XCTAssertEqual(result.state.supportedReasoningEfforts, ["low", "medium", "high"])
@@ -251,8 +245,6 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.currentModel, "gpt-5.4")
         XCTAssertNil(result.state.currentModelProvider)
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
-        // Workspaces loads alongside models, but a models failure still keeps
-        // its result out of the state, as the serial chain did.
         XCTAssertTrue(result.state.workspaceRoots.isEmpty)
         XCTAssertNil(result.state.currentWorkspace)
         XCTAssertFalse(requestPaths.values.contains("/api/reasoning"))
@@ -260,8 +252,6 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
     }
 }
 
-/// Request paths in arrival order. Handlers run concurrently off the test's
-/// thread, so the log needs its own lock.
 private final class ConfigRequestLog: @unchecked Sendable {
     private let lock = NSLock()
     private var paths: [String] = []
@@ -275,9 +265,6 @@ private final class ConfigRequestLog: @unchecked Sendable {
     }
 }
 
-/// Pure gating logic for the composer reasoning-effort menu (issue #18):
-/// building the option list from `supported_efforts` and deciding whether
-/// the control is shown at all.
 final class ReasoningEffortGatingTests: XCTestCase {
     func testOptionsFilterToServerVocabularyPreservingServerOrder() {
         let options = ReasoningEffortOption.options(forSupportedEfforts: ["high", "low"])
@@ -311,14 +298,12 @@ final class ReasoningEffortGatingTests: XCTestCase {
             supportsReasoningEffort: nil,
             supportedEfforts: ["low"]
         ))
-        // Older servers send neither field: keep today's behavior (visible).
         XCTAssertTrue(ReasoningEffortOption.showsEffortControl(
             supportsReasoningEffort: nil,
             supportedEfforts: nil
         ))
     }
 
-    /// The chip names the level a Hermes host sent when the model took less (#1016), and only then.
     func testTheLabelNamesALoweredLevel() {
         func selection(sent: String?) -> ComposerModelEffortSelection {
             ComposerModelEffortSelection(

@@ -121,7 +121,6 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
             _ = try await client.sessions()
             XCTFail("Expected unauthorized error")
         } catch APIError.unauthorized {
-            // Expected path.
         } catch {
             XCTFail("Expected unauthorized error, got \(error)")
         }
@@ -178,8 +177,6 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
             XCTFail("Expected HTTP error, got \(error)")
         }
     }
-
-    // MARK: - HTTP 403 (issue #333)
 
     func testForbiddenChatStartSurfacesServerReasonInsteadOfPasswordCopy() async throws {
         let client = makeClient { request in
@@ -261,11 +258,8 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
             APIError.http(statusCode: 418, body: body).localizedDescription,
             "Server returned HTTP 418: \(clipped)"
         )
-        // The raw body is still available to callers that inspect it programmatically.
         XCTAssertEqual(APIError.http(statusCode: 403, body: body).serverMessage, long)
     }
-
-    // MARK: - Durable compression continuation
 
     func testSessionRotationRequiresExactConflictContractAndValidID() {
         let body = #"{"code":"session_rotated","continuation_session_id":"20261008-abc_def","future":{"x":1}}"#
@@ -301,9 +295,6 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
         XCTAssertEqual(error.privacySafeLogCategory, "http.409")
     }
 
-    // MARK: - HTTP 409 agent_runtime_stale (issue #955)
-
-    /// hermes-webui's `agent_runtime_stale_payload`, plus a field it might add later.
     private func staleRuntimeBody(updateState: String?) -> String {
         let state = updateState.map { #", "agent_update_state": "\#($0)""# } ?? ""
         return #"{"error": "Hermes Agent was updated while Hermes WebUI was running. WebUI cannot verify that the Agent update completed safely. Check the Agent update outcome and environment first. Restart Hermes WebUI manually before retrying this action.", "type": "agent_runtime_stale", "retryable": true, "restart_scheduled": false, "future_field": {"nested": [1]}\#(state)}"#
@@ -322,7 +313,6 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
             updating.localizedDescription,
             "Hermes is still updating on your server. Wait for it to finish, restart Hermes WebUI, then try again."
         )
-        // While the update runs the fix is to wait, so chat offers no prompt.
         XCTAssertEqual(updating.agentRuntimeStale, .updating)
         XCTAssertNil(AgentRuntimeStale.updating.fixPrompt)
 
@@ -350,7 +340,6 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
             "Server returned HTTP 409: Session belongs to a different profile"
         )
         XCTAssertNil(APIError.http(statusCode: 409, body: #"{"stale": true}"#).agentRuntimeStale)
-        // A `type` of another shape never hides the fields read before #955.
         let oddType = APIError.http(
             statusCode: 409,
             body: #"{"error": "A response is already running", "active_stream_id": "stream-1", "type": {"kind": 1}}"#
@@ -358,7 +347,6 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
         XCTAssertEqual(oddType.localizedDescription, "Server returned HTTP 409: A response is already running")
         XCTAssertEqual(oddType.activeStreamID, "stream-1")
         XCTAssertNil(oddType.agentRuntimeStale)
-        // The type only means a stale runtime on the 409 the server sends it with.
         XCTAssertNil(APIError.http(statusCode: 400, body: staleRuntimeBody(updateState: nil)).agentRuntimeStale)
     }
 

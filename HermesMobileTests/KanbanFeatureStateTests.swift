@@ -8,8 +8,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         clearSavedKanbanBoards()
     }
 
-    // MARK: - Browsed Board restoration (#259)
-
     func testBrowsedBoardIsRestoredForTheSameServerAndIsolatedFromOthers() async {
         let defaults = makeIsolatedDefaults()
         let firstServer = URL(string: "https://first.example.test")!
@@ -24,8 +22,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         await browsing.selectBoard("release")
         XCTAssertEqual(browsing.selectedBoardSlug, "release")
 
-        // A rebuilt state for the same server reopens Release directly: the
-        // handshake never requests the server-global current Board first.
         let restoredClient = KanbanClientStub(boardsResult: .success(KanbanFixtures.multiBoards))
         let restored = KanbanFeatureState(server: firstServer, client: restoredClient, defaults: defaults)
         await restored.load()
@@ -106,9 +102,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         )
         await writable.load()
 
-        // The verified Boards contract carries read_only on the envelope, not
-        // each Board entry. A missing per-Board value must not override three
-        // explicit writable envelope values.
         XCTAssertNil(writable.selectedBoard?.readOnly)
         XCTAssertTrue(writable.canAddComments)
         XCTAssertTrue(writable.canMutateCards)
@@ -161,8 +154,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         await contract.load()
         XCTAssertEqual(contract.state, .incompatibleContract)
     }
-
-    // MARK: - Returning to a loaded Board (#672)
 
     func testReappearingWithALoadedBoardKeepsItWithoutRequests() async {
         let client = KanbanClientStub()
@@ -237,7 +228,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         )
         await state.load()
 
-        // A webui Board keeps its configured six Columns; Scheduled and Review are Hermes's.
         XCTAssertEqual(
             Array(state.availableStatuses.prefix(6)),
             ["triage", "todo", "ready", "running", "blocked", "done"]
@@ -307,7 +297,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertNil(state.stats)
         XCTAssertNil(state.assigneeHistory)
         XCTAssertTrue(state.isRefreshing)
-        // With no Cards on screen, the list shows the loading row.
         XCTAssertTrue(state.showsBoardLoadingRow)
 
         await client.resumeReleaseRead()
@@ -368,7 +357,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         let filter = Task { await state.setTenantFilter("ops") }
         await fulfillment(of: [client.readHeld], timeout: 5)
 
-        // The Cards on screen came from the unfiltered read, so the list says it is loading.
         XCTAssertNotNil(state.snapshot)
         XCTAssertTrue(state.showsBoardLoadingRow)
 
@@ -427,8 +415,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertFalse(defaultPresentation.actions.contains(.archive))
     }
 
-    /// A retried Card's first start stays on the Card, so its run is measured from the current
-    /// run's start. A host without that field keeps the age it sent.
     func testARetriedCardsAgeCountsFromItsCurrentRun() {
         let cards: [KanbanCard] = mutationDecode("""
         [{"id":"retried","status":"running","started_at":1000,"current_run_started_at":87400,
@@ -442,9 +428,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(cards[1].staleness, .critical)
     }
 
-    /// A Hermes host sends `age` as `{created_age_seconds, started_age_seconds, …}` and webui
-    /// forwards the same dict as `age_seconds`. Running reads the started age, every other
-    /// Status the created age.
     func testAgeDictionaryDrivesStalenessOnHermesAndWebUI() throws {
         let snapshot: KanbanBoardSnapshot = mutationDecode("""
         {"columns":[
@@ -768,8 +751,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.allCards.first { $0.cardID == "CARD-1" }?.status?.rawValue, "ready")
         XCTAssertEqual(state.mutationState(for: "CARD-1")?.phase, .updating)
 
-        // A canonical refresh that still carries the old status must not erase
-        // the pending optimistic status.
         await state.refresh()
         XCTAssertEqual(state.allCards.first { $0.cardID == "CARD-1" }?.status?.rawValue, "ready")
 
@@ -1616,7 +1597,6 @@ private actor KanbanClientStub: KanbanDataClient {
         recordedCalls.append(.stats(board))
         if cancelsNextStatsRead {
             cancelsNextStatsRead = false
-            // Models a pop that cancels the Board's `.task` after the snapshot arrived.
             withUnsafeCurrentTask { $0?.cancel() }
             throw CancellationError()
         }
@@ -1637,7 +1617,6 @@ private actor BoardManagementClient: KanbanDataClient {
     private let configuration: KanbanConfiguration
     private var boardSnapshots: [KanbanBoardSnapshot]
     private var createContinuation: CheckedContinuation<Void, Never>?
-    /// Fulfilled once a deferred create is held.
     nonisolated let createHeld = XCTestExpectation(description: "the create is held")
     private var shouldDeferCreate: Bool
     private var recordedBoardRequests: [KanbanBoardRequest] = []
@@ -1730,7 +1709,6 @@ private actor BoardManagementClient: KanbanDataClient {
 private actor DeferredBoardCollectionClient: KanbanDataClient {
     private var collectionRequestCount = 0
     private var collectionContinuation: CheckedContinuation<KanbanBoardsResponse, Never>?
-    /// Fulfilled once the second Board-list read is held.
     nonisolated let collectionHeld = XCTestExpectation(description: "the Board list read is held")
     private(set) var boardRequestCount = 0
 
@@ -1777,7 +1755,6 @@ private actor DispatcherClient: KanbanDataClient {
     private let statsError: Error?
     private var shouldDeferDispatch: Bool
     private var dispatchContinuation: CheckedContinuation<Void, Never>?
-    /// Fulfilled once the first dispatch is held.
     nonisolated let dispatchHeld = XCTestExpectation(description: "the dispatch is held")
     private(set) var dispatchRequests: [KanbanDispatchRequest] = []
     private(set) var boardRequestCount = 0
@@ -1958,7 +1935,6 @@ private actor BulkActionClient: KanbanDataClient {
     private var recordedDetailRequests: [String] = []
     private var shouldDeferBulkResponse: Bool
     private var bulkContinuation: CheckedContinuation<Void, Never>?
-    /// Fulfilled once the first bulk response is held.
     nonisolated let bulkResponseHeld = XCTestExpectation(description: "the bulk response is held")
     private var bulkError: Error?
 
@@ -2104,7 +2080,6 @@ private actor BrowsingClient: KanbanDataClient {
 private actor DeferredBoardClient: KanbanDataClient {
     private var boardCallCount = 0
     private var continuation: CheckedContinuation<KanbanBoardSnapshot, Never>?
-    /// Fulfilled once the second Board read is held.
     nonisolated let readHeld = XCTestExpectation(description: "the Board read is held")
 
     func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
@@ -2132,7 +2107,6 @@ private actor DeferredBoardClient: KanbanDataClient {
 private actor DeferredBoardSwitchClient: KanbanDataClient {
     private var boardCallCount = 0
     private var releaseContinuation: CheckedContinuation<KanbanBoardSnapshot, Never>?
-    /// Fulfilled once the release Board's read is held.
     nonisolated let releaseReadHeld = XCTestExpectation(description: "the release Board read is held")
 
     func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
@@ -2191,9 +2165,6 @@ private enum KanbanFixtures {
 }
 
 extension XCTestCase {
-    /// `KanbanFeatureState` persists the browsed Board slug into
-    /// `UserDefaults.standard` unless a test injects its own suite (#259). Clear
-    /// those keys so one test's browsing cannot leak into another's cold load.
     func clearSavedKanbanBoards() {
         let defaults = UserDefaults.standard
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("kanban.selectedBoard|") {

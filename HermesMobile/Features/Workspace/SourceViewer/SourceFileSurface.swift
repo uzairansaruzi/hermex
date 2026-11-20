@@ -1,18 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// A workspace file on the review surface: line gutter, optional wrap, syntax colour
-/// for the rows on screen, tap-to-select with Copy (and Comment… when the host has a
-/// chat draft), and an initial line placed 30 % down the viewport and highlighted.
 struct SourceFileSurface: View {
     let content: String
     let targetLine: Int?
     let isRefreshing: Bool
     let onRefresh: () -> Void
-    /// Appends a comment and its quoted lines to the chat draft. Nil hides Comment….
     let onAddToPrompt: ((String) -> Void)?
-    /// Closes back to the chat once a comment was added; nil where ordinary back
-    /// navigation does that.
     let onReturnToChat: (() -> Void)?
 
     private let path: String
@@ -79,7 +73,6 @@ struct SourceFileSurface: View {
         .sheet(item: $viewModel.commentComposer.context) { context in
             ReviewCommentSheet(context: context, onAdd: addComment)
         }
-        // A refresh may renumber the lines (the model drops them again when new rows land).
         .onChange(of: isRefreshing) {
             if isRefreshing { viewModel.dropSelection() }
         }
@@ -92,7 +85,6 @@ struct SourceFileSurface: View {
         }
     }
 
-    /// Quiet notice that this file has no syntax colour; sits in the surface's top inset.
     private var plainTextChip: some View {
         HStack {
             Spacer()
@@ -135,8 +127,6 @@ struct SourceFileSurface: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// A label-coloured pill needs a background-coloured title, or dark mode draws
-    /// white on white.
     private func prominentButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
@@ -146,7 +136,6 @@ struct SourceFileSurface: View {
         .buttonStyle(.appProminent)
     }
 
-    /// The requested line is selected and scrolled to once, when the rows first exist.
     private func seedTargetLineIfNeeded() {
         guard let targetLine, scrollTarget == nil, viewModel.selection.isEmpty,
               targetLine >= 1, targetLine <= viewModel.rows.count else { return }
@@ -170,7 +159,6 @@ struct SourceFileSurface: View {
         viewModel.selection.clear()
     }
 
-    /// Copies the selected lines, blank ones included, so a selection always answers.
     private func copySelection() {
         let selected = viewModel.selection.selectedRows(in: viewModel.rows)
         guard !selected.isEmpty else { return }

@@ -59,8 +59,6 @@ final class SessionIdentityTests: XCTestCase {
             isStreaming: false
         )
 
-        // Cached rows say nothing about attention: the stream fields in a
-        // cached summary are as old as the cache.
         XCTAssertEqual(
             SessionRowView.accessibilityStateLabels(for: session, isViewingCachedData: true),
             ["Pinned", "Cached"]
@@ -98,9 +96,6 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertEqual(legacyCLI.sourceDisplayLabel, "CLI")
     }
 
-    /// A Hermes row's chip names who made it (#1674): a local row by its `created_source`, any
-    /// other by its `source`. Hermex's own chats, current (`gui` → `desktop`) and older
-    /// (`hermex`), show none.
     func testHermesRowSourceChipNamesItsCreator() throws {
         let page = try JSONDecoder().decode(HermesSessionPage.self, from: Data("""
         {"sessions": [
@@ -128,8 +123,6 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertNil(imported.sourceDisplayLabel)
     }
 
-    /// Offline keeps the draft editable and holds the host's controls (#1375); a read-only
-    /// session stays locked either way.
     func testOfflineHoldsHostControlsAndReadOnlyStaysLocked() {
         let offline = ChatComposerAccess(session: SessionSummary(sessionId: "writable"), isViewingCachedData: true)
         XCTAssertTrue(offline.allowsEditing)
@@ -142,8 +135,6 @@ final class SessionIdentityTests: XCTestCase {
         }
     }
 
-    /// A row without a `session_id` gets the same identity every time it decodes, so a list
-    /// reload never re-identifies it.
     func testSessionSummaryFallbackIDIsDeterministicWithoutSessionID() throws {
         let json = Data(#"{"title": "Older Session", "created_at": 1770000000}"#.utf8)
 
@@ -163,10 +154,6 @@ final class SessionIdentityTests: XCTestCase {
     }
 }
 
-/// The avatar long-press server switcher's menu contents (#283). The switch
-/// action itself is #17's `AuthManager.switchActiveServer`, covered by
-/// `AuthManagerStateTests`; these cover the pure model that decides what the
-/// menu shows and which server is marked active.
 final class AvatarServerSwitcherModelTests: XCTestCase {
     private func makeAccount(id: String, displayName: String = "") -> ServerAccount {
         ServerAccount(

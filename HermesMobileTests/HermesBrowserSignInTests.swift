@@ -2,15 +2,11 @@ import AuthenticationServices
 import XCTest
 @testable import HermesMobile
 
-/// The browser sign-in (#708) against a scripted host. The presenter stands in for the sheet:
-/// it reads the authorize URL and makes the browser's loopback hop to the real listener.
 @MainActor final class HermesBrowserSignInTests: XCTestCase {
     private let candidate = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                           username: "", password: "")
 
 
-    /// The expected value is Python's `urlsafe_b64encode(sha256(verifier))` without padding;
-    /// it has both `-` and `_`, so it also pins the base64url alphabet.
     func testTheChallengeIsTheVerifiersBase64URLSHA256() {
         XCTAssertEqual(HermesBrowserSignIn.challenge(for: "dBjftJeZ4CVP-mJ92K1QfAa5uVjc3BX7hQ7qPABkBmo"),
                        "xwIIcHDBtRlDiY_-Sglen_9PWYflAK7874Eg3NIugTk")
@@ -23,8 +19,6 @@ import XCTest
             + "&code_challenge_method=S256&redirect_uri=http%3A%2F%2F127.0.0.1%3A5000%2Fcallback&state=s%2Bt")
     }
 
-    /// A host that asks for a sign-in offers a password for `basic` and the browser for
-    /// `native_pkce`: both, Password first, when it lists both.
     func testAStatusOffersEachSignInItLists() {
         let rows: [(providers: [String], flows: [String], offered: [HermesSignInMethod])] = [
             (["basic"], ["cookie", "native_pkce"], [.password, .browser]),
@@ -38,9 +32,6 @@ import XCTest
         }
     }
 
-    /// Only the callback carrying the sign-in's `state` is kept, every callback is bounced to
-    /// close the sheet, and the code and its verifier become a browser sign-in's connection
-    /// that checks its identity with the bearer.
     func testTheLoopbackCodeWithItsStateBecomesASignedInBrowserConnection() async throws {
         var exchanged: BotJSON?
         let http = HermesConnection(connection: candidate, configuration: HermesHostFixture.configuration { request in
@@ -75,8 +66,6 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
     }
 
-    /// Closing the sheet, or cancelling the form's task, is a cancel, with nothing exchanged; a code the host refuses, as it
-    /// does once 120 seconds pass or the code was used, is a failed browser sign-in.
     func testClosingTheSheetCancelsAndARefusedCodeFails() async throws {
         let http = HermesConnection(connection: candidate, configuration: HermesHostFixture.configuration { request in
             request.url?.path == "/auth/native/token"
@@ -97,7 +86,6 @@ import XCTest
         XCTAssertNil(http.connection.oauth)
     }
 
-    /// A callback that TCP splits is read until its request line ends.
     func testTheListenerWaitsForTheWholeRequestLine() {
         let request = "GET /callback?code=c1&state=s1 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
         XCTAssertNil(HermesLoopbackListener.requestTarget(in: Data("GET /callback?code=c1&sta".utf8)))
@@ -105,15 +93,11 @@ import XCTest
         XCTAssertEqual(HermesLoopbackListener.requestTarget(in: Data(request.utf8)), "/callback?code=c1&state=s1")
     }
 
-    // MARK: - Fixtures
-
-    /// A 0.21.5 host whose only provider signs in through the browser.
     static let browserStatus = BotJSON.object([
         "auth_required": .bool(true), "auth_providers": .array([.string("nous")]),
         "auth_flows": .array([.string("cookie"), .string("native_pkce")]), "version": .string("0.21.5")
     ])
 
-    /// A host with both a password and browser sign-in, the shape the live 0.22.5 host reports.
     static let bothStatus = BotJSON.object([
         "auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
         "auth_flows": .array([.string("cookie"), .string("native_pkce")]), "version": .string("0.21.5")
@@ -124,8 +108,6 @@ import XCTest
         "expires_at": .number(1_791_993_215), "provider": .string("nous"), "user_id": .string("u1")
     ])
 
-    /// Makes the host's redirect to the authorize URL's loopback `redirect_uri` with `code`
-    /// and, unless given, the authorize URL's own `state`, and returns the listener's bounce.
     static func callback(_ authorize: URL, code: String, state: String? = nil) async throws -> String? {
         let query = URLComponents(url: authorize, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let redirect = try XCTUnwrap(query.first { $0.name == "redirect_uri" }?.value)
@@ -137,7 +119,6 @@ import XCTest
         return (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Location")
     }
 
-    /// Keeps the listener's `302`, as the sheet sees it, instead of following it.
     private final class NoRedirects: NSObject, URLSessionTaskDelegate {
         func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                         newRequest request: URLRequest) async -> URLRequest? { nil }

@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// The Task editor's Skills row and its multi-select picker. Separate from the
-/// model and profile pickers because it is the only one that commits a
-/// collection: the sheet stays open as rows toggle, and each toggle writes
-/// straight to the draft.
-
-/// The Task editor's Skills row, plus the inline load failure and retry that
-/// replace it when `/api/skills` will not load.
 struct CronJobSkillsRow: View {
     let selection: [String]
     let errorMessage: String?
@@ -35,7 +28,6 @@ struct CronJobSkillsRow: View {
         .accessibilityValue(Text(verbatim: title))
         .accessibilityHint("Opens the task skills picker.")
 
-        // The saved skills keep showing above; only the list is missing.
         if let errorMessage, !isLoading {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(verbatim: errorMessage)
@@ -52,19 +44,11 @@ struct CronJobSkillsRow: View {
         }
     }
 
-    /// The selected names themselves rather than a count: three skills fit, and
-    /// "3 skills" would make the row's own value unreadable without opening it.
     private var title: String {
         selection.isEmpty ? String(localized: "None") : selection.joined(separator: ", ")
     }
 }
 
-/// The Task editor's skills picker. Multi-select, so it stays open as rows are
-/// toggled and commits each change straight to the draft.
-///
-/// Unlike the profile picker this one keeps a free-text entry: upstream accepts
-/// `skills` unvalidated, and without it a failed `/api/skills` would turn a
-/// field that used to accept anything into a read-only one.
 struct CronJobSkillsPickerSheet: View {
     let skills: [SkillSummary]
     let selection: [String]
@@ -128,9 +112,6 @@ struct CronJobSkillsPickerSheet: View {
         }
     }
 
-    /// Loading, load-failure with a retry, no-match, and empty. Each only
-    /// stands in for an empty list, so a loaded list keeps rendering across a
-    /// refresh.
     @ViewBuilder
     private var statusPlaceholder: some View {
         if skills.isEmpty, isLoading {
@@ -154,8 +135,6 @@ struct CronJobSkillsPickerSheet: View {
         }
     }
 
-    /// Clears every selected skill at once. Deselecting one at a time still
-    /// works; this is the way out of a long list.
     private var clearRow: some View {
         let selected = selection.isEmpty
 
@@ -227,8 +206,6 @@ struct CronJobSkillsPickerSheet: View {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The server's list, plus a row for every selected skill it does not
-    /// offer, so a saved selection is always visible and always removable.
     private var listedSkills: [SkillSummary] {
         Self.filteredSkills(
             Self.skillsIncludingSelection(skills, selection: selection),
@@ -247,7 +224,6 @@ struct CronJobSkillsPickerSheet: View {
         return missing.map { SkillSummary(name: $0, category: nil, description: nil, path: nil) } + skills
     }
 
-    /// A skill is findable by every string its row shows.
     static func filteredSkills(_ skills: [SkillSummary], query: String) -> [SkillSummary] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return skills }

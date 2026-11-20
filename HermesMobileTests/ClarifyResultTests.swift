@@ -2,7 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class ClarifyResultTests: XCTestCase {
-    /// The batch shape `tools/clarify_tool.py` returns at the pinned hermes-agent commit.
     private let batchPreview = """
     {"responses":[{"id":"env","question":"Which environment?","choices_offered":["Staging","Production"],"user_response":"Staging"},{"question":"Which checks should run?","choices_offered":["Lint","Unit tests","UI tests"],"user_response":["Lint","Unit tests"],"future_field":1},{"question":"Branch name?","choices_offered":null,"user_response":""}],"timed_out":true,"notice":"The phone went offline."}
     """
@@ -58,14 +57,12 @@ final class ClarifyResultTests: XCTestCase {
         }
 
         XCTAssertEqual(lines(folded), ["call-1#0", "call-1#1", "call-1#2", "call-3#0"])
-        // Expanded and unfolded rows draw the clarify rows instead; cards off shows neither.
         XCTAssertEqual(lines(expanded), [])
         XCTAssertEqual(lines(nil), [])
         XCTAssertEqual(lines(folded, cardsOn: false), [])
     }
 
     func testLegacyTimeoutSentinelReadsAsUnansweredTimeout() throws {
-        // `TIMEOUT_RESPONSE` in `tools/clarify_tool.py` at the pinned hermes-agent commit.
         let sentinel = #""The user did not provide a response within the time limit. Use your best judgement to make the choice and proceed.""#
         for answer in [sentinel, "[\(sentinel)]"] {
             let result = try XCTUnwrap(ClarifyResult(

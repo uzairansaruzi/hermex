@@ -1,57 +1,30 @@
 import SwiftUI
 import UIKit
 
-/// A short confirmation with one action, such as "Archived · Undo" after a
-/// session is archived (#865), a notice with none, such as why a session link
-/// opened nothing (#1176), or a Git action's progress and then its result
-/// (#1410). `ActionToastState` holds at most one; `ActionToastView` draws it
-/// wherever its host places it.
 struct ActionToast: Identifiable {
-    /// What the toast reports. Tone tints only the glyph and is what VoiceOver
-    /// reads as the toast's value; the glass stays neutral.
     enum Tone {
         case neutral
-        /// Work still running: the operation's glyph stays gray and nothing
-        /// times out until `ActionToastState.update` reports the result.
         case busy
         case success
         case failure
     }
 
-    /// Kept by `ActionToastState.update`, so a busy toast that becomes its
-    /// result stays the same toast (and keeps VoiceOver's focus).
     var id = UUID()
     let message: String
     let systemImage: String
-    /// What VoiceOver reads in place of `message`, naming what was acted on
-    /// ("Planning, Archived").
     let accessibilityLabel: String
     var tone: Tone = .neutral
-    /// The edge of its host the toast shows at. A host with one placement
-    /// leaves the default; chat puts Git feedback at the top (#1410).
     var edge: Edge = .bottom
-    /// Secondary lines under the message, such as a Git action's branch and
-    /// commit. A result with detail stays longer.
     var detailLines: [String] = []
-    /// Nil, with `action`, for a notice.
     var actionTitle: String? = nil
     var action: (@MainActor () -> Void)? = nil
 
-    /// A non-blocking failure, shown in place of an alert (#1410).
     static func failure(_ message: String) -> ActionToast {
         ActionToast(message: message, systemImage: "exclamationmark.triangle.fill",
                     accessibilityLabel: message, tone: .failure)
     }
 }
 
-/// Shows one toast at a time. `show` replaces the current toast, restarts its
-/// clock and returns its ID; `update` and `dismiss(_:)` act only on that ID,
-/// so an operation that finishes late can't overwrite a newer toast or revive
-/// one the user swiped away. A toast leaves after `displayDuration`
-/// (`detailedDisplayDuration` with detail lines) unless it is busy or VoiceOver
-/// is running, in which case it stays, with a close control, until the user acts.
-/// The owning view keeps this in `@State` and calls `dismiss()` when it goes
-/// away, so a toast and its action never outlive their screen.
 @MainActor
 @Observable
 final class ActionToastState {
@@ -59,17 +32,12 @@ final class ActionToastState {
     static let detailedDisplayDuration: Duration = .seconds(6)
 
     private(set) var toast: ActionToast?
-    /// False while the current toast waits for the user (VoiceOver was running
-    /// when it appeared). The view then shows a close control and moves
-    /// VoiceOver focus to the toast.
     private(set) var dismissesAutomatically = true
 
     private var dismissTask: Task<Void, Never>?
     private let sleep: @MainActor (Duration) async throws -> Void
     private let isVoiceOverRunning: @MainActor () -> Bool
 
-    /// Tests inject `sleep` to end the display time on cue, and
-    /// `isVoiceOverRunning` to stand in for the system setting.
     init(
         sleep: @escaping @MainActor (Duration) async throws -> Void = { duration in
             try await Task.sleep(for: duration)
@@ -80,7 +48,6 @@ final class ActionToastState {
         self.isVoiceOverRunning = isVoiceOverRunning
     }
 
-    /// The toast enters from, and leaves toward, the edge its host pins it to.
     static func transition(reduceMotion: Bool, edge: Edge = .bottom) -> AnyTransition {
         reduceMotion ? .opacity : .move(edge: edge).combined(with: .opacity)
     }
@@ -95,9 +62,6 @@ final class ActionToastState {
         return newToast.id
     }
 
-    /// Replaces the content of the toast `id` names, keeping its identity, and
-    /// restarts the clock for the new content. Does nothing once that toast has
-    /// left or been replaced.
     func update(_ id: ActionToast.ID, to content: ActionToast) {
         guard toast?.id == id else { return }
         var updated = content
@@ -105,21 +69,16 @@ final class ActionToastState {
         present(updated)
     }
 
-    /// The current toast when it shows at `edge`, so a host that places
-    /// toasts at two edges still shows only one at a time.
     func toast(at edge: Edge) -> ActionToast? {
         toast?.edge == edge ? toast : nil
     }
 
-    /// Runs the toast's action once and removes the toast. A second tap on a
-    /// toast that already acted, or was replaced, does nothing.
     func performAction(of actedOn: ActionToast) {
         guard toast?.id == actedOn.id else { return }
         dismiss()
         actedOn.action?()
     }
 
-    /// Removes the toast `id` names, and nothing newer.
     func dismiss(_ id: ActionToast.ID) {
         guard toast?.id == id else { return }
         dismiss()
@@ -155,8 +114,6 @@ final class ActionToastState {
     }
 }
 
-/// When a sideways drag dismisses a toast (#1410): past a quarter of its width,
-/// or on a flick the same way. A mostly vertical drag never does.
 enum ActionToastDismissPolicy {
     static let flickVelocity: CGFloat = 600
 
@@ -167,11 +124,6 @@ enum ActionToastDismissPolicy {
     }
 }
 
-/// Draws `state`'s toast as a glass capsule that fills its host's width, or a
-/// rounded card when it has detail lines, is a failure, or uses an
-/// accessibility text size (the action then drops below the message). `edge`
-/// is the edge the host pins it to; it draws only a toast that shows there. A
-/// sideways swipe dismisses it; Reduce Motion swaps every slide for a fade.
 struct ActionToastView: View {
     let state: ActionToastState
     var edge: Edge = .bottom
@@ -188,14 +140,10 @@ struct ActionToastView: View {
                     .id(toast.id)
                     .transition(ActionToastState.transition(reduceMotion: reduceMotion, edge: edge))
                     .task(id: toast.id) {
-                        // VoiceOver users get the toast in focus, so Undo is
-                        // one swipe away and nothing times out under them.
                         if !state.dismissesAutomatically {
                             messageIsFocused = true
                         }
                     }
-                    // An update keeps focus on the toast but isn't read on its own, so a
-                    // VoiceOver user waiting on a busy toast hears its result.
                     .onChange(of: toast.tone) { oldTone, tone in
                         guard oldTone == .busy, tone != .busy, !state.dismissesAutomatically else { return }
                         AccessibilityNotification.Announcement(
@@ -209,9 +157,7 @@ struct ActionToastView: View {
 
     @ViewBuilder
     private func toastBody(_ toast: ActionToast) -> some View {
-        // A result can be closed early; a VoiceOver toast must be.
         let showsClose = !state.dismissesAutomatically || toast.tone == .success || toast.tone == .failure
-        // A notice without controls keeps even margins.
         let hasControls = toast.actionTitle != nil || showsClose
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 2) {
@@ -271,7 +217,6 @@ struct ActionToastView: View {
             Image(systemName: toast.systemImage)
                 .foregroundStyle(glyphStyle(toast.tone))
             VStack(alignment: .leading, spacing: 2) {
-                // A notice has the action's room for a second line; a failure wraps to three.
                 Text(toast.message)
                     .lineLimit(messageLineLimit(toast))
                 ForEach(Array(toast.detailLines.enumerated()), id: \.offset) { _, line in
@@ -288,7 +233,6 @@ struct ActionToastView: View {
         .accessibilityFocused($messageIsFocused)
     }
 
-    /// Lines that may wrap get a rounded card; a capsule holds one or two.
     private func usesCard(_ toast: ActionToast) -> Bool {
         !toast.detailLines.isEmpty || toast.tone == .failure
     }
@@ -337,7 +281,6 @@ struct ActionToastView: View {
         }
     }
 
-    /// Ends the presentation only; work the toast reports keeps running.
     private func closeButton(_ toast: ActionToast) -> some View {
         Button {
             state.dismiss(toast.id)
@@ -353,11 +296,6 @@ struct ActionToastView: View {
     }
 }
 
-/// Follows a sideways drag and calls `dismiss` once `ActionToastDismissPolicy`
-/// says so; a shorter drag springs back. A vertical drag leaves the toast in
-/// place. Under Reduce Motion the toast fades with the drag instead of moving,
-/// and a short drag restores it without animating. Each toast gets its own,
-/// so a dismissed toast's offset never carries into the next.
 private struct ActionToastSwipe: ViewModifier {
     let dismiss: () -> Void
 
@@ -389,19 +327,14 @@ private struct ActionToastSwipe: ViewModifier {
     }
 }
 
-/// What a share left out, for the new chat it opened (#1401). The route or chat that opened for
-/// the share holds it, and the first composer to present it takes it, so a composer rebuilt for
-/// that chat (a size-class change) doesn't say it again.
 @MainActor final class SharedSkipsNotice {
     private var skipped: SharedSkips?
 
-    /// Nil when the share left nothing out.
     init?(_ skipped: SharedSkips) {
         guard !skipped.isEmpty else { return nil }
         self.skipped = skipped
     }
 
-    /// The skips the first time; nil after.
     func take() -> SharedSkips? {
         defer { skipped = nil }
         return skipped
@@ -409,9 +342,6 @@ private struct ActionToastSwipe: ViewModifier {
 }
 
 extension ActionToast {
-    /// The notice a share's new chat shows once when the share left items out (#1401): the
-    /// reason for one item, the first names and a count for several, the limit when the count
-    /// limit alone left them out. Nil when nothing was left out.
     init?(sharedSkips skipped: SharedSkips) {
         guard !skipped.isEmpty else { return nil }
         let message = Self.message(for: skipped)

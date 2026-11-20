@@ -1,9 +1,6 @@
 import ImageIO
 import SwiftUI
 
-/// The Plugins page's Discover tab (#1582): the host's catalog by tier, with category filters and
-/// on-device search. Without a search or category, Official is a shelf of large banners, because all
-/// of it has one; only about a quarter of the rest does, so those are rows with small thumbnails.
 struct PluginDiscoverSections: View {
     let model: PluginsModel
     let profile: String
@@ -84,7 +81,6 @@ struct PluginDiscoverSections: View {
         .listRowSeparator(.hidden)
     }
 
-    /// A category's label. One the host adds later reads as its own name, capitalized.
     static func title(of category: String) -> String {
         switch category {
         case "tools": String(localized: "Tools")
@@ -101,7 +97,6 @@ struct PluginDiscoverSections: View {
     }
 }
 
-/// One filter chip, shared by both tabs.
 struct PluginChip: View {
     let title: String
     let isSelected: Bool
@@ -121,7 +116,6 @@ struct PluginChip: View {
     }
 }
 
-/// The Official shelf: large banners that scroll sideways. It lays out only what's near the screen.
 private struct PluginShelf: View {
     let entries: [HermesCatalogEntry]
     let model: PluginsModel
@@ -158,10 +152,8 @@ private struct PluginShelf: View {
     }
 }
 
-/// A dense catalog row. Get opens the review and never installs by itself.
 private struct PluginCatalogRow: View {
     let entry: HermesCatalogEntry
-    /// Nil until the shown Profile's list is read.
     let isInstalled: Bool?
     let isTooNew: Bool
     let onGet: () -> Void
@@ -187,7 +179,6 @@ private struct PluginCatalogRow: View {
         }
     }
 
-    /// Why this can't be installed, or that it already is, or Get.
     @ViewBuilder
     private var trailing: some View {
         if isInstalled == true {
@@ -208,7 +199,6 @@ private struct PluginCatalogRow: View {
     }
 }
 
-/// One plugin's page: its banner, swipeable screenshots and facts, and the way to its review.
 private struct PluginCatalogDetail: View {
     let entry: HermesCatalogEntry
     let model: PluginsModel
@@ -216,7 +206,6 @@ private struct PluginCatalogDetail: View {
 
     @State private var isReviewing = false
 
-    /// Nil until the shown Profile's list is read.
     private var isInstalled: Bool? { model.installedCatalogNames?.contains(entry.name) }
 
     var body: some View {
@@ -262,11 +251,7 @@ private struct PluginCatalogDetail: View {
     }
 }
 
-/// A catalog banner or screenshot, at a fixed `size`, or filling the width at the banners' usual 2:1
-/// when it's nil. It loads when it appears and its download is cancelled when it scrolls away. Until
-/// then, and for a plugin with no image, it shows a tile with the plugin's letter.
 private struct PluginCatalogImage: View {
-    /// Wide enough to stay sharp at the width of the largest iPhone.
     private static let fullWidth: CGFloat = 440
 
     let url: URL?
@@ -315,9 +300,6 @@ private struct PluginCatalogImage: View {
     }
 }
 
-/// Fetches and downsamples catalog images. The memory cache is bounded and clears itself under
-/// pressure, and nothing stays on disk. The session refuses Low Data Mode, so an image then just
-/// stays a tile, and it sends no cookies or sign-ins: these requests go to GitHub, not the user's host.
 enum PluginImageLoader {
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
@@ -332,15 +314,12 @@ enum PluginImageLoader {
         return cache
     }()
 
-    /// Nil when it can't be fetched or decoded, or the caller was cancelled. Failures aren't cached.
     static func image(at url: URL, maxPixels: Int) async -> UIImage? {
         let key = "\(maxPixels)|\(url.absoluteString)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        // To a file, so a huge banner never sits in memory whole. It's gone once it's decoded.
         guard let (file, response) = try? await session.download(from: url) else { return nil }
         defer { try? FileManager.default.removeItem(at: file) }
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-        // Off the main thread, and it isn't worth finishing once the row has scrolled away.
         guard !Task.isCancelled, let image = await Task.detached(priority: .utility, operation: {
             downsample(file, maxPixels: maxPixels)
         }).value else { return nil }
@@ -349,7 +328,6 @@ enum PluginImageLoader {
         return image
     }
 
-    /// The first frame, which is all a GIF shows, decoded at the size it's drawn.
     private static func downsample(_ file: URL, maxPixels: Int) -> UIImage? {
         let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                         kCGImageSourceCreateThumbnailWithTransform: true,

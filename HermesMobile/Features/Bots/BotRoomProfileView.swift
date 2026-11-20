@@ -5,7 +5,6 @@ import SwiftUI
     @Bindable var reader: BotRoomReader
     let roster: [BotProfile]
     let avatars: [String: UIImage]
-    /// Leaves the room for the inbox's sign-in form, after the host refused the password.
     var onUpdateSignIn: () -> Void = {}
     @State private var name = ""
     @State private var confirmingDisband = false
@@ -51,7 +50,6 @@ import SwiftUI
             if reader.finishingStop { Text("Finishing stop…").font(AppFont.callout()) }
             if reader.link == .stopped {
                 if let error = reader.errorMessage { Text(error).font(AppFont.callout()) }
-                // Reconnecting would only send the refused password again (#884).
                 if reader.needsSignIn {
                     Button("Update sign-in", action: onUpdateSignIn)
                 } else {
@@ -84,8 +82,6 @@ import SwiftUI
         }
         .onChange(of: reader.room.name) { if !editingName { name = reader.room.name } }
         .onChange(of: scenePhase) {
-            // Control Center and banners (`.inactive`) keep the room live (#902); the
-            // background stops it (#533), and only a stopped room reopens.
             guard visible else { return }
             switch scenePhase {
             case .background: reader.leave(owner: owner)
@@ -94,7 +90,6 @@ import SwiftUI
             }
         }
         .onDisappear { visible = false; reader.leave(owner: owner) }
-        // A lost room reconnects as the network returns rather than on its backoff (#1372).
         .onChange(of: NetworkPathMonitor.shared.changeCount) { if visible { reader.networkPathDidChange() } }
     }
     private func commitName() {

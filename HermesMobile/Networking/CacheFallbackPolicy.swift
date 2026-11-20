@@ -7,9 +7,6 @@ enum CacheFallbackPolicy {
             return isConnectivityError(underlying)
         case APIError.http(let statusCode, _):
             return isTransientUnavailableStatus(statusCode)
-        // A Hermes host (#1054): its socket lost or never opened, or a proxy or tunnel answering
-        // for a host that isn't there (`BotFailure`'s 502-504 and 520-530 copy). Its sign-in's
-        // connectivity errors are raw `URLError`s, as below.
         case BotFailure.transport:
             return true
         case BotFailure.rejected(let code):
@@ -36,7 +33,6 @@ enum CacheFallbackPolicy {
         }
     }
 
-    /// 520-530 are Cloudflare's answers for a tunnel or origin that is down.
     private static func isTransientUnavailableStatus(_ statusCode: Int) -> Bool {
         switch statusCode {
         case 408, 502, 503, 504, 520...530:

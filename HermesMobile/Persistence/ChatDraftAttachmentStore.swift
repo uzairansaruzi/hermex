@@ -1,47 +1,23 @@
 import Foundation
 import os
 
-/// Durable, app-owned copies of staged composer attachments. A draft record
-/// references one of these files by name so the attachment can be re-uploaded
-/// after the app's process or the server-side per-session upload inbox is gone
-/// (the server scopes uploads per session and deletes them with the session).
 protocol ChatDraftAttachmentStoring: Sendable {
-    /// Writes a copy of the attachment bytes, returning the generated file name
-    /// the caller stores in the draft record.
     func save(data: Data, suggestedFilename: String) async throws -> String
     func retainedFileBytes() async throws -> [String: Int]
     func data(named fileName: String) async throws -> Data
-    /// Where the copy lives, for readers that need a file rather than its
-    /// bytes (Quick Look thumbnails). Rejects the names `data(named:)` rejects;
-    /// the file itself may be gone.
     func fileURL(named fileName: String) async throws -> URL
     func delete(named fileName: String) async
-    /// Deletes files not referenced by any draft and older than `maxAge`. The
-    /// age grace keeps copies whose owning upload/record write is still in
-    /// flight from being collected.
     func sweep(keepingReferenced fileNames: Set<String>, olderThan maxAge: TimeInterval) async
 }
 
 extension ChatDraftAttachmentStoring {
-    // Stores that cannot account for their bytes must refuse budgeted admission.
     func retainedFileBytes() async throws -> [String: Int] {
         throw CocoaError(.fileReadUnknown)
     }
 }
 
-/// Why a draft attachment's durable copy could not be read, and therefore
-/// whether its record is worth keeping.
-///
-/// Collapsing every read failure to "gone" is what makes this matter: a copy
-/// that is merely unreadable *right now* — data protection before first
-/// unlock, for instance — would otherwise be reported as permanently lost and
-/// dropped from the draft, and its file later reclaimed by the sweep.
 enum ChatDraftAttachmentReadFailure: Equatable {
-    /// The copy is gone, or its recorded name can never resolve. The record
-    /// cannot be restored now or later, so it is dropped.
     case unrecoverable
-    /// The copy may still be there; this read just did not succeed. The record
-    /// is kept and retried on a later open.
     case transient
 
     static func classify(_ error: Error) -> Self {
@@ -51,7 +27,6 @@ enum ChatDraftAttachmentReadFailure: Equatable {
         case NSFileNoSuchFileError, NSFileReadNoSuchFileError:
             return .unrecoverable
         case NSFileReadInvalidFileNameError:
-            // A name that cannot be resolved never will be.
             return .unrecoverable
         default:
             return .transient
@@ -122,7 +97,6 @@ actor ChatDraftAttachmentStore: ChatDraftAttachmentStoring {
         do {
             try fileManager.removeItem(at: url)
         } catch CocoaError.fileNoSuchFile {
-            // Already gone — deletion is idempotent.
         } catch {
             Self.logger.warning("Could not delete draft attachment \(fileName, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
@@ -162,9 +136,6 @@ actor ChatDraftAttachmentStore: ChatDraftAttachmentStoring {
         #endif
     }
 
-    /// Resolves a stored file name back to a URL, rejecting anything that is
-    /// not a plain file name so a corrupted draft document cannot escape the
-    /// attachments directory.
     private func fileURL(for fileName: String) throws -> URL {
         let trimmed = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,

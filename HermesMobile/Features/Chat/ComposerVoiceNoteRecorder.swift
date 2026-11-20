@@ -4,11 +4,6 @@ import Foundation
 import Observation
 import OSLog
 
-/// Records a short voice note to a temporary `.m4a`/AAC file with `AVAudioRecorder`,
-/// distinct from `ComposerVoiceInputController` (on-device dictation). The composer
-/// holds one of these as `@State`: hold the mic to `begin()`, release to `finish()`,
-/// slide up to `cancel()`. Drives an elapsed-time ticker and flips the shared
-/// `ComposerAudioCaptureState` so the inline audio player won't fight for the session.
 @MainActor
 @Observable
 final class ComposerVoiceNoteRecorder {
@@ -24,10 +19,7 @@ final class ComposerVoiceNoteRecorder {
         let duration: TimeInterval
     }
 
-    /// Hard cap on a single clip. AAC mono at ~32 kbps stays far under the 20 MB
-    /// upload limit even at five minutes (~1.2 MB), so this bounds UX, not size.
     static let maximumDuration: TimeInterval = 5 * 60
-    /// Clips shorter than this are treated as accidental taps and discarded.
     static let minimumDuration: TimeInterval = 0.5
 
     private(set) var state: State = .idle
@@ -63,10 +55,6 @@ final class ComposerVoiceNoteRecorder {
         AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
     ]
 
-    // MARK: - Lifecycle
-
-    /// Requests mic permission (if needed), configures the audio session, and
-    /// starts recording to a temporary `.m4a` file. No-op if already active.
     func begin() async {
         guard state == .idle else { return }
         errorMessage = nil
@@ -74,8 +62,6 @@ final class ComposerVoiceNoteRecorder {
         state = .requestingPermission
 
         let granted = await permissionRequester()
-        // The state can change while we await the system prompt (e.g. the view
-        // disappeared and called `cancel()`); bail rather than starting late.
         guard state == .requestingPermission else { return }
         guard granted else {
             fail(String(localized: "Microphone access is disabled. Enable it in Settings to record a voice note."))
@@ -92,8 +78,6 @@ final class ComposerVoiceNoteRecorder {
         }
     }
 
-    /// Stops recording and returns the finished clip, or nil if it was too short,
-    /// failed to read, or wasn't recording. Always restores the audio session.
     func finish() -> RecordedVoiceNote? {
         guard state == .recording, let recorder, let fileURL else {
             cancel()
@@ -123,15 +107,12 @@ final class ComposerVoiceNoteRecorder {
         return RecordedVoiceNote(data: data, filename: filename, duration: duration)
     }
 
-    /// Stops and discards the recording without producing a clip.
     func cancel() {
         stopRecorder()
         discardFile()
         teardownSession()
         resetState()
     }
-
-    // MARK: - Recording internals
 
     private func startRecording() throws {
         let session = AVAudioSession.sharedInstance()
@@ -183,11 +164,8 @@ final class ComposerVoiceNoteRecorder {
         logger.error("Voice note recording failed")
     }
 
-    // MARK: - Ticker
-
     private func startTicker() {
         stopTicker()
-        // `.common` so the timer keeps firing while the transcript scrolls.
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
@@ -225,10 +203,6 @@ enum ComposerVoiceNoteRecorderError: LocalizedError {
     }
 }
 
-/// Generates collision-resistant `.m4a` names for recorded voice notes. The
-/// 8-char suffix mirrors the attachment coordinator's uniquing so two quick notes
-/// don't clash on upload, and the `.m4a` extension makes the inline player treat
-/// the clip as audio even when the server reports a generic MIME type.
 enum VoiceNoteFilename {
     static func generate(uuid: UUID = UUID()) -> String {
         let suffix = uuid.uuidString.prefix(8).lowercased()
@@ -241,19 +215,10 @@ enum VoiceNoteFilename {
     }
 }
 
-/// Pure decision helpers for the hold-to-talk mic gesture, kept out of the view
-/// so the thresholds and the cancel logic are unit-testable.
 enum ComposerVoiceNoteGesture {
-    /// A press must be held at least this long before it records, so a quick tap
-    /// still routes to dictation. Matches `LongPressGesture(minimumDuration:)`.
-    /// Set to the system long-press feel (0.5s) so a deliberate tap — which can
-    /// linger ~0.3s on screen — isn't mistaken for a hold.
     static let holdActivationDelay: TimeInterval = 0.5
-    /// Sliding the finger up past this many points arms cancel-on-release.
     static let cancelTranslationThreshold: CGFloat = 80
 
-    /// Dragging up yields a negative height; cancel once it passes the threshold.
-    /// Sliding down (positive height) never cancels.
     static func isCancelArmed(dragTranslationHeight: CGFloat) -> Bool {
         dragTranslationHeight <= -cancelTranslationThreshold
     }

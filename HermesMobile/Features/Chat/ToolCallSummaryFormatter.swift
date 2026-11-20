@@ -1,33 +1,22 @@
 import Foundation
 
-/// One tool call reduced to a log line: icon, bold verb, dim one-line
-/// detail, and a status glyph. Built by `ToolCallSummaryFormatter`.
 struct ToolCallLogRow: Equatable {
     enum Status: Equatable {
         case success
         case failure
-        /// The call is still in flight.
         case running
-        /// The group settled before the call ever reported completion.
         case interrupted
     }
 
-    /// SF Symbol for the leading icon column.
     let icon: String
-    /// The verb ("Ran", "Read", …) or, for unrecognised tools, the short tool name.
     let summary: String
-    /// The call's target (command, file, query, skill) or the first result line.
     let detail: String?
     let status: Status
-    /// An edit's "+N −M", shown before the chevron once the call succeeds.
     let diffCounts: ToolCallDiff.Counts?
-    /// An answered `clarify` call's questions, which the row opens to instead
-    /// of its arguments and raw result.
     var clarify: ClarifyResult?
 
     var isFailure: Bool { status == .failure }
 
-    /// What VoiceOver reads for the whole row: "Updated, App.swift, 3 added, 1 removed, Completed".
     var accessibilityLabel: String {
         [summary, detail, diffCounts.map { DiffCountsLabel.spokenText(additions: $0.additions, deletions: $0.deletions) }, statusText]
             .compactMap { $0 }
@@ -44,7 +33,6 @@ struct ToolCallLogRow: Equatable {
     }
 }
 
-/// A tool call paired with its log row, keyed by the call's id for `ForEach`.
 struct ToolCallLogEntry: Identifiable, Equatable {
     let toolCall: ToolCall
     let row: ToolCallLogRow
@@ -52,10 +40,6 @@ struct ToolCallLogEntry: Identifiable, Equatable {
     var id: String { toolCall.presentationID }
 }
 
-/// Turns settled tool calls into one-line log rows. The rules mirror the upstream
-/// web UI's compact tool labels (`_toolActionKind` / `_toolTargetLabel` in
-/// `static/ui.js`) so a call reads the same on the phone and in the browser.
-/// Pure and stateless so every rule is unit-testable.
 enum ToolCallSummaryFormatter {
     enum Kind: Equatable {
         case shell, read, write, search, web, list, skill, memory, delegate, unknown
@@ -63,15 +47,12 @@ enum ToolCallSummaryFormatter {
 
     private static let detailLimit = 160
 
-    /// Rows for a group, in call order. Calls with nothing to say (no
-    /// name, target, or result) are dropped; failures are never dropped.
     static func entries(for toolCalls: [ToolCall], isLive: Bool) -> [ToolCallLogEntry] {
         toolCalls.compactMap { toolCall in
             row(for: toolCall, isLive: isLive).map { ToolCallLogEntry(toolCall: toolCall, row: $0) }
         }
     }
 
-    /// The log row for one call, or `nil` when the call carries no signal.
     static func row(for toolCall: ToolCall, isLive: Bool) -> ToolCallLogRow? {
         let name = nonEmpty(toolCall.name)
         let toolKind = kind(forToolNamed: name)
@@ -101,13 +82,10 @@ enum ToolCallSummaryFormatter {
             summary: summary(kind: toolKind, name: name),
             detail: detail,
             status: rowStatus,
-            // Counts only once the server says the edit succeeded: a running call has only asked for it.
             diffCounts: rowStatus == .success ? ToolCallDiff.resolve(for: toolCall)?.counts : nil
         )
     }
 
-    /// Everything a long-press puts on the pasteboard: the row line, then the
-    /// same questions and answers, or arguments and result, the expanded body shows.
     static func copyText(for toolCall: ToolCall) -> String {
         let row = row(for: toolCall, isLive: false)
         var lines: [String] = []
@@ -128,8 +106,6 @@ enum ToolCallSummaryFormatter {
 
         return lines.joined(separator: "\n")
     }
-
-    // MARK: - Kind and presentation
 
     static func kind(forToolNamed rawName: String?) -> Kind {
         let name = normalizedName(rawName)
@@ -197,7 +173,6 @@ enum ToolCallSummaryFormatter {
         }
     }
 
-    /// `mcp__server__tool` reads as `server/tool`; anything else is the raw name.
     static func shortToolName(_ rawName: String?) -> String {
         guard let name = nonEmpty(rawName) else { return String(localized: "Tool") }
 
@@ -211,8 +186,6 @@ enum ToolCallSummaryFormatter {
         }
         return name
     }
-
-    // MARK: - Detail
 
     private static func targetDetail(kind: Kind, name: String?, args: [String: JSONValue]?) -> String? {
         guard let args, !args.isEmpty else { return nil }
@@ -246,7 +219,6 @@ enum ToolCallSummaryFormatter {
         }
     }
 
-    /// `L12-40 · File.swift` style range for `read_file` offset/limit arguments.
     private static func readRange(args: [String: JSONValue]) -> String? {
         guard let offset = integer(args["offset"]), offset > 0 else { return nil }
         guard let limitValue = args["limit"] else { return "L\(offset)" }
@@ -256,12 +228,10 @@ enum ToolCallSummaryFormatter {
         return overflow ? nil : "L\(offset)-\(end)"
     }
 
-    /// The file a read call names, as given.
     static func readPath(args: [String: JSONValue]) -> String? {
         firstString(in: args, keys: ["path", "file_path", "file", "target", "name"])
     }
 
-    /// First changed file plus `+N more`, from `changedPaths(args:)`.
     static func changedFilesPreview(args: [String: JSONValue]) -> String? {
         let paths = changedPaths(args: args)
         guard let first = paths.first else { return nil }
@@ -270,8 +240,6 @@ enum ToolCallSummaryFormatter {
         return compacted("\(basename(first)) \(String(localized: "+\(remaining) more"))")
     }
 
-    /// A write call's unique full paths in argument order, from the same
-    /// arguments the per-turn file recap reads (`path`, `paths[]`, `edits[].path`, …).
     static func changedPaths(args: [String: JSONValue]) -> [String] {
         var paths: [String] = []
         func append(_ value: JSONValue?) {
@@ -296,8 +264,6 @@ enum ToolCallSummaryFormatter {
         return paths
     }
 
-    /// `bash -lc "git status"`, `pwsh -Command "…"`, and `cmd /c …` read as the
-    /// inner command. Anything else is returned untouched.
     static func unwrappingShellWrapper(_ command: String) -> String {
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let split = trimmed.firstIndex(where: \.isWhitespace) else { return command }
@@ -343,13 +309,6 @@ enum ToolCallSummaryFormatter {
         return String(value.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // MARK: - Status
-
-    /// The server's `is_error` verdict wins whenever the call carries one
-    /// (every live completion, and persisted transcripts that store it). A call
-    /// with no verdict falls back to its result: the JSON envelope's `error` /
-    /// `exit_code` first, then the text heuristics. Search and web results are
-    /// never judged by text, since their output is whatever the query matched.
     private static func status(
         for toolCall: ToolCall,
         kind: Kind,
@@ -372,7 +331,6 @@ enum ToolCallSummaryFormatter {
         return isLive ? .running : .interrupted
     }
 
-    /// Splits a trailing `<exited with exit code N>` marker off tool output.
     static func strippingTrailingExitCode(_ text: String) -> (output: String?, exitCode: Int?) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let pattern = #"^([\s\S]*?)(?:\s*<exited with exit code (\d+)>)\s*$"#
@@ -388,11 +346,6 @@ enum ToolCallSummaryFormatter {
         return (nonEmpty(output), Int(trimmed[codeRange]))
     }
 
-    /// Text-only failure signals for a call with no server verdict and no JSON
-    /// envelope. A trailing `<exited with exit code N>` marker is decisive either
-    /// way. Otherwise only the first line of output is read, which is where
-    /// shells and file tools put their error, so a call that merely mentions
-    /// "not found" further down its output stays green.
     static func looksLikeFailure(_ text: String) -> Bool {
         let stripped = strippingTrailingExitCode(text)
         if let exitCode = stripped.exitCode {
@@ -422,9 +375,6 @@ enum ToolCallSummaryFormatter {
         return false
     }
 
-    // MARK: - Helpers
-
-    /// The unwrapped result the expanded body shows, minus the exit-code marker.
     private static func resultText(for toolCall: ToolCall) -> String? {
         guard let display = ToolCallDisplayFormatter.resultDisplay(preview: toolCall.preview, toolName: toolCall.name) else {
             return nil
@@ -440,7 +390,6 @@ enum ToolCallSummaryFormatter {
         return nil
     }
 
-    /// Collapses whitespace to single spaces and caps the length for one line.
     private static func compacted(_ text: String) -> String? {
         let collapsed = text
             .split(whereSeparator: \.isWhitespace)

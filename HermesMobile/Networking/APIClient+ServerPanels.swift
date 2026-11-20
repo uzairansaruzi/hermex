@@ -5,9 +5,6 @@ extension APIClient {
         try await send(endpoint: .models, method: "GET")
     }
 
-    /// Live (uncached) model list for the active provider. The server resolves
-    /// the provider itself when no `provider` param is sent and echoes it back,
-    /// so callers can match the result against the cached catalog's groups.
     func modelsLive() async throws -> ModelsLiveResponse {
         try await send(endpoint: .modelsLive, method: "GET")
     }
@@ -16,11 +13,6 @@ extension APIClient {
         try await send(endpoint: .commands, method: "GET")
     }
 
-    /// Saves the default model. Pass `provider` whenever the row names its
-    /// provider (`provider_id` from the catalog group): Core persists
-    /// `{model, provider}` atomically and resolves slash-qualified ids like
-    /// `anthropic/...` through the named provider's route. Without it such an
-    /// id can be persisted through the wrong provider.
     func saveDefaultModel(model: String, provider: String? = nil) async throws -> DefaultModelResponse {
         try await send(
             endpoint: .defaultModel,
@@ -29,10 +21,6 @@ extension APIClient {
         )
     }
 
-    /// Reasoning status for a specific model/provider (`GET /api/reasoning`).
-    /// Passing the session's current model + provider makes `supported_efforts`
-    /// model-accurate (mirrors the upstream WebUI composer chip, issue #18);
-    /// with no params the server resolves the config default model instead.
     func reasoning(model: String? = nil, provider: String? = nil) async throws -> ReasoningStatusResponse {
         try await send(endpoint: .reasoning(model: model, provider: provider), method: "GET")
     }
@@ -80,10 +68,6 @@ extension APIClient {
         )
     }
 
-    /// Creates a new profile (`POST /api/profile/create`), mirroring the webui's
-    /// create form payload: `clone_config` is always sent, everything else only
-    /// when provided (`clone_from` is intentionally omitted — the server clones
-    /// from the active profile). Rejected with 403 in single-profile mode.
     func createProfile(
         name: String,
         cloneConfig: Bool = false,
@@ -114,12 +98,6 @@ extension APIClient {
         try await send(endpoint: .settings, method: "GET")
     }
 
-    /// Writes the single server-synced session-visibility key (#19):
-    /// `POST /api/settings {"show_cli_sessions": <bool>}`. Upstream
-    /// `save_settings(body)` merges exactly the keys sent — nothing else is
-    /// touched — and responds with the full saved settings dict, so the
-    /// response reuses `SettingsResponse`. A general settings editor stays
-    /// out of scope.
     func updateSettings(showCliSessions: Bool) async throws -> SettingsResponse {
         try await send(
             endpoint: .settings,
@@ -128,7 +106,6 @@ extension APIClient {
         )
     }
 
-    /// Writes only the server-synced Claude Code session visibility key.
     func updateSettings(showClaudeCodeSessions: Bool) async throws -> SettingsResponse {
         try await send(
             endpoint: .settings,
@@ -143,10 +120,6 @@ extension APIClient {
         try await send(endpoint: .updatesCheck, method: "GET")
     }
 
-    /// Forces a *live* update check: `POST /api/updates/check` with `{ "force": true }`.
-    /// Upstream runs a real `git fetch` for this path (`check_for_updates(force=True)`),
-    /// whereas the plain GET only returns the cached status. Same response shape, so
-    /// `UpdatesCheckResponse` is reused. Used by the manual "Check for updates" button (#308).
     func updatesCheckForced() async throws -> UpdatesCheckResponse {
         try await send(
             endpoint: .updatesCheck,
@@ -155,10 +128,6 @@ extension APIClient {
         )
     }
 
-    /// Applies a pending repo update. The server pulls `--ff-only` and then
-    /// restarts itself, so the caller must tolerate a brief connection outage
-    /// and re-poll afterwards. Defaults to the `webui` target (issue #180 scope;
-    /// no `agent` target, `/force`, or `/summary`).
     func applyUpdate(target: String = "webui") async throws -> UpdatesApplyResponse {
         try await send(
             endpoint: .updatesApply,
@@ -174,14 +143,6 @@ extension APIClient {
 
 private struct DefaultModelRequest: Encodable {
     let model: String
-    /// The catalog row's provider, so the server persists `{model, provider}`
-    /// atomically and resolves slash-qualified ids through the right route.
-    /// Surface split, verified in source: the compatibility pin
-    /// (`f1d399b4`, `routes.py:4475`) reads only `body.get("model")` and
-    /// silently ignores the extra key; `set_hermes_default_model` accepts
-    /// `provider` from upstream HEAD `a00b02f` (`api/config.py:4780`).
-    /// Optional so a providerless custom-model save still sends the bare
-    /// `{model}` body; synthesized Encodable omits nil keys.
     let provider: String?
 }
 
@@ -221,11 +182,9 @@ private struct UpdatesCheckForceRequest: Encodable {
 }
 
 private struct ShowCliSessionsUpdateRequest: Encodable {
-    // Encoded as `show_cli_sessions` via the client's convertToSnakeCase strategy.
     let showCliSessions: Bool
 }
 
 private struct ShowClaudeCodeSessionsUpdateRequest: Encodable {
-    // Encoded as `show_claude_code_sessions` by convertToSnakeCase.
     let showClaudeCodeSessions: Bool
 }

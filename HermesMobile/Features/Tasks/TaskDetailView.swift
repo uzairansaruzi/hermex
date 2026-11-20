@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Task Detail: what the task is, when it runs next, how it is configured, and
-/// — the part the list cannot answer — what it has actually been doing.
 struct TaskDetailView: View {
     let server: URL
     let onAPIError: (Error) -> Void
@@ -11,11 +9,7 @@ struct TaskDetailView: View {
     @State private var isPresentingEditTask = false
     @State private var isConfirmingDelete = false
     @State private var isConfirmingRunNow = false
-    /// A Hermes host's Run Now, which follows the run until the host's outcome (#1041).
-    /// Leaving the screen cancels it, which stops the reads and leaves the run to the host.
     @State private var runNowTask: Task<Void, Never>?
-    /// Sheet identity lives here so the sheet is always tied to the run that was
-    /// tapped; the view model only fetches its text.
     @State private var selectedRun: CronRunHistoryItem?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -83,7 +77,6 @@ struct TaskDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await loadDetail() }
         .toolbar { toolbarContent }
-        // A failed save leaves its message for the sheet; it goes with the sheet.
         .sheet(isPresented: $isPresentingEditTask, onDismiss: viewModel.clearActionError) {
             CronJobEditorSheet(
                 title: String(localized: "Edit Task"),
@@ -133,8 +126,6 @@ struct TaskDetailView: View {
         }
     }
 
-    // MARK: - Cards
-
     @ViewBuilder
     private var actionStatusSection: some View {
         if viewModel.isMutating {
@@ -163,12 +154,6 @@ struct TaskDetailView: View {
         }
     }
 
-    /// The last run's text, inline.
-    ///
-    /// Shown when the last run failed — a failure is the one case where the
-    /// output is the point of the screen — and also when this server has no
-    /// history endpoint, so an older server keeps the only view of its output
-    /// it ever had.
     @ViewBuilder
     private var latestOutputCard: some View {
         if viewModel.job.hasFailedRun || viewModel.isHistoryUnavailable,
@@ -185,19 +170,12 @@ struct TaskDetailView: View {
         }
     }
 
-    /// Everything the list row deliberately stopped showing.
-    ///
-    /// Laid out as a grid so the label column takes the width of its widest
-    /// label. A fixed column has to guess, and guesses low: "Notifications"
-    /// wrapped onto three lines against the 64pt the old rows used.
     private var configurationCard: some View {
         let fields = TaskConfigurationField.fields(for: viewModel.job)
 
         return SectionCard(title: String(localized: "Configuration")) {
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
-                    // At accessibility sizes two columns leave no room for
-                    // either, so the label sits above its value instead.
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(fields) { field in
                             VStack(alignment: .leading, spacing: 1) {
@@ -299,13 +277,9 @@ struct TaskDetailView: View {
         }
     }
 
-    // MARK: - State
-
     private var isActionDisabled: Bool {
         viewModel.isMutating || viewModel.job.jobId == nil
     }
-
-    // MARK: - Actions
 
     private func open(_ run: CronRunHistoryItem) {
         selectedRun = run
@@ -318,13 +292,11 @@ struct TaskDetailView: View {
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
         }
-        // A Hermes host's detail re-reads its job, which the list then shows too (#1040).
         if let mutation = viewModel.lastMutation {
             onMutation(mutation)
         }
     }
 
-    /// Runs the Task, asking first when that also resumes it (a paused Task on a Hermes host).
     private func requestRunNow() {
         if features.runNowResumes(viewModel.job) {
             isConfirmingRunNow = true

@@ -1,17 +1,10 @@
 import Foundation
 
 extension APIClient {
-    /// Parameterless overload kept so `InsightsDataClient` (and any other
-    /// protocol witness) still sees the exact `sessions()` signature — a method
-    /// with defaulted parameters cannot satisfy that requirement.
     func sessions() async throws -> SessionsResponse {
         try await sessions(includeArchived: false, archivedLimit: nil)
     }
 
-    /// Fetches the session list. `includeArchived` opts in to archived rows
-    /// (merged with the visible ones; each row carries an `archived` flag) and
-    /// `archivedLimit` optionally caps how many archived rows the server appends
-    /// (issue #17). Defaults keep today's request untouched.
     func sessions(includeArchived: Bool = false, archivedLimit: Int? = nil) async throws -> SessionsResponse {
         try await send(
             endpoint: .sessions(includeArchived: includeArchived, archivedLimit: archivedLimit),
@@ -49,8 +42,6 @@ extension APIClient {
         try await send(endpoint: .sessionStatus(id: id), method: "GET")
     }
 
-    /// Imports a CLI or messaging session into the WebUI-owned session store.
-    /// The returned session is authoritative for whether continuation is safe.
     func importExternalSession(id: String) async throws -> SessionResponse {
         try await send(
             endpoint: .importCLISession,
@@ -59,8 +50,6 @@ extension APIClient {
         )
     }
 
-    /// Creates a session. A nil `projectID` leaves `project_id` out of the body, so
-    /// the session starts unassigned; the server stores a given id without checking it.
     func createSession(
         workspace: String?,
         model: String?,
@@ -121,9 +110,6 @@ extension APIClient {
         )
     }
 
-    /// Copies a session. Answers with the whole duplicated session, so no
-    /// follow-up fetch is needed. Rejects subagent sessions with a 400 — they
-    /// are view-only upstream.
     func duplicateSession(id: String) async throws -> SessionResponse {
         try await send(
             endpoint: .duplicateSession,
@@ -140,9 +126,6 @@ extension APIClient {
         )
     }
 
-    /// Truncates the session to empty on the server and resets its title to
-    /// Untitled. Destructive and irreversible — only call it behind a
-    /// confirmation. Answers the same compact session shape as rename (#389).
     func clearSession(id: String) async throws -> SessionMutationResponse {
         try await send(
             endpoint: .clearSession,

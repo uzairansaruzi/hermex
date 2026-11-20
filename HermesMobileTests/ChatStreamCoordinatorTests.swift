@@ -34,7 +34,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
                 streamID: "stream-123"
             )
         ])
-        // The run's own server, so a paired server's relay can take over on suspend (#566).
         XCTAssertEqual(liveActivityManager.servers, [URL(string: "https://example.test")!])
     }
 
@@ -48,7 +47,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         coordinator.start(streamID: "stream-123")
         let startedAt = try XCTUnwrap(coordinator.activeRunStartedAt)
 
-        // A foreground reattach restarts the same stream; the counter must not reset.
         coordinator.suspendActiveStreamConnection()
         coordinator.start(streamID: "stream-123", replayAfterSeq: 4, recoveryState: .reconnecting)
         XCTAssertEqual(coordinator.activeRunStartedAt, startedAt)
@@ -57,7 +55,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertNil(coordinator.activeStreamID)
         XCTAssertNil(coordinator.activeRunStartedAt)
 
-        // A replacement stream is a new run with its own start date.
         coordinator.start(streamID: "stream-new")
         XCTAssertNotNil(coordinator.activeRunStartedAt)
         XCTAssertNotEqual(coordinator.activeRunStartedAt, startedAt)
@@ -67,7 +64,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     func testSessionLoadSeedsRunStartFromServerAndReEntryKeepsIt() throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let coordinator = makeCoordinator(streamClient: streamClient)
-        // The server says this run has been going for 95s (`pending_started_at`).
         let serverStart = Date().addingTimeInterval(-95)
 
         coordinator.reconcileSessionLoad(
@@ -80,8 +76,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(coordinator.activeStreamID, "stream-123")
         XCTAssertEqual(coordinator.activeRunStartedAt, serverStart)
 
-        // Reattaching to the same run, then leaving and re-entering the session,
-        // both keep counting from the server's start instead of restarting at 0s.
         coordinator.start(streamID: "stream-123")
         XCTAssertEqual(coordinator.activeRunStartedAt, serverStart)
 
@@ -97,7 +91,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     @MainActor
     func testFutureDatedSeedDoesNotMoveTheRunStartForwardOnReSeed() throws {
         let coordinator = makeCoordinator()
-        // A server clock running ahead of the phone reports a start in the future.
         let t0 = Date()
         let skewedServerStart = t0.addingTimeInterval(600)
 
@@ -105,9 +98,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         coordinator.seedActiveRunStartForTesting(skewedServerStart, now: t0)
         XCTAssertEqual(coordinator.activeRunStartedAt, t0)
 
-        // Reloading the same running session re-seeds the same skewed stamp later
-        // on. Clamping alone would pin the start to the new `now` and restart
-        // "Working for"; the earliest known start has to win instead.
         coordinator.seedActiveRunStartForTesting(skewedServerStart, now: t0.addingTimeInterval(30))
         XCTAssertEqual(coordinator.activeRunStartedAt, t0)
     }
@@ -115,19 +105,14 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     @MainActor
     func testLiveActivityStartsFromTheSeededRunStartRatherThanNow() throws {
         let liveActivityManager = CoordinatorSpyLiveActivityManager()
-        // The coordinator holds its delegate weakly, so the spy has to outlive
-        // `makeCoordinator` for `startLiveActivity` to see a session ID.
         let delegate = CoordinatorDelegateSpy()
         let coordinator = makeCoordinator(liveActivityManager: liveActivityManager, delegate: delegate)
         let serverStart = Date().addingTimeInterval(-95)
 
         coordinator.start(streamID: "stream-123", runStartedAt: serverStart)
 
-        // The widget's system elapsed timer counts the run, not the moment this
-        // process attached to it, so it agrees with the in-app "Working for".
         XCTAssertEqual(liveActivityManager.startedAts, [serverStart])
 
-        // Without a seed the widget still starts counting from discovery time.
         let beforeUnseeded = Date()
         coordinator.start(streamID: "stream-456")
         let unseeded = try XCTUnwrap(liveActivityManager.startedAts.last)
@@ -139,7 +124,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     func testRunStartFallsBackToDiscoveryAndNeverCountsFromTheFuture() throws {
         let coordinator = makeCoordinator()
 
-        // No server start for the adopted run: fall back to discovery time.
         let beforeLoad = Date()
         coordinator.reconcileSessionLoad(
             loadedActiveStreamID: "stream-123",
@@ -150,7 +134,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertGreaterThanOrEqual(discovered, beforeLoad)
         XCTAssertLessThanOrEqual(discovered, Date())
 
-        // A nil seed on re-entry leaves that discovery stamp alone.
         coordinator.reconcileSessionLoad(
             loadedActiveStreamID: "stream-123",
             preparation: coordinator.prepareForSessionLoad(),
@@ -158,8 +141,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         )
         XCTAssertEqual(coordinator.activeRunStartedAt, discovered)
 
-        // Clock skew can date a server start in the future; clamp it so the
-        // "Working for" label can never show a negative elapsed time.
         coordinator.start(streamID: "stream-456", runStartedAt: Date().addingTimeInterval(600))
         let clamped = try XCTUnwrap(coordinator.activeRunStartedAt)
         XCTAssertLessThanOrEqual(clamped, Date())
@@ -180,8 +161,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         coordinator.start(streamID: "stream-123")
         streamClient.emit(.streamEnd)
 
-        // "Worked for" lands on the server's span immediately, without waiting
-        // for the post-completion transcript refresh to carry `_turnDuration`.
         let ending = try XCTUnwrap(coordinator.latestRunEnding)
         XCTAssertEqual(ending.startedAt, serverStart)
         XCTAssertEqual(ending.ending, .completed)
@@ -203,7 +182,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         coordinator.start(streamID: "stream-123", runStartedAt: response.runStartedAt(sentAt: sentAt))
         XCTAssertEqual(coordinator.activeRunStartedAt, Date(timeIntervalSince1970: 1_700_000_000.5))
 
-        // A server that omits the field leaves the run counting from the send.
         let withoutStart = try decoder.decode(
             ChatStartResponse.self,
             from: Data(#"{"stream_id": "stream-456"}"#.utf8)
@@ -447,7 +425,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             },
             isOnline: isOnline
         ) { request in
-            // The probe fails because the phone just lost its network.
             _ = statusRequestCount.increment()
             isOnline.mutate { $0 = false }
             throw URLError(.notConnectedToInternet)
@@ -486,21 +463,17 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-123"}"#, for: request)
         }
 
-        // Online but the server is out of reach: the budget runs out and the
-        // error shows, as before.
         coordinator.start(streamID: "stream-123")
         coordinator.suspendActiveStreamConnection()
         await coordinator.reconnectIfNeeded()
         XCTAssertEqual(statusRequestCount.value, 4)
         XCTAssertEqual(delegate.recoveryErrors.count, 1)
 
-        // Going offline parks the stream without probing.
         isOnline.mutate { $0 = false }
         await coordinator.networkPathDidChange()
         XCTAssertEqual(statusRequestCount.value, 4)
         XCTAssertEqual(coordinator.recoveryState, .waitingForNetwork)
 
-        // The network returns and the path flaps: both updates share one reattach.
         isOnline.mutate { $0 = true }
         isServerReachable.mutate { $0 = true }
         let firstPathChange = Task { @MainActor in
@@ -926,7 +899,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let liveActivityManager = CoordinatorSpyLiveActivityManager()
         let delegate = CoordinatorDelegateSpy()
-        // The reloaded transcript surfaced no assistant reply after the user message.
         delegate.latestServerLoadHadAssistantResponseAfterLatestUser = false
         let coordinator = makeCoordinator(
             streamClient: streamClient,
@@ -942,8 +914,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         await coordinator.reconnectIfNeeded()
 
-        // #246: this path previously re-armed and returned, leaving the Live
-        // Activity stuck on "running". It must now finalize as failed and end it.
         XCTAssertNil(coordinator.activeStreamID)
         XCTAssertFalse(coordinator.isConnectionSuspended)
         XCTAssertEqual(delegate.loadMessagesCount, 1)
@@ -969,9 +939,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         await coordinator.refreshTranscriptIfCompleted(streamID: "stream-123")
 
-        // The live SSE is still connected here, so the foreground safety net must
-        // keep waiting for the real completion rather than finalizing (#246). This
-        // is the deliberate counterpart to the reconnect-after-suspend fix.
         XCTAssertEqual(coordinator.activeStreamID, "stream-123")
         XCTAssertEqual(delegate.loadMessagesCount, 1)
         XCTAssertTrue(liveActivityManager.ends.isEmpty)
@@ -1018,7 +985,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
             return apiTestJSONResponse(#"{"active": false, "stream_id": "stream-123"}"#, for: request)
         }
-        // A newer run starts while the transcript reload is suspended.
         delegate.onLoadMessages = {
             coordinator.start(streamID: "stream-new")
         }
@@ -1027,8 +993,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         await coordinator.refreshTranscriptIfCompleted(streamID: "stream-123")
 
-        // PR #266: the post-load guard must bail so the newer stream is neither
-        // finalized nor clobbered by the now-stale refresh.
         XCTAssertEqual(coordinator.activeStreamID, "stream-new")
         XCTAssertTrue(liveActivityManager.ends.isEmpty)
     }
@@ -1047,7 +1011,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
             return apiTestJSONResponse(#"{"active": false, "stream_id": "stream-123"}"#, for: request)
         }
-        // The live SSE delivers completion while the transcript reload is suspended.
         delegate.onLoadMessages = {
             streamClient.emit(.done(DoneStreamEvent()))
         }
@@ -1056,9 +1019,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         await coordinator.refreshTranscriptIfCompleted(streamID: "stream-123")
 
-        // PR #266 #2: only the live-SSE completion finalizes; the now-stale refresh
-        // must not finalize again (no double end / double finishStream). The run
-        // generation captured before the load changed, so the refresh bails.
         XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete])
         XCTAssertNil(coordinator.activeStreamID)
     }
@@ -1120,9 +1080,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(statusRequests, 0)
         XCTAssertEqual(coordinator.recoveryState, .idle)
 
-        // #227: semantically quiet past checkingInterval, but the transport was
-        // active 5.1s ago — still within transportFreshInterval, so no chip and
-        // no status poll yet.
         await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(5.1))
         XCTAssertEqual(statusRequests, 0)
         XCTAssertEqual(coordinator.recoveryState, .idle)
@@ -1149,14 +1106,11 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         coordinator.start(streamID: "stream-123")
         coordinator.markProgress(now: start)
 
-        // Quiet past the forced-reconnect threshold, but offline: wait, don't probe.
         await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(18.1))
         XCTAssertEqual(statusRequestCount.value, 0)
         XCTAssertEqual(coordinator.recoveryState, .waitingForNetwork)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
 
-        // The network returns: the live stream drops back to idle, and the
-        // next stale tick probes it.
         isOnline.mutate { $0 = true }
         await coordinator.networkPathDidChange()
         XCTAssertEqual(coordinator.recoveryState, .idle)
@@ -1183,9 +1137,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         await coordinator.recoverStaleStreamIfNeeded(now: Date().addingTimeInterval(1))
 
-        // #227: the heartbeat 1s ago proves the transport is alive, so the
-        // semantically quiet stream stays idle with zero status polls — no
-        // "Checking stream" chip and no reconnect.
         XCTAssertEqual(statusRequests, 0)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
         XCTAssertEqual(streamClient.stopCount, 0)
@@ -1319,10 +1270,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(coordinator.recoveryState, .idle)
     }
 
-    // The MockURLProtocol handler runs on URLSession's protocol thread while the
-    // coordinator's status-poll await has suspended the main actor, so a
-    // main-queue sync hop delivers the heartbeat deterministically *mid-flight*
-    // — before the poll's continuation resumes (PR #238 review).
     @MainActor
     func testHeartbeatDuringStatusPollKeepsIdleStateWithoutReassertingChecking() async throws {
         var statusRequests = 0
@@ -1463,8 +1410,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         coordinator.start(streamID: "stream-123")
         coordinator.markProgress(now: start)
 
-        // 12.1s: past transportFreshInterval, so the stale-recovery status poll
-        // actually fires (#227).
         await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(12.1))
 
         XCTAssertEqual(coordinator.activeStreamID, "stream-new")
@@ -1495,8 +1440,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
             return apiTestJSONResponse(#"{"active": false, "stream_id": "stream-123"}"#, for: request)
         }
-        // The live SSE delivers completion while the stale-recovery transcript
-        // reload is suspended.
         delegate.onLoadMessages = {
             streamClient.emit(.done(DoneStreamEvent()))
         }
@@ -1505,14 +1448,8 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         coordinator.start(streamID: "stream-123")
         coordinator.markProgress(now: start)
 
-        // 12.1s: past transportFreshInterval, so the stale-recovery status poll
-        // actually fires (#227).
         await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(12.1))
 
-        // PR #266 review #3: the run generation captured before the load changed
-        // when `.done` finalized the run, so the now-stale stale-recovery path
-        // bails via the shared canFinalizeRunAfterLoad guard instead of finalizing
-        // a second time (no double end / double finishStream).
         XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete])
         XCTAssertNil(coordinator.activeStreamID)
     }
@@ -1522,7 +1459,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let liveActivityManager = CoordinatorSpyLiveActivityManager()
         let delegate = CoordinatorDelegateSpy()
-        // The reloaded transcript surfaced the assistant reply for the completed run.
         delegate.latestServerLoadHadAssistantResponseAfterLatestUser = true
         let coordinator = makeCoordinator(
             streamClient: streamClient,
@@ -1544,13 +1480,8 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         coordinator.start(streamID: "stream-123")
         coordinator.markProgress(now: start)
 
-        // 12.1s: past transportFreshInterval, so the stale-recovery status poll
-        // actually fires (#227).
         await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(12.1))
 
-        // Happy path: server reports the stale run inactive and no concurrent run or
-        // completion intervened, so canFinalizeRunAfterLoad lets the stale-recovery
-        // path complete from the refreshed transcript and end the Live Activity.
         XCTAssertNil(coordinator.activeStreamID)
         XCTAssertFalse(coordinator.isConnectionSuspended)
         XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete])
@@ -1589,7 +1520,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(liveActivityManager.markStaleCount, 1)
     }
 
-    /// #599: a cursorless re-attach to a live run can replay it from the start.
     @MainActor
     func testTransportErrorOnLiveRunReconnectsFromLastEventCursor() async throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
@@ -1618,8 +1548,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertTrue(coordinator.isReplayConnection)
     }
 
-    /// #599 review: a reload that adopts a different live stream must not resume
-    /// it from the previous stream's seq.
     @MainActor
     func testSessionLoadAdoptingNewStreamDropsPreviousStreamCursor() async throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
@@ -1776,9 +1704,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         _ = try await coordinator.cancelActiveStream()
         XCTAssertEqual(coordinator.latestRunEnding?.ending, .cancelled)
 
-        // A normal completion clears the run start on `done`, before the
-        // trailing `streamEnd` teardown; the ending must still be recorded as
-        // completed rather than inheriting the previous stop.
         coordinator.start(streamID: "stream-complete")
         XCTAssertNil(coordinator.latestRunEnding, "A new run clears the previous ending")
         streamClient.emit(.done(DoneStreamEvent()))
@@ -1966,16 +1891,12 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             data: #"{"message": "Auto-compression failed", "type": "compression_error"}"#
         ))
 
-        // apperror rides the terminal `.error` path: message surfaced, run failed,
-        // socket stopped, stream fully finished (issue #25).
         XCTAssertEqual(delegate.errorMessages, ["Auto-compression failed"])
         XCTAssertEqual(liveActivityManager.ends.last?.status, .failed)
         XCTAssertNil(coordinator.activeStreamID)
         XCTAssertEqual(streamClient.stopCount, 1)
         XCTAssertEqual(delegate.finishCount, 1)
     }
-
-    // MARK: - Late events after completion (#288)
 
     @MainActor
     func testLateMeteringAndLifecycleAfterDoneContinueTeardown() throws {
@@ -1992,9 +1913,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         streamClient.emit(.done(DoneStreamEvent()))
         XCTAssertTrue(coordinator.hasCompletedCurrentResponse)
 
-        // Metering after completion is allowed to update the TPS readout. The
-        // event must be production-shaped: displayableTokensPerSecond projects
-        // only when isTokensPerSecondAvailable == true and isEstimated != true.
         streamClient.emit(.metering(MeteringStreamEvent(
             tokensPerSecond: 12.5,
             isTokensPerSecondAvailable: true,
@@ -2017,7 +1935,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         )))
         XCTAssertEqual(duplicate.value, 0)
 
-        // Foreign-session metering must not update the readout.
         streamClient.emit(.metering(MeteringStreamEvent(
             tokensPerSecond: 99,
             isTokensPerSecondAvailable: true,
@@ -2026,8 +1943,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         )))
         XCTAssertEqual(coordinator.liveTokensPerSecond, 12.5, "foreign session metering ignored")
 
-        // Lifecycle must continue so the stream finishes and the Live Activity
-        // is not left dangling on "running".
         streamClient.emit(.streamEnd)
 
         XCTAssertEqual(delegate.finishCount, 1)
@@ -2035,8 +1950,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(liveActivityManager.ends.count, 1, "no duplicate end from a second finalize")
         XCTAssertTrue(coordinator.isTerminalFenceActiveForTesting(), "terminal fence survives finishStream")
 
-        // Teardown is one-shot per run: later terminal events must not repeat
-        // delegate finish/drain/title-refresh side effects (PR #295 re-gate).
         streamClient.emit(.error("late"))
         streamClient.emit(.cancelled)
         streamClient.emit(.streamEnd)
@@ -2059,24 +1972,17 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         coordinator.start(streamID: "stream-123")
         streamClient.emit(.done(DoneStreamEvent()))
-        // Transport closes without delivering streamEnd.
         streamClient.emit(.transportError("connection dropped"))
 
-        // Settled teardown still runs: finish, snapshot cleanup, drain,
-        // completed-title refresh — with the completed outcome preserved.
         XCTAssertEqual(delegate.finishCount, 1, "transportError after done must not skip teardown")
         XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete])
         XCTAssertNil(coordinator.activeStreamID)
 
-        // And it is idempotent against further terminal events.
         streamClient.emit(.streamEnd)
         streamClient.emit(.cancelled)
         XCTAssertEqual(delegate.finishCount, 1)
     }
 
-    /// webui closes the socket right after `cancel` or `error`, and the SSE
-    /// library reports that close as a transport error. It must not replace the
-    /// server's message or show an error for a cancel.
     @MainActor
     func testServerCloseAfterErrorOrCancelShowsNoTransportError() throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
@@ -2106,12 +2012,10 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         streamClient.emit(.streamEnd)
         XCTAssertTrue(coordinator.isTerminalFenceActiveForTesting())
 
-        // Next run disarms both the content fence and the teardown owner.
         coordinator.prepareForNewResponse()
         XCTAssertFalse(coordinator.isTerminalFenceActiveForTesting())
         XCTAssertFalse(coordinator.isTransportFinishedForTesting())
 
-        // A token in the new run is accepted again.
         coordinator.start(streamID: "stream-456")
         streamClient.emit(.token("fresh answer"))
         XCTAssertEqual(delegate.tokens.last, "fresh answer", "content accepted after new run starts")
@@ -2128,9 +2032,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         streamClient.emit(.streamEnd)
         XCTAssertEqual(delegate.finishCount, 1)
 
-        // done → streamEnd → late token must still not corrupt the transcript
-        // (#288 review): finishStream clears hasCompletedCurrentResponse but the
-        // terminal fence stays armed until the next run starts.
         streamClient.emit(.token("Casual Greeting Exchange"))
 
         XCTAssertEqual(delegate.tokens, [], "token after streamEnd must be dropped")
@@ -2169,15 +2070,11 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         streamClient.emit(.done(DoneStreamEvent()))
         streamClient.emit(.error("late failure"))
 
-        // Exactly one end (.complete from done); the late error tears down the
-        // transport without publishing a failed end over a settled completion.
         XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete])
         XCTAssertEqual(delegate.errorMessages, [], "post-completion error must not surface as failure banner")
         XCTAssertEqual(delegate.finishCount, 1)
     }
 
-    /// Table-driven matrix: every content-family event after completion is
-    /// dropped, so a future enum case cannot silently land in the wrong bucket.
     @MainActor
     func testAllContentEventsAreDroppedAfterCompletion() throws {
         let cases: [(String, SSEEvent)] = [
@@ -2315,8 +2212,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         timing: ChatStreamCoordinatorTiming = .standard,
         ratingPromptState: RatingPromptState? = nil,
         reconnectDelay: @escaping ChatStreamReconnectDelay = { _ in },
-        // Online unless a test passes its own box, so no test depends on the
-        // simulator's network path.
         isOnline: CoordinatorLockedBox<Bool>? = nil,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data) = { request in
             apiTestJSONResponse(#"{"active": true}"#, for: request)
@@ -2552,7 +2447,6 @@ private final class CoordinatorSpySSEStreamingClient: SSEStreamingClient {
     private(set) var stopCount = 0
     private(set) var lastEventID: String?
     private var onEvent: (@MainActor (SSEEvent) -> Void)?
-    /// Called after each start, so a test can wait on a reconnect instead of polling.
     var onStart: ((URL) -> Void)?
 
     func start(url: URL, onEvent: @escaping @MainActor (SSEEvent) -> Void) {
@@ -2587,10 +2481,7 @@ private final class CoordinatorSpyLiveActivityManager: AgentLiveActivityManaging
     }
 
     private(set) var starts: [Start] = []
-    /// Run starts handed to the widget, recorded alongside `starts` so the
-    /// existing `Start` equality assertions stay independent of timing (#406).
     private(set) var startedAts: [Date] = []
-    /// The server each start named, so push registration finds its pairing (#566).
     private(set) var servers: [URL] = []
     private(set) var updates: [AgentLiveActivityEvent] = []
     private(set) var markStaleCount = 0
@@ -2615,7 +2506,6 @@ private final class CoordinatorSpyLiveActivityManager: AgentLiveActivityManaging
     }
 }
 
-/// Counts `withObservationTracking` change callbacks; shared by the chat test classes.
 final class ObservationChangeProbe: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0

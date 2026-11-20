@@ -1,12 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// One run, read in full: webui's output file, or a Hermes run's final reply. A Hermes
-/// script-only run shows the preview its row carries, and says when the host cut it short.
-///
-/// The sheet renders `output` only when it belongs to the run on screen, so a
-/// slow request that lands after the user has moved to another run can never
-/// put the wrong transcript under the wrong heading.
 struct TaskRunOutputSheet: View {
     let run: CronRunHistoryItem
     let output: CronRunOutput?
@@ -78,7 +72,6 @@ struct TaskRunOutputSheet: View {
         return date.formatted(date: .abbreviated, time: .shortened)
     }
 
-    /// The loaded text, but only if it is this run's.
     private var matchingText: String? {
         guard let output, output.filename == run.filename else { return nil }
         return output.text

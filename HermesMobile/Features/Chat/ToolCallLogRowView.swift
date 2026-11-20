@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// One tool call as a dense log line: icon column, bold verb, dim one-line
-/// detail, an edit's "+N −M", chevron, and a status glyph. Tap expands its
-/// diff, arguments, and result; long-press copies the arguments and result.
 struct ToolCallLogRowView: View {
     let entry: ToolCallLogEntry
 
@@ -36,9 +33,6 @@ struct ToolCallLogRowView: View {
                 ToolCallDetailBodyView(toolCall: entry.toolCall, status: row.status)
             }
         }
-        // Commands, paths, and results are code-like and stay left-to-right
-        // inside an RTL transcript (#259), like the live card. Answered
-        // questions are prose and keep the transcript's direction.
         .forcedLeftToRight(row.clarify == nil)
     }
 
@@ -65,13 +59,11 @@ struct ToolCallLogRowView: View {
     }
 }
 
-/// The Diff, Arguments, Result, and Status sections shown when a tool log row opens.
 struct ToolCallDetailBodyView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsCodeBlockLines = false
     @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
-    /// Whether a long diff shows every line instead of the first `collapsedLineLimit`.
     @State private var showsAllDiffLines = false
 
     let toolCall: ToolCall
@@ -143,9 +135,6 @@ struct ToolCallDetailBodyView: View {
         }
     }
 
-    /// The edit's diff in an inset surface, capped at `collapsedLineLimit` lines
-    /// behind a Show all row like chat's diff fences, with a caption when the
-    /// server cut the source off.
     @ViewBuilder
     private func diffSection(_ diff: ToolCallDiff) -> some View {
         let lines = diff.document.visibleLines(showingAll: showsAllDiffLines)
@@ -183,7 +172,6 @@ struct ToolCallDetailBodyView: View {
 
     private func showAllDiffLinesButton(lineCount: Int) -> some View {
         Button {
-            // Pins the reader's offset while the diff grows or shrinks.
             chatDisclosureToggled()
             showsAllDiffLines.toggle()
         } label: {
@@ -249,8 +237,6 @@ struct ToolCallDetailBodyView: View {
         }
     }
 
-    /// One `Text` keeps the whole result selectable but can't draw an arbitrarily wide line, so
-    /// output with a very long line wraps even when Wrap Lines is off.
     private static func fitsOnOneTextLine(_ text: String) -> Bool {
         text.split(separator: "\n").allSatisfy { $0.count <= 500 }
     }
@@ -288,8 +274,6 @@ struct ToolCallDetailBodyView: View {
     }
 }
 
-/// What an answered `clarify` row opens to: each question over its answer,
-/// selectable and in the transcript's own direction, then how the wait ended.
 struct ClarifyHistoryBody: View {
     let result: ClarifyResult
 
@@ -318,9 +302,6 @@ struct ClarifyHistoryBody: View {
     }
 }
 
-/// One answered question as a compact transcript line, shown in place of the
-/// tool rows a folded turn hides: question-bubble icon, the question dimmed,
-/// the answer bold, and the timeout note under the result's last question.
 struct ClarifyAnswerLineView: View {
     let line: ClarifyResult.Line
 
@@ -360,9 +341,7 @@ struct ClarifyAnswerLineView: View {
     }
 }
 
-/// The styled answer and note text both clarify views share.
 private enum ClarifyText {
-    /// The answer in bold, or a dimmed "No answer" when the exchange has none.
     static func answer(_ exchange: ClarifyResult.Exchange) -> Text {
         if let answer = exchange.answerText {
             return Text(answer)
@@ -374,7 +353,6 @@ private enum ClarifyText {
             .foregroundStyle(.appSecondary)
     }
 
-    /// How the wait ended, as the server worded it.
     static func note(_ note: String) -> Text {
         Text(note)
             .font(AppFont.caption2())

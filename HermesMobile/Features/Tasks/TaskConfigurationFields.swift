@@ -1,12 +1,8 @@
 import Foundation
 
-/// One row of Task Detail's Configuration card.
 struct TaskConfigurationField: Identifiable, Equatable {
-    /// The label. Unique within a card, so it is also the row's identity.
     let title: String
     let value: String
-    /// A dimmer second line under the value — the raw cron expression under
-    /// its English sentence. `nil` when there is nothing more to say.
     let detail: String?
 
     var id: String { title }
@@ -19,15 +15,6 @@ struct TaskConfigurationField: Identifiable, Equatable {
 }
 
 extension TaskConfigurationField {
-    /// The Configuration card's rows, in reading order.
-    ///
-    /// A field the job does not have does not get a row. A job that leaves the
-    /// model, profile or skills to the server has nothing to say about them,
-    /// and a row saying so is a line of card the reader has to discount.
-    ///
-    /// Schedule and Deliver are the exceptions, because every job has both:
-    /// Deliver falls back to `local`, which is the server's own default rather
-    /// than a stand-in for a missing value.
     static func fields(for job: CronJob) -> [TaskConfigurationField] {
         var fields: [TaskConfigurationField] = []
 
@@ -38,7 +25,6 @@ extension TaskConfigurationField {
             TaskConfigurationField(
                 title: String(localized: "Schedule"),
                 value: schedule,
-                // Only worth a second line when it is not already the value.
                 detail: job.editableScheduleText.flatMap { $0 == schedule ? nil : $0 }
             )
         )

@@ -12,8 +12,6 @@ struct SelectableTextPresentation: Identifiable, Equatable {
 
 }
 
-/// One entry of the message action menu. The SwiftUI menu and the UIKit
-/// context-menu interaction both build from this list so they never drift.
 struct ChatMessageActionItem: Identifiable {
     enum Kind: Hashable {
         case listen
@@ -32,9 +30,6 @@ struct ChatMessageActionItem: Identifiable {
     var id: Kind { kind }
 }
 
-/// The long-press menu is built from the item list alone, so any transcript
-/// that can name its own actions — Sessions, a Bot chat, a group room — gets
-/// the same UIKit menu without owning a chat view model.
 extension Array where Element == ChatMessageActionItem {
     @MainActor
     func uiMenu() -> UIMenu {
@@ -75,9 +70,6 @@ struct ChatMessageActionMenu: View {
         }
     }
 
-    /// The actions for this message in display order. Mutating actions are
-    /// disabled while the transcript is cached or a stream is active, and absent
-    /// where the chat cannot rewrite its history (`MessageActionContext`).
     var items: [ChatMessageActionItem] {
         var items: [ChatMessageActionItem] = []
         let offersHistoryActions = context.offersHistoryActions
@@ -134,7 +126,6 @@ struct ChatMessageActionMenu: View {
         return items
     }
 
-    /// The same actions as a UIKit menu, for `ChatMessageContextMenuView`.
     func uiMenu() -> UIMenu {
         items.uiMenu()
     }
@@ -178,9 +169,6 @@ struct SelectableTextView: UIViewRepresentable {
         textView.backgroundColor = .appCanvas
         textView.font = .app(forTextStyle: .body, at: context.environment.dynamicTypeSize)
         textView.adjustsFontForContentSizeCategory = true
-        // A wrapped UITextView does not inherit SwiftUI's layoutDirection; `.natural`
-        // lets each paragraph align by its own writing direction so RTL message text
-        // reads right-aligned while LTR stays left-aligned (issue #294).
         textView.textAlignment = .natural
         textView.textContainerInset = UIEdgeInsets(top: 16, left: 16, bottom: 32, right: 16)
         textView.textContainer.lineFragmentPadding = 0

@@ -1,13 +1,10 @@
 import SwiftUI
 
-/// Timestamps belong to user messages and settled terminal replies. Actions
-/// remain reachable on every actionable message, including a turn still streaming.
 enum TranscriptMessageMetaPolicy {
     static func showsRow(hasActions: Bool, hasTimestamp: Bool) -> Bool {
         hasActions || hasTimestamp
     }
 
-    /// Render IDs of the last bubble-bearing reply of each settled assistant turn.
     static func terminalReplyRenderIDs(
         transcriptMessages: [TranscriptMessage],
         messages: [ChatMessage],
@@ -39,11 +36,6 @@ enum TranscriptMessageMetaPolicy {
     }
 }
 
-/// The row under a message bubble: timestamp, copy, and completed-response actions.
-/// User rows read `[accessory][time][copy]` against the trailing edge, assistant
-/// rows `[copy][actions][accessory][time]` against the leading edge, so Copy
-/// always sits at the outer edge and RTL mirrors both through the semantic
-/// alignments. The accessory slot is optional; Sessions passes none.
 struct ChatMessageMetaRow<Accessory: View>: View {
     let isUserMessage: Bool
     let timeText: String?
@@ -117,9 +109,6 @@ extension ChatMessageMetaRow where Accessory == EmptyView {
     }
 }
 
-/// A copy button that answers with a checkmark for `feedbackDuration` after
-/// each tap. The caller writes the pasteboard and fires the haptic; this only
-/// owns the feedback state, and SwiftUI cancels the reset with the view.
 struct ChatCopyButton: View {
     static let feedbackDuration: Duration = .milliseconds(1200)
 
@@ -161,11 +150,6 @@ struct ChatCopyButton: View {
     }
 }
 
-// MARK: - Timestamp formatting
-
-/// Formats a message's unix `timestamp` as a short, locale-/24h-aware time
-/// (e.g. `2:14 PM` or `14:14`). Returns `nil` for a missing or non-finite
-/// timestamp so the meta row simply omits the time.
 enum ChatMessageTimestampFormatter {
     private static let sharedFormatter: DateFormatter = makeFormatter(
         locale: .autoupdatingCurrent,
@@ -176,8 +160,6 @@ enum ChatMessageTimestampFormatter {
         format(timestamp, with: sharedFormatter)
     }
 
-    /// Test seam: format against an explicit locale/time zone so 12h/24h
-    /// assertions stay deterministic regardless of host device settings.
     static func shortTime(
         forUnixTimestamp timestamp: Double?,
         locale: Locale,

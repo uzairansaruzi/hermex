@@ -3,13 +3,7 @@ import Observation
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The preview owns its temporary file and the bytes written to it. Quick Look
-/// and Share read the file; Save to Files writes the same bytes, so exporting
-/// never downloads again. Dismissal invalidates late completions and removes
-/// only the directory this presentation created.
 @MainActor @Observable final class BotArtifactPreviewModel {
-    /// What Save to Files writes: the downloaded bytes under the temporary file's
-    /// sanitized name, typed by its extension, or `.data` without one.
     struct Export {
         let data: Data
         let filename: String
@@ -18,12 +12,10 @@ import UniformTypeIdentifiers
 
     private var loaded: (file: QuickLookTemporaryFile, data: Data)?
     var fileURL: URL? { loaded?.file.url }
-    /// The page, decoded once, when `load` was asked to render an HTML report (#1623).
     private(set) var html: String?
     private(set) var errorMessage: String?
     private var generation = 0
 
-    /// Nil while loading, on error and after cleanup, when there are no bytes to save.
     var export: Export? {
         guard let loaded else { return nil }
         let url = loaded.file.url
@@ -43,7 +35,6 @@ import UniformTypeIdentifiers
             try Task.checkCancellation()
             guard owner == generation else { return }
             let written = try await QuickLookTemporaryFile.write(data: data, name: name)
-            // Returning drops a late write, which deletes its directory.
             guard !Task.isCancelled, owner == generation else { return }
             loaded = (written, data)
             if decodesHTML { html = String(decoding: data, as: UTF8.self) }
@@ -61,11 +52,8 @@ import UniformTypeIdentifiers
 
 }
 
-/// A Hermes chat's sent file or artifact in Quick Look, or an HTML report in its own web view.
-/// Once loaded, Save to Files and Share sit beside Done and act on the bytes already downloaded.
 struct BotArtifactPreview: View {
     let reference: TranscriptMediaReference
-    /// The title and saved file name; the reference's file name when nil.
     var title: String? = nil
     let download: () async throws -> Data
     @Environment(\.dismiss) private var dismiss
