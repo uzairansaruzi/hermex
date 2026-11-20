@@ -42,6 +42,25 @@ import XCTest
         }
     }
 
+    func testAPathTheHermesHostWouldTrimNeverRequestsTheUnspacedSibling() async throws {
+        let client = Self.client { _ in .body(200, Data("wrong sibling".utf8)) }
+        do {
+            _ = try await client.file(path: "report.txt ")
+            XCTFail("The host can return report.txt for this selection")
+        } catch {
+            XCTAssertEqual(error as? BotArtifactFailure, .unavailable)
+        }
+        do {
+            _ = try await client.rawFileData(path: "report.txt\u{1F}")
+            XCTFail("Python also strips the ASCII unit separator")
+        } catch {
+            XCTAssertEqual(error as? BotArtifactFailure, .unavailable)
+        }
+        XCTAssertTrue(Self.fileRequests.isEmpty)
+        XCTAssertEqual(try HermesWorkspaceFileClient.hostPath(" draft/ report.txt", in: Self.cwd),
+                       Self.cwd + "/ draft/ report.txt")
+    }
+
     /// A path that is absolute, climbs with `..`, starts at `~` or is empty past the root is
     /// refused before any request.
     func testAPathOutsideTheFolderIsRefusedBeforeAnyRequest() async {

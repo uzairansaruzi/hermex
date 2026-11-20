@@ -17,20 +17,24 @@ struct FileTreeNode: Identifiable, Hashable {
 
     /// Returns nil for an entry that carries neither a name nor a path.
     init?(entry: WorkspaceEntry, parentPath: String) {
-        let trimmedName = entry.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let trimmedPath = entry.path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Whitespace can be part of a filename. Use it only to detect blank fields.
+        func nonblank(_ value: String?) -> String? {
+            guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return value
+        }
+        let entryName = nonblank(entry.name)
 
         let path: String
-        if !trimmedPath.isEmpty, trimmedPath != FileTree.rootPath {
-            path = trimmedPath
-        } else if !trimmedName.isEmpty {
-            path = parentPath == FileTree.rootPath ? trimmedName : "\(parentPath)/\(trimmedName)"
+        if let entryPath = nonblank(entry.path), entryPath != FileTree.rootPath {
+            path = entryPath
+        } else if let entryName {
+            path = parentPath == FileTree.rootPath ? entryName : "\(parentPath)/\(entryName)"
         } else {
             return nil
         }
 
         self.path = path
-        name = trimmedName.isEmpty ? String(path.split(separator: "/").last ?? Substring(path)) : trimmedName
+        name = entryName ?? String(path.split(separator: "/").last ?? Substring(path))
         isDirectory = entry.isBrowsableDirectory
         isSymlink = entry.type == "symlink"
         // Carry the resolved name and path so the preview never sees a nil path.

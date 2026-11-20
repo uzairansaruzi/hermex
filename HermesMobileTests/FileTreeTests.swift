@@ -38,13 +38,24 @@ final class FileTreeTests: XCTestCase {
     func testNodePathFallsBackToParentAndNameAndSkipsBlankEntries() {
         var tree = FileTree()
         tree.setChildren([
-            WorkspaceEntry(name: "notes.txt", path: nil),
-            WorkspaceEntry(name: nil, path: nil)
+            WorkspaceEntry(name: " notes.txt ", path: nil),
+            WorkspaceEntry(name: nil, path: nil),
+            WorkspaceEntry(name: " ", path: "\t")
         ], of: "docs")
 
-        XCTAssertEqual(tree.children(of: "docs")?.map(\.path), ["docs/notes.txt"])
-        XCTAssertEqual(tree.node(at: "docs/notes.txt")?.name, "notes.txt")
-        XCTAssertEqual(tree.node(at: "docs/notes.txt")?.entry.path, "docs/notes.txt", "The preview reads the entry's path")
+        XCTAssertEqual(tree.children(of: "docs")?.map(\.path), ["docs/ notes.txt "])
+        XCTAssertEqual(tree.node(at: "docs/ notes.txt ")?.name, " notes.txt ")
+        XCTAssertEqual(tree.node(at: "docs/ notes.txt ")?.entry.path, "docs/ notes.txt ", "The preview reads the entry's path")
+    }
+
+    func testSiblingFilenamesCanDifferOnlyByLeadingOrTrailingSpaces() {
+        let names = ["report.txt", " report.txt", "report.txt "]
+        var tree = FileTree()
+        tree.setChildren(names.map { WorkspaceEntry(name: nil, path: $0) }, of: FileTree.rootPath)
+
+        for name in names {
+            XCTAssertEqual(tree.node(at: name)?.name, name)
+        }
     }
 
     func testSymlinkKeepsDirectoryFlagFromServer() {

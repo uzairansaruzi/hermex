@@ -404,8 +404,7 @@ struct FilePreviewView: View {
     }
 
     private var displayName: String {
-        let name = entry.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let name, !name.isEmpty else {
+        guard let name = entry.name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return String(localized: "File")
         }
         return name
@@ -419,11 +418,10 @@ struct FilePreviewView: View {
             path = entry.path
         }
 
-        let trimmedPath = path?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let trimmedPath, !trimmedPath.isEmpty else {
+        guard let path, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return displayName
         }
-        return trimmedPath
+        return path
     }
 
     private var metadataText: String? {

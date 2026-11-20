@@ -590,6 +590,26 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertEqual(viewModel.expandedPaths, [])
         XCTAssertEqual(log.listedPaths, ["."])
     }
+
+    @MainActor
+    func testWorkspaceHitPreviewLoadsAndCopiesTheExactPath() async throws {
+        let path = " report.txt "
+        let client = makeClient { [self] request in
+            XCTAssertEqual(request.url?.path, "/api/file")
+            XCTAssertEqual(listedPath(in: request), path)
+            return apiTestJSONResponse(#"{"content":"Selected file"}"#, for: request)
+        }
+        let files = WebUIWorkspaceFileClient(sessionID: "s1", workspace: "/tmp/ws",
+                                             server: try XCTUnwrap(URL(string: "https://example.test")), apiClient: client)
+        let browser = FileBrowserViewModel(files: files, defaults: defaults)
+        let node = try XCTUnwrap(browser.openWorkspaceHit(hit(path)))
+        let preview = FilePreviewViewModel(files: files, path: try XCTUnwrap(node.entry.path))
+
+        XCTAssertEqual(preview.copyablePath, path)
+        await preview.load()
+        guard case .text(let file) = preview.preview else { return XCTFail("Expected a text preview") }
+        XCTAssertEqual(file.content, "Selected file")
+    }
 }
 
 /// A workspace whose first root listing waits until the test releases it, then answers with

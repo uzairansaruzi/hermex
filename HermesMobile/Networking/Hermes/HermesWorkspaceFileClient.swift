@@ -116,6 +116,12 @@ struct HermesWorkspaceContext: Hashable, Sendable {
     /// and a path with nothing past the root, before any request.
     nonisolated static func hostPath(_ path: String, in cwd: String) throws -> String {
         let root = cwd.count > 1 && cwd.hasSuffix("/") ? String(cwd.dropLast()) : cwd
+        // The host calls Python's str.strip() on the path; a read can return a sibling.
+        // Python includes four ASCII separators in addition to Unicode whitespace.
+        if let last = (path == FileTree.rootPath ? root : path).unicodeScalars.last,
+           last.properties.isWhitespace || (0x1C...0x1F).contains(last.value) {
+            throw BotArtifactFailure.unavailable
+        }
         if path == FileTree.rootPath { return root }
         let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard !path.hasPrefix("/"), !path.hasPrefix("~"), !path.contains("\0"), !parts.contains(".."),
