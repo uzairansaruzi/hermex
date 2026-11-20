@@ -2036,12 +2036,10 @@ Send resolves a draft that opens with `/name` in this order:
    `not_found` or `runtime_retired`) reattaches; any other 4001, such as
    `unsupported_terminal_backend`, shows the host's reason. `enabled: false` says
    checkpoints are off on the host.
-2. **Held until a later slice of #702** (`hermesHeldNames`): commands that would move between
-   chats behind the phone's back show a notice naming #702 and send nothing. None is held now.
-3. **A catalog skill**: `command.dispatch` expands it and `message` is submitted.
-4. **Any other catalog command or alias**: `slash.exec {session_id, command}`
+2. **A catalog skill**: `command.dispatch` expands it and `message` is submitted.
+3. **Any other catalog command or alias**: `slash.exec {session_id, command}`
    with the typed line, once.
-5. **Anything else** is sent as typed.
+4. **Anything else** is sent as typed.
 
 `slash.exec` answers `{output, warning?}` or a directive. Output, warnings and
 notices show as a local notice (pinned while a turn runs), the output in a code

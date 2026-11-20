@@ -15,7 +15,7 @@ import Observation
 
         XCTAssertTrue(catalog.hostArgumentNames.isSuperset(of: ["context", "ctx", "approvals", "hello"]))
         XCTAssertTrue(catalog.hostArgumentNames.isDisjoint(with: ["model", "personality", "undo", "compact", "reset"]),
-                      "Hermex's own and the held commands never ask the host")
+                      "Hermex's own commands never ask the host")
 
         let ranked = AgentSlashCommandSuggestion.matching("ctx", in: catalog.commands, matchingAliases: true)
         XCTAssertEqual(ranked.first?.name, "context")
@@ -32,7 +32,7 @@ import Observation
         XCTAssertFalse(slash.catalog.commands.isEmpty)
     }
 
-    func testANameRoutesToTheAppTheHoldTheSkillTheHostOrText() async throws {
+    func testANameRoutesToTheAppTheSkillTheHostOrText() async throws {
         let slash = await openChat().turn.slashCommands
         XCTAssertEqual(slash.route("model"), .appOwned(SlashCommandCatalog.hermesCommand(named: "model")!))
         XCTAssertEqual(slash.route("reset"), .appOwned(SlashCommandCatalog.hermesCommand(named: "new")!), "an alias of /new")

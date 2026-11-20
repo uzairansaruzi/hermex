@@ -18,9 +18,7 @@ struct HermesSlashCatalog: Equatable {
             if alias.lowercased() != name.lowercased() { aliases[name.lowercased(), default: []].append(alias) }
         }
         hostArgumentNames = Set(canonical.compactMap { alias, name in
-            [alias, name.lowercased()].contains {
-                SlashCommandCatalog.hermesCommand(named: $0) != nil || SlashCommandCatalog.hermesHeldNames.contains($0)
-            } ? nil : alias
+            [alias, name.lowercased()].contains { SlashCommandCatalog.hermesCommand(named: $0) != nil } ? nil : alias
         })
         var seen = Set<String>()
         for row in reply["pairs"].list ?? [] {
@@ -78,7 +76,6 @@ enum HermesChatPolicy: Equatable {
 enum HermesSlashRoute: Equatable {
     case refused(String)
     case appOwned(SlashCommand)
-    case held
     case skill(SkillSlashSuggestion)
     case host
     case text
@@ -270,9 +267,6 @@ struct HermesSlashCompletion: Equatable {
         if let refusal = policy.refusal(typed: name, canonical: canonical) { return .refused(refusal) }
         if let command = SlashCommandCatalog.hermesCommand(named: typed) ?? SlashCommandCatalog.hermesCommand(named: canonical) {
             return .appOwned(command)
-        }
-        if SlashCommandCatalog.hermesHeldNames.contains(typed) || SlashCommandCatalog.hermesHeldNames.contains(canonical) {
-            return .held
         }
         if let skill = SlashSkillFormatter.skill(named: name, in: catalog.skills) { return .skill(skill) }
         return catalog.command(named: typed) == nil ? .text : .host

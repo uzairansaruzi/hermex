@@ -244,8 +244,6 @@ enum SlashCommandCatalog {
         hermesCommands.first { $0.name.lowercased() == name.lowercased() }
     }
 
-    static let hermesHeldNames: Set<String> = []
-
     static let reasoningLevels = ["show", "hide", "none", "minimal", "low", "medium", "high", "xhigh"]
     static let goalActions = ["status", "pause", "resume", "clear"]
 }

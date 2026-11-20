@@ -3914,8 +3914,6 @@ final class ChatViewModel {
                 return .unsupported(friendlyMessage: message)
             case .appOwned(let command):
                 return await executeSlashCommand(command, args: invocation.argument, modelContext: modelContext)
-            case .held:
-                return .unsupported(friendlyMessage: String(localized: "Hermex can't run /\(name) in a Hermes chat yet (#702)."))
             case .skill(let skill):
                 reply = try await slash.expand(skill, argument: invocation.argument, typed: line)
             case .text where !followsAlias:
