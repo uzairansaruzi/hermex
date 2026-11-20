@@ -225,9 +225,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testChatViewModelLiveActivityLifecycleUsesInjectedManager() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         let approvalStreamClient = LiveActivitySpySSEClient()
         let clarifyStreamClient = LiveActivitySpySSEClient()
@@ -291,9 +289,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testChatViewModelRunEndTriggerCoversFailedAndCompletedRunsButNotStoppedOnes() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         LiveActivityURLProtocol.handler = { request in
             if request.url?.path == "/api/session" {
@@ -347,9 +343,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testChatViewModelSuppressesLiveActivityResponseExcerptsByDefault() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         let approvalStreamClient = LiveActivitySpySSEClient()
         let clarifyStreamClient = LiveActivitySpySSEClient()
@@ -383,9 +377,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testDisablingLiveActivityResponseExcerptsClearsActiveExcerpt() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         let approvalStreamClient = LiveActivitySpySSEClient()
         let clarifyStreamClient = LiveActivitySpySSEClient()
@@ -422,9 +414,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testFollowupMessageStartsNewLiveActivityAfterCompletedResponse() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         let approvalStreamClient = LiveActivitySpySSEClient()
         let clarifyStreamClient = LiveActivitySpySSEClient()
@@ -475,9 +465,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testTitleStreamEventUpdatesLiveActivityTitle() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         let approvalStreamClient = LiveActivitySpySSEClient()
         let clarifyStreamClient = LiveActivitySpySSEClient()
@@ -512,9 +500,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testDoneSessionTitleUpdatesLiveActivityBeforeCompletion() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         let approvalStreamClient = LiveActivitySpySSEClient()
         let clarifyStreamClient = LiveActivitySpySSEClient()
@@ -554,9 +540,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testStreamEndWithoutDoneStillCompletesLiveActivity() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         let approvalStreamClient = LiveActivitySpySSEClient()
         let clarifyStreamClient = LiveActivitySpySSEClient()
@@ -596,9 +580,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testStatusRefreshCompletionEndsLiveActivityFromCompletedTranscript() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         let approvalStreamClient = LiveActivitySpySSEClient()
         let clarifyStreamClient = LiveActivitySpySSEClient()
@@ -685,9 +667,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testForegroundReconnectCompletionEndsLiveActivityAndAllowsFollowupStream() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         let approvalStreamClient = LiveActivitySpySSEClient()
         let clarifyStreamClient = LiveActivitySpySSEClient()
@@ -771,9 +751,7 @@ final class LiveActivityTests: XCTestCase {
 
     func testDroppedConnectionWithoutReplayRecordsFailedRunEnd() async throws {
         let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let client = APIClient(baseURL: baseURL, session: LiveActivityURLProtocol.makeSession())
         let streamClient = LiveActivitySpySSEClient()
         let manager = SpyAgentLiveActivityManager()
 
@@ -1418,7 +1396,26 @@ private final class LiveActivitySpySSEClient: SSEStreamingClient {
 }
 
 private final class LiveActivityURLProtocol: URLProtocol {
-    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    typealias Handler = (URLRequest) throws -> (HTTPURLResponse, Data)
+
+    private static let ownerHeader = "X-Live-Activity-Test-Owner"
+    private static let lock = NSLock()
+    private static var storedHandler: Handler?
+    private static var storedOwner: String?
+
+    static var handler: Handler? {
+        get { lock.withLock { storedHandler } }
+        set { lock.withLock { storedHandler = newValue } }
+    }
+
+    static func makeSession() -> URLSession {
+        let owner = UUID().uuidString
+        lock.withLock { storedOwner = owner }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [LiveActivityURLProtocol.self]
+        configuration.httpAdditionalHeaders = [ownerHeader: owner]
+        return URLSession(configuration: configuration)
+    }
 
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -1429,7 +1426,8 @@ private final class LiveActivityURLProtocol: URLProtocol {
     }
 
     override func startLoading() {
-        guard let handler = Self.handler else {
+        let (handler, owner) = Self.lock.withLock { (Self.storedHandler, Self.storedOwner) }
+        guard let handler, request.value(forHTTPHeaderField: Self.ownerHeader) == owner else {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return
         }
