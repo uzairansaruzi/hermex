@@ -1396,13 +1396,21 @@ private final class LiveActivitySpySSEClient: SSEStreamingClient {
 }
 
 private final class LiveActivityURLProtocol: URLProtocol {
-    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    typealias Handler = (URLRequest) throws -> (HTTPURLResponse, Data)
+
     private static let ownerHeader = "X-Live-Activity-Test-Owner"
-    private static var currentOwner: String?
+    private static let lock = NSLock()
+    private static var storedHandler: Handler?
+    private static var storedOwner: String?
+
+    static var handler: Handler? {
+        get { lock.withLock { storedHandler } }
+        set { lock.withLock { storedHandler = newValue } }
+    }
 
     static func makeSession() -> URLSession {
         let owner = UUID().uuidString
-        currentOwner = owner
+        lock.withLock { storedOwner = owner }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [LiveActivityURLProtocol.self]
         configuration.httpAdditionalHeaders = [ownerHeader: owner]
@@ -1418,8 +1426,8 @@ private final class LiveActivityURLProtocol: URLProtocol {
     }
 
     override func startLoading() {
-        guard let handler = Self.handler,
-              request.value(forHTTPHeaderField: Self.ownerHeader) == Self.currentOwner else {
+        let (handler, owner) = Self.lock.withLock { (Self.storedHandler, Self.storedOwner) }
+        guard let handler, request.value(forHTTPHeaderField: Self.ownerHeader) == owner else {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return
         }
