@@ -149,7 +149,7 @@ final class FileBrowserViewModel {
             if let failure = error as? WorkspaceFolderReadFailure {
                 if failure.isMissing { dropTree() }
                 errorMessage = failure.localizedDescription
-            } else if !Self.isCancellationError(error) {
+            } else if !error.isCancellation {
                 lastError = error
                 errorMessage = error.localizedDescription
             } else if !tree.isRootLoaded {
@@ -199,7 +199,7 @@ final class FileBrowserViewModel {
             guard generation == loadGenerations[path] else { return }
             if error is WorkspaceFolderReadFailure {
                 failedPaths[path] = error.localizedDescription
-            } else if !Self.isCancellationError(error) {
+            } else if !error.isCancellation {
                 lastError = error
                 failedPaths[path] = error.localizedDescription
             }
@@ -293,22 +293,6 @@ final class FileBrowserViewModel {
     func cancelPrefetches() {
         prefetches.values.forEach { $0.cancel() }
         prefetches.removeAll()
-    }
-
-    private static func isCancellationError(_ error: Error) -> Bool {
-        if error is CancellationError {
-            return true
-        }
-
-        let underlying: Error
-        if case APIError.network(let wrapped) = error {
-            underlying = wrapped
-        } else {
-            underlying = error
-        }
-
-        guard let urlError = underlying as? URLError else { return false }
-        return urlError.code == .cancelled
     }
 }
 

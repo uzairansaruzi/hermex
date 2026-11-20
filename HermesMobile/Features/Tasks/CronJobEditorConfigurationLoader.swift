@@ -43,7 +43,7 @@ final class CronJobEditorConfigurationLoader {
         do {
             modelGroups = try await client.cronModelGroups(profile: profile)
         } catch {
-            guard !Self.isCancellation(error) else { return }
+            guard !error.isCancellation, error as? BotFailure != .stale else { return }
             modelsErrorMessage = error.localizedDescription
         }
     }
@@ -57,7 +57,7 @@ final class CronJobEditorConfigurationLoader {
         do {
             profiles = try await client.cronProfiles()
         } catch {
-            guard !Self.isCancellation(error) else { return }
+            guard !error.isCancellation, error as? BotFailure != .stale else { return }
             profilesErrorMessage = error.localizedDescription
         }
     }
@@ -71,7 +71,7 @@ final class CronJobEditorConfigurationLoader {
         do {
             skills = try await client.cronSkills(profile: profile).filter { $0.disabled != true }
         } catch {
-            guard !Self.isCancellation(error) else { return }
+            guard !error.isCancellation, error as? BotFailure != .stale else { return }
             skillsErrorMessage = error.localizedDescription
         }
     }
@@ -79,19 +79,5 @@ final class CronJobEditorConfigurationLoader {
     func loadDeliveryOptions() async {
         guard client.cronFeatures.isProfileScoped else { return }
         deliveryOptions = (try? await client.cronDeliveryOptions(profile: profile))?.platforms
-    }
-
-    static func isCancellation(_ error: Error) -> Bool {
-        if error is CancellationError || error as? BotFailure == .stale { return true }
-
-        let underlying: Error
-        if case APIError.network(let wrapped) = error {
-            underlying = wrapped
-        } else {
-            underlying = error
-        }
-
-        guard let urlError = underlying as? URLError else { return false }
-        return urlError.code == .cancelled
     }
 }

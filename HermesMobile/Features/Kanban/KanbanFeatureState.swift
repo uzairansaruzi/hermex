@@ -1343,7 +1343,7 @@ final class KanbanFeatureState {
             )
         } catch {
             guard continueDispatch(generation, board: board, mode: mode) else { return }
-            if isCancellation(error) {
+            if Task.isCancelled || error.isCancellation {
                 clearDispatchIfCurrent(generation)
                 return
             }
@@ -1840,7 +1840,7 @@ final class KanbanFeatureState {
             )
         } catch {
             guard activeCardMutationIDs[cardID] == mutationID else { return }
-            guard !isCancellation(error) else {
+            guard !Task.isCancelled, !error.isCancellation else {
                 restoreFailedOptimisticMutation(cardID: cardID, baseline: baseline, kind: kind, phase: .failed)
                 return
             }
@@ -2191,14 +2191,6 @@ final class KanbanFeatureState {
         return statusCode == 404
     }
 
-    private func isCancellation(_ error: Error) -> Bool {
-        if Task.isCancelled || error is CancellationError { return true }
-        if case let APIError.network(underlying) = error {
-            return (underlying as? URLError)?.code == .cancelled
-        }
-        return (error as? URLError)?.code == .cancelled
-    }
-
     private func performBoardMutation(
         kind: KanbanBoardMutationKind,
         write: () async throws -> KanbanBoardMutationEnvelope,
@@ -2215,7 +2207,7 @@ final class KanbanFeatureState {
         do {
             _ = try await write()
         } catch {
-            if isCancellation(error) {
+            if Task.isCancelled || error.isCancellation {
                 clearBoardMutationIfCurrent(mutationGeneration)
                 return
             }

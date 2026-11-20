@@ -62,7 +62,7 @@ final class ArchivedSessionsViewModel {
                 Self.nonEmpty($0.sessionId) != nil && $0.archived == true
             }
         } catch {
-            if !Self.isCancellationError(error) {
+            if !error.isCancellation {
                 lastError = error
                 errorMessage = error.localizedDescription
             }
@@ -108,7 +108,7 @@ final class ArchivedSessionsViewModel {
             return true
         } catch {
             restore(removedSession)
-            if !Self.isCancellationError(error) {
+            if !error.isCancellation {
                 lastError = error
                 actionErrorMessage = error.localizedDescription
             }
@@ -151,7 +151,7 @@ final class ArchivedSessionsViewModel {
                 show(pages)
             } while self.pages.rows.count == shown && self.pages.hasMore
         } catch {
-            guard serial == readSerial, !Self.isCancellationError(error) else { return }
+            guard serial == readSerial, !Task.isCancelled, !error.isCancellation else { return }
             actionErrorMessage = hermesFailure(error)
         }
     }
@@ -181,7 +181,7 @@ final class ArchivedSessionsViewModel {
             show(pages)
             return true
         } catch {
-            if !Self.isCancellationError(error) { actionErrorMessage = hermesFailure(error) }
+            if !error.isCancellation { actionErrorMessage = hermesFailure(error) }
             return false
         }
     }
@@ -212,7 +212,7 @@ final class ArchivedSessionsViewModel {
             show(pages)
             if pages.rows.isEmpty, pages.hasMore { await loadMore() }
         } catch {
-            guard serial == readSerial, !Task.isCancelled, !Self.isCancellationError(error) else { return }
+            guard serial == readSerial, !Task.isCancelled, !error.isCancellation else { return }
             if let failure = error as? BotFailure, [.stale, .transport].contains(failure) { wire?.close(); wire = nil }
             errorMessage = hermesFailure(error)
         }
@@ -271,7 +271,7 @@ final class ArchivedSessionsViewModel {
             if let before, read == pagesRead { pages.restore(before.row, at: before.index) }
             unarchivingSessionIDs.remove(key)
             show(pages)
-            if !Self.isCancellationError(error) { actionErrorMessage = hermesFailure(error) }
+            if !error.isCancellation { actionErrorMessage = hermesFailure(error) }
             return false
         }
     }
@@ -323,21 +323,5 @@ final class ArchivedSessionsViewModel {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private static func isCancellationError(_ error: Error) -> Bool {
-        if error is CancellationError {
-            return true
-        }
-
-        let underlying: Error
-        if case APIError.network(let wrapped) = error {
-            underlying = wrapped
-        } else {
-            underlying = error
-        }
-
-        guard let urlError = underlying as? URLError else { return false }
-        return urlError.code == .cancelled
     }
 }

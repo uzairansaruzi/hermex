@@ -392,6 +392,31 @@ import SwiftData
         XCTAssertEqual(archive.sessions.count, 200)
     }
 
+    func testACancelledPageReadShowsNoError() async throws {
+        let host = BotSocketHost()
+        let connection = host.connection(record)
+        let archived = (0...150).map { "s\($0)" }
+        _ = HermesHostFixture.configuration { request in
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
+            guard request.httpMethod == "GET", request.url?.path == "/api/sessions" else { return nil }
+            let query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems ?? []
+            let offset = Int(query.first { $0.name == "offset" }?.value ?? "") ?? 0
+            let rows = archived.dropFirst(offset).prefix(HermesREST.sessionPageSize)
+            return .json(200, .object(["sessions": .array(rows.map { .object(["id": .string($0), "archived": .bool(true)]) })]))
+        }
+        let archive = ArchivedSessionsViewModel(server: server, hermes: HermesArchiveSource(
+            connection: record, profile: "default", makeWire: { _ in BotClient(http: connection) }, preferences: defaults
+        ))
+        await archive.load()
+        XCTAssertTrue(archive.hasMore)
+
+        let read = Task { await archive.loadMore() }
+        read.cancel()
+        await read.value
+
+        XCTAssertNil(archive.actionErrorMessage)
+    }
+
     func testARefreshDuringARestoreDoesNotBringTheRowBack() async throws {
         let host = BotSocketHost()
         let connection = host.connection(record)

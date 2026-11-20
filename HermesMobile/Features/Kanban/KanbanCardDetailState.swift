@@ -128,7 +128,7 @@ final class KanbanCardDetailState {
             await fetchDetail(showsLoadingState: false)
         } catch {
             guard activeMutationID == mutationID else { return }
-            guard !isCancellation(error) else { return }
+            guard !Task.isCancelled, !error.isCancellation else { return }
             forwardAuthentication(error)
             if KanbanEndpointCompatibility.isMissingCapability(error) {
                 onCapabilityUnavailable(.comments)
@@ -165,7 +165,7 @@ final class KanbanCardDetailState {
             }
             workerLogState = log.exists == false || (log.content ?? "").isEmpty ? .absent : .loaded(log)
         } catch {
-            guard !isCancellation(error) else { return }
+            guard !Task.isCancelled, !error.isCancellation else { return }
             forwardAuthentication(error)
             if isNotFound(error) {
                 await reconcileMissingEntity(loadID: nil)
@@ -190,7 +190,7 @@ final class KanbanCardDetailState {
             onDetailLoaded(response)
         } catch {
             guard activeDetailLoadID == loadID, activeMutationID == nil else { return }
-            guard !isCancellation(error) else { return }
+            guard !Task.isCancelled, !error.isCancellation else { return }
             forwardAuthentication(error)
             if isNotFound(error) {
                 await reconcileMissingEntity(loadID: loadID)
@@ -224,7 +224,7 @@ final class KanbanCardDetailState {
             activeMutationID = nil
         } catch {
             guard activeMutationID == expectedMutationID else { return }
-            guard !isCancellation(error) else { return }
+            guard !Task.isCancelled, !error.isCancellation else { return }
             forwardAuthentication(error)
             if isNotFound(error) {
                 pendingAttempt = nil
@@ -249,7 +249,7 @@ final class KanbanCardDetailState {
             loadState = boardExists ? .missingCard : .missingBoard
         } catch {
             guard activeDetailLoadID == expectedDetailLoadID else { return }
-            guard !isCancellation(error) else { return }
+            guard !Task.isCancelled, !error.isCancellation else { return }
             forwardAuthentication(error)
             loadState = .failed
         }
@@ -271,18 +271,6 @@ final class KanbanCardDetailState {
         if case BotFailure.rejected(404) = error { return true }
         guard case let APIError.http(statusCode, _) = error else { return false }
         return statusCode == 404
-    }
-
-    private func isCancellation(_ error: Error) -> Bool {
-        if Task.isCancelled || error is CancellationError { return true }
-
-        let underlying: Error
-        if case let APIError.network(wrapped) = error {
-            underlying = wrapped
-        } else {
-            underlying = error
-        }
-        return (underlying as? URLError)?.code == .cancelled
     }
 
     private func forwardAuthentication(_ error: Error) {

@@ -146,6 +146,14 @@ enum APIError: LocalizedError {
     }
 }
 
+extension Error {
+    var isCancellation: Bool {
+        if self is CancellationError { return true }
+        if case .network(let wrapped)? = self as? APIError { return (wrapped as? URLError)?.code == .cancelled }
+        return (self as? URLError)?.code == .cancelled
+    }
+}
+
 private extension APIError {
     struct ErrorPayload: Decodable {
         let error: String?
