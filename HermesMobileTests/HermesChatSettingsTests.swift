@@ -138,6 +138,19 @@ import Observation
         XCTAssertEqual(chat.writes("session.mutate").last?["expected_generation"], .number(3))
     }
 
+    func testAModelPickAfterAThinkingChangeCarriesTheFencesTheHostAnnounced() async throws {
+        let chat = await openChat(canonical: true)
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectReasoningEffort("high")
+        chat.receive(Self.frame(1, "session.updated", ["operation": .string("reasoning"), "effort": .string("high"),
+                                                       "revision": .number(3), "execution_generation": .number(2)]))
+
+        chat.host.next("session.mutate", .init(result: try settingsFixture("model")["result"]))
+        _ = await chat.model.selectComposerModel(Self.opus)
+        XCTAssertEqual(chat.writes("session.mutate").last?["expected_revision"], .number(3))
+        XCTAssertEqual(chat.writes("session.mutate").last?["expected_generation"], .number(2))
+    }
+
     func testACanonicalFastToggleSendsNoScope() async throws {
         let chat = await openChat(canonical: true)
         chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))

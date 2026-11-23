@@ -445,6 +445,7 @@ extension HermesConversationOwner {
         let reportsRevision = ["session.info", "session.updated"].contains(event["type"].text ?? "")
         adoptFences(revision: reportsRevision ? event["payload"]["revision"].integer : nil,
                     generation: event["execution_generation"].integer)
+        if event["type"].text == "session.updated" { adoptGeneration(event["payload"]["execution_generation"].integer) }
     }
 
     private func admit(_ event: BotJSON) {
