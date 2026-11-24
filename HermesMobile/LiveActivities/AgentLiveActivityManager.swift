@@ -519,7 +519,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     func endFinishedRuns(checking hermes: HermesRunCheck?) async {
         guard let hermes else { return }
         let held = activeConnectedStreamID == nil && currentState?.isFinal == false ? activity?.id : nil
-        let lifecycle = lifecycleGeneration, generation = updateGeneration
+        let lifecycle = lifecycleGeneration, generation = updateGeneration, pushKey = drivenPushSessionID
         let response = String(localized: "Response complete")
         func find(_ id: String) -> Activity<AgentRunActivityAttributes>? {
             Activity<AgentRunActivityAttributes>.activities.first { $0.id == id }
@@ -531,7 +531,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             held: held, checking: hermes,
             endHeld: {
                 guard activity?.id == held, lifecycleGeneration == lifecycle, updateGeneration == generation,
-                      activeConnectedStreamID == nil else { return }
+                      drivenPushSessionID == pushKey, activeConnectedStreamID == nil else { return }
                 end(status: .complete, activity: response)
             },
             end: { leftover in
