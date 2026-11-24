@@ -2791,6 +2791,11 @@ final class ChatViewModel {
         guard let hermesTurn, !name.isEmpty else { return hermesSessionList(searching: name) }
         let engine = hermesTurn.engine
         let profile = hermesTurn.settings.profile
+        let byID = HermesSessionDestination(server: engine.server, profile: profile, key: name)
+        if case .found(let session)? = try? await HermesSessionLookup.resolve(byID, on: engine.wire), session.hermes?.isBotChat != true,
+           let chat = session.hermesChat(on: engine.server, connection: engine.connection, listedIn: profile) {
+            return session.sessionId == engine.storedKey ? .executed(message: nil) : .openedHermesSession(chat)
+        }
         let results = (try? await engine.wire.searchSessions(query: name, profile: profile)) ?? []
         let titled = results.filter { $0.row.title?.compare(name, options: .caseInsensitive) == .orderedSame }
         guard titled.count == 1, let match = titled.first?.row, !match.isBotChat else { return hermesSessionList(searching: name) }

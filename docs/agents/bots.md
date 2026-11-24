@@ -2018,8 +2018,9 @@ Send resolves a draft that opens with `/name` in this order:
    whose retry still needs a follow-up submit. `/compress`, `/compact` and `/clear`
    (#1050) compress and start a new chat as above. `/sessions` and a bare `/resume`
    (#1053) go back to the Sessions list under the chat, or push one in the chat's
-   Profile; `/resume <name>` opens the one session the list's search finds titled exactly
-   `<name>` (ignoring case), and otherwise the list searching `<name>`. `/branch` and `/fork`
+   Profile; `/resume <name>` opens the session whose ID is exactly `<name>` in the chat's
+   Profile, as upstream's `/resume` does (#1772), then the one session the list's search
+   finds titled exactly `<name>` (ignoring case), and otherwise the list searching `<name>`. `/branch` and `/fork`
    (#1051) branch the whole session as above. `/rollback` (#1728) is the runtime's
    `rollback.list`, `rollback.diff` and `rollback.restore {session_id, hash, file_path?}`,
    never `slash.exec`, which a gateway's Webapp refuses for it. `/rollback` lists the
