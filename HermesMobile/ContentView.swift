@@ -74,11 +74,11 @@ struct ContentView: View {
     private func hermesRunCheck() -> AgentLiveActivityManager.HermesRunCheck? {
         guard case let .loggedIn(server) = authManager.state, authManager.kind(of: server) == .hermes,
               let connection = try? BotConnectionStore().load(server: server) else { return nil }
-        return AgentLiveActivityManager.HermesRunCheck(server: server) {
+        return AgentLiveActivityManager.HermesRunCheck(server: server) { profile in
             let wire = BotClient(saved: connection, server: server)
             defer { wire.close() }
             guard (try? await wire.connect()) != nil,
-                  let items = (try? await wire.call(.sessionActiveList))?["sessions"].list else { return nil }
+                  let items = (try? await wire.call(.sessionActiveList(profile: profile)))?["sessions"].list else { return nil }
             return LeftoverLiveActivitySettlement.runningKeys(items)
         }
     }

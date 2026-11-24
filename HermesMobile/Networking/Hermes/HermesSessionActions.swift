@@ -147,7 +147,7 @@ extension BotJSON {
             catch BotSettingFailure.rejected(_, "session_busy") { return .busyHere }
             return .deleted
         }
-        let live = (try? await wire.call(.sessionActiveList))?["sessions"].list ?? []
+        let live = (try? await wire.call(.sessionActiveList()))?["sessions"].list ?? []
         let attached = wire.attachedRuntimes
         let own = live.filter { $0["session_key"].text == key && attached.contains($0["id"].text ?? "") }
         if own.contains(where: { !SessionRowAttentionState.hermesStates([$0]).isEmpty }) { return .busyHere }

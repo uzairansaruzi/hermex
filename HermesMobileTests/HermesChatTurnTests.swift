@@ -63,6 +63,7 @@ import SwiftUI
         chat.receive(frames[frames.count - 1])
         XCTAssertNil(chat.model.activeStreamID)
         XCTAssertEqual(chat.model.latestRunOutcome?.ending, .completed)
+        XCTAssertNotNil(chat.model.latestRunOutcome?.endedAt, "a live end counts from when the chat saw it")
         XCTAssertEqual(chat.model.runEndTrigger, 1)
         XCTAssertEqual(chat.liveActivity.titles, [], "a Hermes title never reaches a webui Live Activity")
 
@@ -1240,6 +1241,7 @@ import SwiftUI
         await reclaim(chat, reclaimed(runtime: "runtime", key: "tip"))
         XCTAssertNil(chat.model.activeStreamID, "the idle snapshot ends the turn")
         XCTAssertNotNil(chat.model.latestRunOutcome)
+        XCTAssertNil(chat.model.latestRunOutcome?.endedAt, "the chat never saw when the turn ended")
         XCTAssertEqual(chat.turn.recoveryState, .idle)
         XCTAssertEqual(chat.writes("prompt.submit").count, 0, "nothing resends")
     }

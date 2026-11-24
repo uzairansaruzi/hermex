@@ -57,6 +57,12 @@ extension AgentRunActivityAttributes {
 
     var isHermesSession: Bool { bot == nil && sessionID.hasPrefix(AgentRunTapTarget.hermesSessionPrefix) }
 
+    var hermesProfile: String? {
+        guard isHermesSession else { return nil }
+        return sessionID.dropFirst(AgentRunTapTarget.hermesSessionPrefix.count)
+            .split(separator: ":", maxSplits: 1).first.map(String.init)
+    }
+
     var hermesSessionKeys: Set<String> {
         guard isHermesSession else { return [] }
         let named = sessionID.dropFirst(AgentRunTapTarget.hermesSessionPrefix.count)
@@ -473,7 +479,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
 
     struct HermesRunCheck {
         let server: URL
-        let runningKeys: @MainActor () async -> Set<String>?
+        let runningKeys: @MainActor (String) async -> Set<String>?
     }
 
     func settleActivitiesFromPreviousLaunch(checking hermes: HermesRunCheck? = nil) async {
@@ -517,7 +523,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 reclaimed: (LeftoverLiveActivity) -> Void = { _ in }) async {
         let actions = await LeftoverLiveActivitySettlement.actions(
             for: leftovers, isPaired: { isPaired($0) }, hermesServer: hermes?.server,
-            runningKeys: { await hermes?.runningKeys() }
+            runningKeys: { await hermes?.runningKeys($0) }
         )
         func unchanged(_ snapshot: LeftoverLiveActivity) -> Bool {
             guard activity?.id != snapshot.id, !drives(snapshot.attributes),
@@ -1090,26 +1096,29 @@ enum LeftoverLiveActivityAction: Equatable {
     }
 
     static func actions(for leftovers: [LeftoverLiveActivity], isPaired: (URL) -> Bool, hermesServer: URL?,
-                        runningKeys: () async -> Set<String>?) async -> [LeftoverLiveActivityAction] {
+                        runningKeys: (String) async -> Set<String>?) async -> [LeftoverLiveActivityAction] {
         let paired = leftovers.map { leftover in
             leftover.attributes.pushTarget.map { isPaired($0.server) } == true
                 && (leftover.attributes.bot != nil || leftover.attributes.requestedPush == true)
         }
-        let checked = zip(leftovers, paired).map { leftover, paired in
-            leftover.attributes.isHermesSession && !leftover.isFinished && !paired
-                && hermesServer != nil && leftover.attributes.server == hermesServer
+        let keys = leftovers.map { $0.attributes.hermesSessionKeys.union([$0.pushSessionID].compactMap { $0 }) }
+        let profiles: [String?] = leftovers.indices.map { index in
+            let attributes = leftovers[index].attributes
+            guard !leftovers[index].isFinished, !keys[index].isEmpty, hermesServer != nil,
+                  attributes.server == hermesServer else { return nil }
+            return attributes.hermesProfile
         }
-        let running = checked.contains(true) ? await runningKeys() : nil
+        var running: [String: Set<String>] = [:]
+        for profile in Set(profiles.compactMap { $0 }) { running[profile] = await runningKeys(profile) }
         return leftovers.indices.map { index in
             let leftover = leftovers[index]
             if leftover.attributes.bot != nil { return !leftover.isFinished && paired[index] ? .adopt : .end }
             if leftover.isFinished { return .retire }
             guard leftover.attributes.isHermesSession else { return .keep }
-            if paired[index] { return .adopt }
-            guard checked[index], let running else { return .keep }
-            let keys = leftover.attributes.hermesSessionKeys.union([leftover.pushSessionID].compactMap { $0 })
-            guard !keys.isEmpty else { return .keep }
-            return keys.isDisjoint(with: running) ? .endComplete : .keep
+            if let profile = profiles[index], let live = running[profile], keys[index].isDisjoint(with: live) {
+                return .endComplete
+            }
+            return paired[index] ? .adopt : .keep
         }
     }
 }

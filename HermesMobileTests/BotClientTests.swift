@@ -342,7 +342,7 @@ import XCTest
         defer { client.close() }
 
         let calls: [HermesCall] = [
-            .subagentList(sessionID: "runtime"), .subagentTail(sessionID: "runtime", subagentID: "worker"), .sessionActiveList,
+            .subagentList(sessionID: "runtime"), .subagentTail(sessionID: "runtime", subagentID: "worker"), .sessionActiveList(),
             .subagentRoster(profile: "default")
         ]
         for call in calls {
@@ -379,7 +379,7 @@ import XCTest
         try await client.connect()
         defer { client.close() }
 
-        for call in [HermesCall.subagentList(sessionID: "runtime"), .sessionActiveList, .subagentRoster(profile: "default")] {
+        for call in [HermesCall.subagentList(sessionID: "runtime"), .sessionActiveList(), .subagentRoster(profile: "default")] {
             do {
                 _ = try await client.call(call)
                 XCTFail("Timed-out \(call.method) succeeded")
@@ -534,7 +534,7 @@ import XCTest
         try await client.connect()
         defer { client.close() }
 
-        _ = try await client.call(.sessionActiveList)
+        _ = try await client.call(.sessionActiveList())
         XCTAssertEqual(socket.sentTextFrames, 1)
         XCTAssertEqual(socket.sentRequests.last?["method"], .string("session.active_list"))
         XCTAssertEqual(socket.sentRequests.last?["params"], .object([:]))

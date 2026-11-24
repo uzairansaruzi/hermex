@@ -25,3 +25,9 @@ Lives in: `HermesMobile/Features/Bots/BotLiveActivity.swift`
 The Live Activity card is always dark. `BotLiveActivity.writeAvatar` sets `.environment(\.colorScheme, .dark)` on the `ImageRenderer` content so the adaptive body color resolves for that dark card whatever the app's appearance.
 
 Lives in: `HermesMobile/Features/Bots/BotLiveActivity.swift`
+
+## Stop the Lock Screen timer once the activity is stale
+
+The Lock Screen timer pill shows "Latest" instead of the elapsed timer once the activity is stale, as the Dynamic Island already does. A system timer keeps ticking with no update, so a run whose end never arrived counted up to the 99:59 cap and stopped there, which read like a 100-minute run (#1723). Only the timer keeps the pill's fixed 62 pt. "Done" and "Latest" let the pill grow to fit them, because translations such as "Más reciente" don't fit in 62 pt.
+
+Lives in: `HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift`

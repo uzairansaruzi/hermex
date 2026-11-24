@@ -135,6 +135,24 @@ final class TranscriptTurnFoldingTests: XCTestCase {
         XCTAssertEqual(folds.folds.first?.label, .worked(elapsed: "1m 32s"))
     }
 
+    func testARunEndTheChatNeverSawCountsFromTheTranscript() {
+        let messages = [
+            user("u1", timestamp: 100),
+            assistantWithTools("a1", timestamp: 105),
+            assistant("a2", text: "Done.", timestamp: 154)
+        ]
+        let outcome = TranscriptTurnRunOutcome(
+            turnKey: firstTurnKey,
+            startedAt: Date(timeIntervalSince1970: 100),
+            endedAt: nil,
+            ending: .completed
+        )
+
+        let folds = derive(messages, activityAnchorIDs: ["a1"], outcome: outcome)
+
+        XCTAssertEqual(folds.folds.first?.label, .worked(elapsed: "54s"))
+    }
+
     func testServerTurnDurationWinsOverTheClientMeasuredRun() {
         let messages = [
             user("u1", timestamp: 100),

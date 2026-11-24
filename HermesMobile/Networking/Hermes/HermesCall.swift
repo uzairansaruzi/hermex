@@ -44,7 +44,7 @@ enum HermesCall: Equatable, Sendable {
     case sessionResume(profile: String, sessionID: String, omitMessages: Bool)
     case sessionEventsSince(profile: String, sessionID: String, lastSeen: Int, replayEpoch: String?)
     case sessionDetach(profile: String, sessionID: String, subscriptionID: String)
-    case sessionActiveList
+    case sessionActiveList(profile: String? = nil)
     case approvalPending(sessionID: String)
     case sessionMostRecent(profile: String)
 
@@ -500,7 +500,8 @@ enum HermesCall: Equatable, Sendable {
             return ["session_id": .string(sessionID), "last_seen": .number(Double(lastSeen))]
         case .sessionDetach(let profile, let sessionID, let subscriptionID):
             return ["profile": .string(profile), "session_id": .string(sessionID), "subscription_id": .string(subscriptionID)]
-        case .sessionActiveList, .groupsCapabilities: return [:]
+        case .sessionActiveList(let profile): return profile.map { ["profile": .string($0)] } ?? [:]
+        case .groupsCapabilities: return [:]
         case .promptSubmit(let sessionID, let text, _, let images, let titlePreview):
             var params: [String: BotJSON] = ["session_id": .string(sessionID), "text": .string(text), "queued": .bool(true)]
             if let titlePreview,

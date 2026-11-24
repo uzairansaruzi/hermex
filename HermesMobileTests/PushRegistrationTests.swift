@@ -1043,7 +1043,7 @@ final class PushRegistrationTests: XCTestCase {
         let (relaunched, wire, _, pushKeys) = try relaunchAfterAMove()
         var ended: [LeftoverLiveActivityAction] = []
         await relaunched.settle([relaunched.leftover(id: "persisted", attributes: attributes, isFinished: false)],
-                                checking: AgentLiveActivityManager.HermesRunCheck(server: serverA) { [] }, isFinished: { _ in false },
+                                checking: AgentLiveActivityManager.HermesRunCheck(server: serverA) { _ in [] }, isFinished: { _ in false },
                                 adopt: { _ in false }, end: { ended.append($1) })
         XCTAssertEqual(ended, [.endComplete])
         XCTAssertEqual(wire.calls.map(\.action), ["delete"])
@@ -1070,7 +1070,7 @@ final class PushRegistrationTests: XCTestCase {
         let leftover = manager.leftover(id: "persisted", attributes: attributes, isFinished: false)
         let reading = expectation(description: "host read")
         var release: CheckedContinuation<Set<String>?, Never>?
-        let check = AgentLiveActivityManager.HermesRunCheck(server: serverA) {
+        let check = AgentLiveActivityManager.HermesRunCheck(server: serverA) { _ in
             await withCheckedContinuation { continuation in
                 release = continuation
                 reading.fulfill()
@@ -1109,7 +1109,7 @@ final class PushRegistrationTests: XCTestCase {
         }
         var ended: [LeftoverLiveActivityAction] = []
         var reclaimed: [String] = []
-        await manager.settle([leftover], checking: AgentLiveActivityManager.HermesRunCheck(server: serverA) { [] }, isFinished: { _ in false },
+        await manager.settle([leftover], checking: AgentLiveActivityManager.HermesRunCheck(server: serverA) { _ in [] }, isFinished: { _ in false },
                              adopt: { _ in false }, end: { ended.append($1) }, reclaimed: { reclaimed.append($0.id) })
         XCTAssertEqual(ended, [])
         XCTAssertEqual(reclaimed, ["persisted"])

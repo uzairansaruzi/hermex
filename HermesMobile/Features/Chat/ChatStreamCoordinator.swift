@@ -54,6 +54,7 @@ struct ChatRunEnding: Equatable {
     let startedAt: Date
     let endedAt: Date
     let ending: TranscriptTurnRunOutcome.Ending
+    var endedWhileWatching = true
 }
 
 @MainActor

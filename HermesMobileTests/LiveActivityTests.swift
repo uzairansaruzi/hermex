@@ -1259,11 +1259,11 @@ final class LiveActivityTests: XCTestCase {
         var reads = 0
         let actions = await LeftoverLiveActivitySettlement.actions(
             for: leftovers, isPaired: { $0 == paired }, hermesServer: server,
-            runningKeys: { reads += 1; return ["k-working", "k-waiting", "k-older"] }
+            runningKeys: { _ in reads += 1; return ["k-working", "k-waiting", "k-older"] }
         )
         XCTAssertEqual(actions, [.adopt, .keep, .keep, .endComplete, .endComplete, .keep, .keep, .retire,
                                  .adopt, .end, .keep, .retire])
-        XCTAssertEqual(reads, 1, "one live-list read for every unpaired Hermes run")
+        XCTAssertEqual(reads, 1, "one live-list read for every Hermes run on this server")
     }
 
     func testColdLaunchLeavesHermesRunsTheLiveListCannotSettle() async {
@@ -1272,15 +1272,15 @@ final class LiveActivityTests: XCTestCase {
             requestedPush: true), isFinished: false)
         var reads = 0
         let failed = await LeftoverLiveActivitySettlement.actions(
-            for: [unpaired], isPaired: { _ in false }, hermesServer: server, runningKeys: { reads += 1; return nil })
+            for: [unpaired], isPaired: { _ in false }, hermesServer: server, runningKeys: { _ in reads += 1; return nil })
         XCTAssertEqual(failed, [.keep])
         XCTAssertEqual(reads, 1)
 
-        let cases: [(paired: URL?, hermes: URL?)] = [(server, server), (nil, nil), (nil, URL(string: "https://other.example")!)]
+        let cases: [(paired: URL?, hermes: URL?)] = [(server, nil), (nil, nil), (nil, URL(string: "https://other.example")!)]
         for (pairedServer, hermesServer) in cases {
             let actions = await LeftoverLiveActivitySettlement.actions(
                 for: [unpaired], isPaired: { $0 == pairedServer }, hermesServer: hermesServer,
-                runningKeys: { reads += 1; return [] })
+                runningKeys: { _ in reads += 1; return [] })
             XCTAssertEqual(actions, [pairedServer == nil ? .keep : .adopt])
         }
         XCTAssertEqual(reads, 1, "nothing to check, so nothing read")
@@ -1288,25 +1288,29 @@ final class LiveActivityTests: XCTestCase {
         let keyless = LeftoverLiveActivity(id: "keyless", attributes: AgentRunActivityAttributes(
             sessionID: "hermes:default", sessionTitle: "Run", startedAt: .now, server: server), isFinished: false)
         let unknown = await LeftoverLiveActivitySettlement.actions(
-            for: [keyless], isPaired: { _ in false }, hermesServer: server, runningKeys: { ["tip"] })
+            for: [keyless], isPaired: { _ in false }, hermesServer: server, runningKeys: { _ in ["tip"] })
         XCTAssertEqual(unknown, [.keep])
     }
 
-    func testColdLaunchChecksAHermesRunStartedBeforePairingAgainstTheLiveList() async {
-        func hermes(_ key: String, requestedPush: Bool?) -> LeftoverLiveActivity {
+    func testColdLaunchChecksPairedAndUnpairedHermesRunsAgainstTheLiveList() async {
+        func hermes(_ key: String, requestedPush: Bool?, profile: String = "default") -> LeftoverLiveActivity {
             LeftoverLiveActivity(id: key, attributes: AgentRunActivityAttributes(
-                sessionID: "hermes:default:\(key)", sessionTitle: "Run", startedAt: .now, server: server,
+                sessionID: "hermes:\(profile):\(key)", sessionTitle: "Run", startedAt: .now, server: server,
                 pushSessionID: key, requestedPush: requestedPush), isFinished: false)
         }
-        var reads = 0
+        var reads: [String] = []
         let actions = await LeftoverLiveActivitySettlement.actions(
-            for: [hermes("pushed", requestedPush: true), hermes("local-running", requestedPush: nil),
-                  hermes("local-done", requestedPush: nil)],
+            for: [hermes("pushed", requestedPush: true), hermes("pushed-done", requestedPush: true),
+                  hermes("local-running", requestedPush: nil), hermes("local-done", requestedPush: nil),
+                  hermes("work-running", requestedPush: true, profile: "work")],
             isPaired: { _ in true }, hermesServer: server,
-            runningKeys: { reads += 1; return ["pushed", "local-running"] }
+            runningKeys: { profile in
+                reads.append(profile)
+                return profile == "work" ? ["work-running"] : ["pushed", "local-running"]
+            }
         )
-        XCTAssertEqual(actions, [.adopt, .keep, .endComplete])
-        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(actions, [.adopt, .endComplete, .keep, .endComplete, .adopt])
+        XCTAssertEqual(reads.sorted(), ["default", "work"], "one live-list read per Profile")
     }
 
     func testAMovedKeySurvivesARelaunch() async throws {
@@ -1327,7 +1331,7 @@ final class LiveActivityTests: XCTestCase {
 
         let leftover = relaunched.leftover(id: "moved", attributes: attributes(on: server), isFinished: false)
         var ended: [LeftoverLiveActivityAction] = []
-        await relaunched.settle([leftover], checking: AgentLiveActivityManager.HermesRunCheck(server: server) { ["tip-2"] },
+        await relaunched.settle([leftover], checking: AgentLiveActivityManager.HermesRunCheck(server: server) { _ in ["tip-2"] },
                                 isFinished: { _ in false }, adopt: { _ in false }, end: { ended.append($1) })
         XCTAssertEqual(ended, [], "the host still runs the moved key")
 

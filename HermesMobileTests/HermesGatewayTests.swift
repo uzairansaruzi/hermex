@@ -139,7 +139,7 @@ import XCTest
         await fulfillment(of: [sent], timeout: 2)
 
         older.close()
-        _ = try await inbox.call(.sessionActiveList)
+        _ = try await inbox.call(.sessionActiveList())
         XCTAssertFalse(socket.sentRequests.contains { $0["method"].text == "session.detach" })
         newer.close()
         await fulfillment(of: [detached], timeout: 2)
@@ -375,7 +375,7 @@ import XCTest
         let first = try XCTUnwrap(sockets.first)
         first.sendFailure = URLError(.networkConnectionLost)
         let chatSend = Task { try await chat.call(.profilesList(includeSessions: false)) }
-        let inboxSend = Task { try await inbox.call(.sessionActiveList) }
+        let inboxSend = Task { try await inbox.call(.sessionActiveList()) }
         for send in [chatSend, inboxSend] {
             do { _ = try await send.value; XCTFail("A failed send cannot succeed") }
             catch { XCTAssertEqual(error as? BotFailure, .transport) }
