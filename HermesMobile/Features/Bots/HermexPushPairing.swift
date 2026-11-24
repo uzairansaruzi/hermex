@@ -202,9 +202,9 @@ struct HermexPushUpdateOffer: Equatable {
     }
 
     func checkIfDue(server: URL, connection: BotConnection, now: ContinuousClock.Instant = .now) async {
-        if let last = checkedAt[server], now - last < Self.recheckInterval { return }
         let provisioner = HermexPushProvisioner(server: server, connection: connection, offers: self)
         guard provisioner.pairing != nil else { return clear(server) }
+        if let last = checkedAt[server], now - last < Self.recheckInterval { return }
         checkedAt[server] = now
         await provisioner.checkPlugin()
     }
