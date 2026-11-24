@@ -853,6 +853,40 @@ import XCTest
         XCTAssertNil(offers.offer(for: serverA))
     }
 
+    func testASessionsReadThatLandsAfterSettingsCheckedCannotRestoreItsOffer() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        var loaded = "0.1.0"
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/pairing": return (200, PushHTTPFixture.pairingBody(version: loaded))
+            case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: "0.1.0"))
+            default: return nil
+            }
+        }
+        let offers = HermexPushUpdateOffers(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)))
+        let sessions = makeProvisioner(server: serverA, registrar: registrar, offers: offers)
+        let settings = makeProvisioner(server: serverA, registrar: registrar, offers: offers)
+        let held = expectation(description: "Sessions read held")
+        var pending: PushHTTPFixture?
+        PushHTTPFixture.holdResponse = { fixture in
+            guard fixture.request.url?.path == "/api/plugins/hermex-push/pairing" else { return false }
+            pending = fixture
+            held.fulfill()
+            return true
+        }
+        let passive = Task { await sessions.checkPlugin() }
+        await fulfillment(of: [held], timeout: 5)
+        PushHTTPFixture.holdResponse = nil
+        loaded = HermexPushPlugin.minimumVersion.description
+
+        await settings.checkPluginAgain()
+        XCTAssertNil(offers.offer(for: serverA))
+        try XCTUnwrap(pending).respond(status: 200, value: PushHTTPFixture.pairingBody(version: "0.1.0"))
+        await passive.value
+
+        XCTAssertNil(offers.offer(for: serverA), "The older read never brings the card back")
+    }
+
     func testAnUpdateBeforePairingOffersNothingOutsideSettings() async throws {
         let registrar = FakePushRegistrar()
         let minimum = HermexPushPlugin.minimumVersion.description

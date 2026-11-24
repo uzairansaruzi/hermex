@@ -147,6 +147,7 @@ struct HermexPushUpdateOffer: Equatable {
     private var offers: [URL: HermexPushUpdateOffer] = [:]
     private var dismissals: [URL: String] = [:]
     @ObservationIgnored private var checkedAt: [URL: ContinuousClock.Instant] = [:]
+    @ObservationIgnored private var revisions: [URL: Int] = [:]
     @ObservationIgnored private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) { self.defaults = defaults }
@@ -169,7 +170,14 @@ struct HermexPushUpdateOffer: Equatable {
         dismissals[server] = offer.dismissal
     }
 
-    func record(_ standing: HermexPushProvisioner.PluginUpdate, for server: URL) {
+    func revision(for server: URL) -> Int { revisions[server, default: 0] }
+
+    func record(_ standing: HermexPushProvisioner.PluginUpdate, for server: URL, readSince revision: Int? = nil) {
+        if let revision {
+            guard revision == self.revision(for: server) else { return }
+        } else {
+            revisions[server, default: 0] += 1
+        }
         switch standing {
         case .available(let loaded):
             offers[server] = HermexPushUpdateOffer(kind: .required(loaded: loaded),
@@ -187,6 +195,7 @@ struct HermexPushUpdateOffer: Equatable {
     }
 
     func clear(_ server: URL) {
+        revisions[server, default: 0] += 1
         offers[server] = nil
         dismissals[server] = nil
         checkedAt[server] = nil
@@ -195,7 +204,7 @@ struct HermexPushUpdateOffer: Equatable {
     func checkIfDue(server: URL, connection: BotConnection, now: ContinuousClock.Instant = .now) async {
         if let last = checkedAt[server], now - last < Self.recheckInterval { return }
         let provisioner = HermexPushProvisioner(server: server, connection: connection, offers: self)
-        guard provisioner.pairing != nil else { return }
+        guard provisioner.pairing != nil else { return clear(server) }
         checkedAt[server] = now
         await provisioner.checkPlugin()
     }

@@ -324,9 +324,10 @@ import UserNotifications
     func checkPlugin() async {
         guard pairing != nil, let connection, !isUpdatingPlugin else { return }
         let generation = pluginCheckGeneration
+        let revision = offers.revision(for: server)
         guard let standing = try? await pluginStanding(dashboard(connection)), !Task.isCancelled,
               pairing != nil, !isUpdatingPlugin, generation == pluginCheckGeneration else { return }
-        publish(standing)
+        publish(standing, readSince: revision)
         if case .upToDate = standing { pluginUpdate = nil } else { pluginUpdate = standing }
     }
 
@@ -455,8 +456,12 @@ import UserNotifications
         return standing
     }
 
-    private func publish(_ standing: PluginUpdate) {
-        if registrar?.pairing(for: server) != nil { offers.record(standing, for: server) } else { offers.clear(server) }
+    private func publish(_ standing: PluginUpdate, readSince revision: Int? = nil) {
+        if registrar?.pairing(for: server) != nil {
+            offers.record(standing, for: server, readSince: revision)
+        } else {
+            offers.clear(server)
+        }
     }
 
     private func pluginStanding(_ client: BotDashboardClient) async throws -> PluginUpdate {
