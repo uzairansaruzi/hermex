@@ -34,6 +34,6 @@ Lives in: `HermesMobile/Features/Chat/ComposerChipTextView.swift`
 
 ## Refuse composer key commands during an IME composition
 
-`ComposerChipTextView.acceptsKeyboardCommands` is false when the editor is locked or `markedTextRange` is set, so an unfinished composition keeps Return and Esc for itself and ⌘↩ never submits half-composed text. It is checked again when a key fires, since UIKit can dispatch a command it listed earlier. With Send with Return on, the plain Return command is left out entirely during composition so Return confirms the candidate.
+`ComposerChipTextView.acceptsKeyboardCommands` is false when the editor is locked or `markedTextRange` is set, so an unfinished composition keeps Return and Esc for itself and ⌘↩ never submits half-composed text. It is checked again when a key fires, since UIKit can dispatch a command it listed earlier. With Send with Return on, the plain Return command is left out entirely during composition so Return confirms the candidate. The on-screen keyboard's Return arrives as `insertText("\n")`, so the editor's `insertText` override sends instead when no composition is open, and `newlineFromKeyboard` calls `super.insertText` so Shift-Return and Option-Return still type a newline.
 
 Lives in: `HermesMobile/Features/Chat/ComposerChipTextView.swift`
