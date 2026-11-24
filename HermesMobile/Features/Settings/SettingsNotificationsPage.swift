@@ -3,6 +3,7 @@ import UserNotifications
 
 struct SettingsNotificationsPage: View {
     let server: URL
+    var offersPluginUpdate = false
 
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
@@ -11,7 +12,7 @@ struct SettingsNotificationsPage: View {
     @State private var notificationStatusMessage: String?
 
     var body: some View {
-        HermexPushSettingsPage(server: server) {
+        HermexPushSettingsPage(server: server, offersPluginUpdate: offersPluginUpdate) {
             Section {
                 Toggle(isOn: responseCompletionNotificationBinding) {
                     SettingsLabel(

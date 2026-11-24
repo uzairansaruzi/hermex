@@ -135,7 +135,9 @@ struct HermesSessionListView: View {
                 )
                 .sessionsTopChromeListRow()
                 .id(HomeHeaderScroll.headerID)
-                SessionListCardSlot(hasSharedImport: pendingShare != nil)
+                SessionListCardSlot(hasSharedImport: pendingShare != nil, pluginUpdateServer: entry.server) {
+                    covers.showingPushSettings = true
+                }
                 MoveToHermesBanner(serverID: entry.server.absoluteString)
             }
             if viewModel.showsOfflineCache {
@@ -222,6 +224,21 @@ struct HermesSessionListView: View {
             }
             .themedPageBackground()
             .presentationDetents([.medium])
+        }
+        .onChange(of: viewModel.isHermesLive, initial: true) {
+            guard home != nil, viewModel.isHermesLive else { return }
+            let (server, connection) = (entry.server, entry.connection)
+            Task { await HermexPushUpdateOffers.shared.checkIfDue(server: server, connection: connection) }
+        }
+        .sheet(isPresented: $navigation.covers.showingPushSettings) {
+            NavigationStack {
+                SettingsNotificationsPage(server: entry.server, offersPluginUpdate: true)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { covers.showingPushSettings = false }
+                        }
+                    }
+            }
         }
         .sheet(item: $navigation.covers.exported) { item in
             FileShareSheet(fileURL: item.fileURL)
@@ -350,7 +367,7 @@ struct HermesSessionListView: View {
                 moment: ratingMoment,
                 server: entry.server,
                 isSessionListVisible: {
-                    if let card = SessionListCard.current(hasSharedImport: pendingShare != nil), isQuietSessionListVisible {
+                    if let card = SessionListCard.current(pluginUpdateServer: entry.server, hasSharedImport: pendingShare != nil), isQuietSessionListVisible {
                         RatingPromptState.shared.recordCardShown(card)
                     }
                     return isQuietSessionListVisible
@@ -376,7 +393,7 @@ struct HermesSessionListView: View {
             && !isSearchExpanded && !isSearching && !viewModel.isCreatingSession
             && covers.renaming == nil && covers.deleting == nil && covers.exported == nil
             && covers.creatingProject == nil && covers.renamingProject == nil && covers.deletingProject == nil
-            && covers.moving == nil
+            && covers.moving == nil && !covers.showingPushSettings
     }
 
     private var usesSplit: Bool {
@@ -1266,6 +1283,7 @@ struct HermesSessionListCovers {
     var memory: HermesMemoryEntry?
     var insights: HermesInsightsEntry?
     var showingKanban = false
+    var showingPushSettings = false
 
     var isCoveredByScreen: Bool {
         showingScheduled || showingArchived || showingKanban || tasks != nil || skills != nil || memory != nil || insights != nil

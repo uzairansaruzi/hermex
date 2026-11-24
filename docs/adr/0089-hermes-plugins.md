@@ -76,7 +76,7 @@ Lives in: `HermesMobile/Networking/Hermes/HermesPluginCatalog.swift`
 
 ## Hide Update for app-pinned companion plugins
 
-`HermesPlugin` never offers Update for hermex-push or hermex-screen, even when the host reports `update_available`, because this app build pins those plugins and their own pages or the app update them.
+`HermesPlugin` never offers Update for hermex-push or hermex-screen, even when the host reports `update_available`, because this app build pins those plugins and their own pages or the app update them. hermex-push's own update reads that signal instead (ADR 0122, #1803).
 
 Lives in: `HermesMobile/Networking/Hermes/HermesPluginsClient.swift`
 

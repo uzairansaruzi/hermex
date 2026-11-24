@@ -127,9 +127,9 @@ Before external distribution, all of these must hold:
 - The release's milestone has no open issues; the owner moved anything
   unfinished to the next milestone (`docs/agents/issue-tracker.md`).
 - No open issue is labeled `release-blocker`; accepted risks are recorded.
-- `HermexPushPlugin.newestVersion` equals `version` in `plugin/plugin.yaml` on
-  hermex-push `main`. If the plugin changed since the last release, bump the
-  constant, or Settings will never offer paired hosts the update.
+- `HermexPushPlugin.minimumVersion` is the oldest hermex-push this build works
+  properly with. Raise it when the build depends on a newer plugin; a host's own
+  update check offers plugin releases in between (#1803).
 - The build is processed, with compliance information resolved and symbols uploaded.
 - TestFlight information, privacy policy URL, and reviewer access are complete.
 - Beta App Review has approved the build for external testing.

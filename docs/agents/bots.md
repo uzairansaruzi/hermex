@@ -2486,8 +2486,9 @@ about the host → relay leg. One tap is one request with no retry. Any 200 is d
 each get their own message. The button is off while Reply Notifications are off (the relay
 would skip the banner yet answer accepted) or iOS notifications are off for Hermex.
 
-Settings also offers a plugin update (#851). `HermexPushPlugin.newestVersion` is the newest
-plugin this build knows. Each time the Notifications section appears on a paired server,
+Settings also offers a plugin update (#851). `HermexPushPlugin.minimumVersion` is the oldest
+plugin this build works properly with; at or above it, the host's own update check can still
+offer a newer one, and the Sessions list shows the offer as a card (#1803, ADR 0122). Each time the Notifications section appears on a paired server,
 `checkPlugin()` makes one read of the pairing route: its `plugin_version` is the code the
 dashboard process has loaded, and a missing or unparseable one counts as older than every
 known version. A version read that 404s "No such API endpoint" means the dashboard has

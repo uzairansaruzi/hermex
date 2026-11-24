@@ -69,6 +69,13 @@ import Foundation
         HermexPushPlugin.installedVersion(hub: try await send(.pluginsHub))
     }
 
+    func hostListing() async throws -> HermexPushHostListing? {
+        let client = BotClient(http: http)
+        defer { client.close() }
+        try await client.connect()
+        return HermexPushPlugin.hostListing(try await client.call(.pluginsList(profile: nil)))
+    }
+
     private func readPluginRoute(_ rest: HermesREST) async throws -> BotJSON {
         let (data, status) = try await http.reply(rest, deadline: .provisioning)
         let body = (try? JSONDecoder().decode(BotJSON.self, from: data)) ?? .null

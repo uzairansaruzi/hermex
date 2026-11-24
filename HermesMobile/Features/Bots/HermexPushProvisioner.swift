@@ -44,6 +44,7 @@ import UserNotifications
 
     enum PluginUpdate: Equatable {
         case available(loaded: HermexPushPluginVersion?)
+        case newer(loaded: HermexPushPluginVersion, target: String)
         case restartNeeded(loaded: HermexPushPluginVersion?)
         case setupNeedsRestart
         case restartTimedOut
@@ -78,7 +79,9 @@ import UserNotifications
     private let testSender: @MainActor (PushPairing) async -> PushRelayTestOutcome
     private let retryDelays: [Duration]
     private let restartDelays: [Duration]
-    private let newestPlugin: HermexPushPluginVersion
+    private let minimumPlugin: HermexPushPluginVersion
+    private let hostListing: @MainActor (BotDashboardClient) async -> HermexPushHostListing?
+    private let offers: HermexPushUpdateOffers
     private let sleep: @Sendable (Duration) async throws -> Void
 
     init(server: URL, connection: BotConnection?,
@@ -90,7 +93,9 @@ import UserNotifications
          retryDelays: [Duration] = [.seconds(2), .seconds(3), .seconds(5), .seconds(5), .seconds(5), .seconds(10)],
          restartDelays: [Duration] = [.seconds(2), .seconds(2), .seconds(3), .seconds(3), .seconds(5), .seconds(5),
                                       .seconds(10), .seconds(10), .seconds(10), .seconds(10)],
-         newestPlugin: HermexPushPluginVersion = HermexPushPlugin.newestVersion,
+         minimumPlugin: HermexPushPluginVersion = HermexPushPlugin.minimumVersion,
+         hostListing: (@MainActor (BotDashboardClient) async -> HermexPushHostListing?)? = nil,
+         offers: HermexPushUpdateOffers? = nil,
          sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.server = server
         self.connection = connection
@@ -101,7 +106,9 @@ import UserNotifications
         self.testSender = testSender ?? { await PushRelayClient().sendTestNotification(pairing: $0) }
         self.retryDelays = retryDelays
         self.restartDelays = restartDelays
-        self.newestPlugin = newestPlugin
+        self.minimumPlugin = minimumPlugin
+        self.hostListing = hostListing ?? { try? await $0.hostListing() }
+        self.offers = offers ?? .shared
         self.sleep = sleep
         pairing = self.registrar?.pairing(for: server)
     }
@@ -156,7 +163,10 @@ import UserNotifications
         guard !Task.isCancelled else { return }
         connection = try? BotConnectionStore().load(server: server)
         pairing = registrar?.pairing(for: server)
-        if connection == nil { pluginUpdate = nil }
+        if connection == nil {
+            pluginUpdate = nil
+            offers.clear(server)
+        }
         phase = .idle
         if let pairing, pairing.preferencesNeedSync == true {
             await updatePreferences(pairing.effectivePreferences)
@@ -306,6 +316,7 @@ import UserNotifications
             try await registrar?.disable(for: server)
             pairing = registrar?.pairing(for: server)
             pluginUpdate = nil
+            offers.clear(server)
             phase = .idle
         } catch { fail(step, error) }
     }
@@ -315,6 +326,7 @@ import UserNotifications
         let generation = pluginCheckGeneration
         guard let standing = try? await pluginStanding(dashboard(connection)), !Task.isCancelled,
               pairing != nil, !isUpdatingPlugin, generation == pluginCheckGeneration else { return }
+        offers.record(standing, for: server)
         if case .upToDate = standing { pluginUpdate = nil } else { pluginUpdate = standing }
     }
 
@@ -325,7 +337,7 @@ import UserNotifications
         setupRanLast = false
         phase = .checkingPlugin
         do {
-            pluginUpdate = try await pluginStanding(dashboard(connection))
+            pluginUpdate = accept(try await pluginStanding(dashboard(connection)))
         } catch {
             switch pluginUpdate {
             case .restartTimedOut? where Self.isUnreachable(error): break
@@ -369,7 +381,7 @@ import UserNotifications
             try await client.restartGateway()
             step = .check
             phase = .updatingPlugin(step)
-            pluginUpdate = try await afterRestart { try await self.pluginStanding(client) }
+            pluginUpdate = accept(try await afterRestart { try await self.pluginStanding(client) })
             phase = .idle
         } catch where step == .check {
             pluginUpdate = .checkFailed(Self.checkFailure(error))
@@ -414,11 +426,13 @@ import UserNotifications
                 return .failure(error)
             } catch { return nil }
         } isFinal: { answer in
-            if case .success(.upToDate) = answer { return true }
-            return false
+            switch answer {
+            case .success(.upToDate), .success(.newer): return true
+            default: return false
+            }
         }
         switch answer {
-        case .success(let standing)?: pluginUpdate = standing
+        case .success(let standing)?: pluginUpdate = accept(standing)
         case .failure(let error)?: pluginUpdate = .checkFailed(Self.checkFailure(error))
         case nil: pluginUpdate = .restartTimedOut
         }
@@ -436,12 +450,21 @@ import UserNotifications
         }
     }
 
+    private func accept(_ standing: PluginUpdate) -> PluginUpdate {
+        offers.record(standing, for: server)
+        return standing
+    }
+
     private func pluginStanding(_ client: BotDashboardClient) async throws -> PluginUpdate {
         let loaded: HermexPushPluginVersion?
         do { loaded = try await client.loadedPluginVersion() } catch HermexPushRouteMissing.notMounted { loaded = nil }
         servesWebapp = client.servesWebapp
-        if let loaded, loaded >= newestPlugin { return .upToDate(loaded) }
-        if let installed = try? await client.installedPluginVersion(), installed >= newestPlugin {
+        if let loaded, loaded >= minimumPlugin {
+            guard let listing = await hostListing(client) else { return .upToDate(loaded) }
+            if let installed = listing.installed, installed > loaded { return .restartNeeded(loaded: loaded) }
+            return listing.updateTarget.map { .newer(loaded: loaded, target: $0) } ?? .upToDate(loaded)
+        }
+        if let installed = try? await client.installedPluginVersion(), installed >= minimumPlugin {
             return .restartNeeded(loaded: loaded)
         }
         return .available(loaded: loaded)
@@ -489,6 +512,7 @@ import UserNotifications
         await registrar?.forget(for: server)
         pairing = nil
         pluginUpdate = nil
+        offers.clear(server)
         phase = .idle
     }
 

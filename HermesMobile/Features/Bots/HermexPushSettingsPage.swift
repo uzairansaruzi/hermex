@@ -2,17 +2,20 @@ import SwiftUI
 
 @MainActor struct HermexPushSettingsPage<SharedSections: View>: View {
     let server: URL
+    let offersPluginUpdate: Bool
     @Environment(\.scenePhase) private var scenePhase
     @State private var provisioner: HermexPushProvisioner
     @State private var isConfirmingEnable = false
     @State private var isConfirmingDisable = false
     @State private var isConfirmingUpdate = false
+    @State private var hasOfferedUpdate = false
     @State private var isConfirmingRestart = false
     @State private var preferenceTask: Task<Void, Never>?
     private let sharedSections: SharedSections
 
-    init(server: URL, @ViewBuilder sharedSections: () -> SharedSections) {
+    init(server: URL, offersPluginUpdate: Bool = false, @ViewBuilder sharedSections: () -> SharedSections) {
         self.server = server
+        self.offersPluginUpdate = offersPluginUpdate
         self.sharedSections = sharedSections()
         _provisioner = State(initialValue: HermexPushProvisioner(
             server: server, connection: try? BotConnectionStore().load(server: server)))
@@ -33,6 +36,12 @@ import SwiftUI
         .task {
             await provisioner.reload()
             await provisioner.checkPlugin()
+            guard offersPluginUpdate, !hasOfferedUpdate, !Task.isCancelled else { return }
+            hasOfferedUpdate = true
+            switch provisioner.pluginCard {
+            case .status(.available)?, .status(.newer)?: isConfirmingUpdate = true
+            default: break
+            }
         }
         .task(id: scenePhase) {
             if scenePhase == .active { await provisioner.recheckNotificationPermission() }
@@ -203,12 +212,16 @@ import SwiftUI
     }
 
     @ViewBuilder private func pluginCallout(_ card: HermexPushProvisioner.PluginCard) -> some View {
-        let newest = HermexPushPlugin.newestVersion.description
+        let minimum = HermexPushPlugin.minimumVersion.description
         switch card {
         case .status(.available(let loaded)):
             callout("arrow.up.circle.fill", tint: .blue, title: Text("Plugin update available"),
-                    message: loaded.map { Text("Your Hermes host has hermex-push \($0.description) loaded. The newest is \(newest).") }
-                        ?? Text("Your Hermes host has an older hermex-push. The newest is \(newest)."),
+                    message: loaded.map { Text("Your Hermes host has hermex-push \($0.description) loaded. This version of Hermex needs \(minimum) or newer.") }
+                        ?? Text("Your Hermes host has an older hermex-push. This version of Hermex needs \(minimum) or newer."),
+                    action: String(localized: "Update plugin…")) { isConfirmingUpdate = true }
+        case .status(.newer(let loaded, _)):
+            callout("arrow.up.circle", tint: .blue, title: Text("Plugin update available"),
+                    message: Text("Your Hermes host found a newer hermex-push than the \(loaded.description) it runs."),
                     action: String(localized: "Update plugin…")) { isConfirmingUpdate = true }
         case .updating(let step):
             callout("circle.dashed", tint: Color(.appTextSecondary), title: Text("Updating the plugin…"), message: Text(step.progress))
