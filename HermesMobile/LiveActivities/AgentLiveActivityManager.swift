@@ -516,6 +516,50 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         )
     }
 
+    func endFinishedRuns(checking hermes: HermesRunCheck?) async {
+        guard let hermes else { return }
+        let held = activeConnectedStreamID == nil && currentState?.isFinal == false ? activity?.id : nil
+        let lifecycle = lifecycleGeneration, generation = updateGeneration, pushKey = drivenPushSessionID
+        let response = String(localized: "Response complete")
+        func find(_ id: String) -> Activity<AgentRunActivityAttributes>? {
+            Activity<AgentRunActivityAttributes>.activities.first { $0.id == id }
+        }
+        await endFinished(
+            Activity<AgentRunActivityAttributes>.activities
+                .filter { !Self.isFinished($0) && ($0.id != activity?.id || $0.id == held) }
+                .map { leftover(id: $0.id, attributes: $0.attributes, isFinished: false) },
+            held: held, checking: hermes,
+            endHeld: {
+                guard activity?.id == held, lifecycleGeneration == lifecycle, updateGeneration == generation,
+                      drivenPushSessionID == pushKey, activeConnectedStreamID == nil else { return }
+                end(status: .complete, activity: response)
+            },
+            end: { leftover in
+                @MainActor func unowned() -> Activity<AgentRunActivityAttributes>? {
+                    guard let persisted = find(leftover.id), !Self.isFinished(persisted), activity?.id != leftover.id,
+                          !drives(leftover.attributes) else { return nil }
+                    return persisted
+                }
+                guard let persisted = unowned() else { return }
+                await retirePush(persisted)
+                guard unowned() != nil else { return }
+                await finishPersisted(persisted, status: .complete, activity: response)
+                forgetPushKey(owner: leftover.id, attributes: leftover.attributes)
+            }
+        )
+    }
+
+    func endFinished(_ leftovers: [LeftoverLiveActivity], held: String?, checking hermes: HermesRunCheck,
+                     endHeld: () -> Void, end: (LeftoverLiveActivity) async -> Void) async {
+        let actions = await LeftoverLiveActivitySettlement.actions(
+            for: leftovers, isPaired: { isPaired($0) }, hermesServer: hermes.server,
+            runningKeys: { await hermes.runningKeys($0) }
+        )
+        for (leftover, action) in zip(leftovers, actions) where action == .endComplete {
+            if leftover.id == held { endHeld() } else { await end(leftover) }
+        }
+    }
+
     func settle(_ leftovers: [LeftoverLiveActivity], checking hermes: HermesRunCheck?,
                 isFinished: (String) -> Bool?,
                 adopt: (LeftoverLiveActivity) -> Bool,
@@ -829,9 +873,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
 
         await retirePush(endingActivity)
         let policy = dismissalPolicy(for: status)
-        let finalState = Self.keepingRelayCounts(finalState, on: endingActivity)
+        let shownState = Self.keepingRelayCounts(finalState, on: endingActivity)
 
-        await endingActivity.update(ActivityContent(state: finalState, staleDate: nil))
+        await endingActivity.update(ActivityContent(state: shownState, staleDate: nil))
         if status == .complete {
             try? await Task.sleep(nanoseconds: 600_000_000)
         }
@@ -842,7 +886,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         }
 
         await endingActivity.end(
-            ActivityContent(state: finalState, staleDate: nil),
+            ActivityContent(state: shownState, staleDate: nil),
             dismissalPolicy: policy
         )
         resetIfStillCurrent(endingSessionID: endingSessionID, finalState: finalState)

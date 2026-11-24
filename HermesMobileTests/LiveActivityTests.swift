@@ -1313,6 +1313,27 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(reads.sorted(), ["default", "work"], "one live-list read per Profile")
     }
 
+    func testForegroundEndsOnlyFinishedHermesRunsIncludingTheHeldOne() async throws {
+        func hermes(_ key: String) -> LeftoverLiveActivity {
+            LeftoverLiveActivity(id: key, attributes: AgentRunActivityAttributes(
+                sessionID: "hermes:default:\(key)", sessionTitle: "Run", startedAt: .now, server: server,
+                pushSessionID: key, requestedPush: true), isFinished: false)
+        }
+        var bot = try XCTUnwrap(AgentRunActivityBot(BotDestination(server: server, connectionID: UUID(), profile: "triage")))
+        bot.pushSessionID = "bot-tip"
+        let botLeftover = LeftoverLiveActivity(id: "bot", attributes: AgentRunActivityAttributes(
+            sessionID: bot.key, sessionTitle: "Triage", startedAt: .now, bot: bot), isFinished: false)
+        var heldEnded = 0
+        var ended: [String] = []
+        await AgentLiveActivityManager().endFinished(
+            [hermes("held"), hermes("running"), hermes("done"), botLeftover], held: "held",
+            checking: AgentLiveActivityManager.HermesRunCheck(server: server) { _ in ["running"] },
+            endHeld: { heldEnded += 1 }, end: { ended.append($0.id) }
+        )
+        XCTAssertEqual(heldEnded, 1, "the activity this process holds ends through the manager")
+        XCTAssertEqual(ended, ["done"], "a running run and a bot are never ended on foreground")
+    }
+
     func testAMovedKeySurvivesARelaunch() async throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "LiveActivityTests-\(UUID())"))
         let before = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: defaults))
