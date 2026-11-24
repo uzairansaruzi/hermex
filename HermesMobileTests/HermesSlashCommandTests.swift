@@ -200,6 +200,19 @@ import Observation
         XCTAssertEqual(chat.writes("slash.exec"), [], "the host's own /resume never runs")
     }
 
+    func testResumeOpensTheSessionWithThatIDBeforeAnyTitle() async {
+        let renamed: BotJSON = .object(["id": .string("k-19"), "title": .string("Successor"), "profile": .string("default")])
+        let chat = await openChat(search: [Self.searchResult("k-81", title: "K-19")], sessionRows: ["k-19": renamed])
+
+        let result = await chat.model.runHermesSlashCommand("/resume k-19")
+
+        guard case .openedHermesSession(let opened)? = result else {
+            return XCTFail("Expected session k-19, got \(String(describing: result))")
+        }
+        XCTAssertEqual(opened.target, .session(profile: "default", key: "k-19"))
+        XCTAssertEqual(HermesHostFixture.count("/api/sessions/search"), 0)
+    }
+
     func testResumeWithoutOneExactTitleOpensTheListSearchingIt() async {
         let chat = await openChat(search: [Self.searchResult("a", title: "Launch plan"), Self.searchResult("b", title: "launch PLAN"),
                                            Self.searchResult("c", title: "Bot Chat")])
@@ -470,7 +483,7 @@ import Observation
 
     private func openChat(messages: [BotJSON] = [], search: [BotJSON] = [], catalog: Bool = true,
                           target: ConversationTarget = .session(profile: "default", key: "tip"),
-                          profiles: BotJSON? = nil) async -> Chat {
+                          profiles: BotJSON? = nil, sessionRows: [String: BotJSON] = [:]) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: .object([
@@ -487,6 +500,8 @@ import Observation
             switch request.url?.path {
             case "/api/sessions/tip/messages": return .json(200, .object(["messages": .array(messages)]))
             case "/api/sessions/search": return .json(200, .object(["results": .array(search)]))
+            case let path? where path.hasPrefix("/api/sessions/"):
+                return sessionRows[String(path.dropFirst("/api/sessions/".count))].map { .json(200, $0) }
             default: return nil
             }
         }

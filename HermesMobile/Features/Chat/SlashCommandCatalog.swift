@@ -220,7 +220,7 @@ enum SlashCommandCatalog {
         ),
         SlashCommand(
             name: "resume",
-            description: String(localized: "Open a session by its title"),
+            description: String(localized: "Open a session by its ID or title"),
             argHint: String(localized: "name"),
             noEcho: true,
             handler: .clientSide(.resume)
