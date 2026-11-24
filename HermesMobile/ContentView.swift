@@ -54,7 +54,10 @@ struct ContentView: View {
                 guard scenePhase == .active else { return }
                 Task { await UsageReports.shared.appBecameActive() }
                 importPendingSharedDraftIfAvailable()
-                Task { await reconcileOrphanedLiveActivities(notifiesOnCompletion: false) }
+                Task {
+                    await reconcileOrphanedLiveActivities(notifiesOnCompletion: false)
+                    await AgentLiveActivityManager.shared.endFinishedRuns(checking: hermesRunCheck())
+                }
             }
             .onChange(of: NetworkPathMonitor.shared.changeCount) {
                 guard scenePhase != .background, NetworkPathMonitor.shared.isSatisfied else { return }
