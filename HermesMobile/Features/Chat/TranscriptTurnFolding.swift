@@ -9,11 +9,11 @@ struct TranscriptTurnRunOutcome: Equatable {
 
     let turnKey: String
     let startedAt: Date
-    let endedAt: Date
+    let endedAt: Date?
     let ending: Ending
 
-    var elapsed: TimeInterval {
-        max(0, endedAt.timeIntervalSince(startedAt))
+    var elapsed: TimeInterval? {
+        endedAt.map { max(0, $0.timeIntervalSince(startedAt)) }
     }
 }
 
@@ -187,8 +187,8 @@ struct TranscriptTurnFolds: Equatable {
             return duration
         }
 
-        if let outcome {
-            return outcome.elapsed
+        if let elapsed = outcome?.elapsed {
+            return elapsed
         }
 
         guard let startTimestamp,

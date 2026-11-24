@@ -487,6 +487,9 @@ private struct AgentRunTimerPill: View {
 
             if state.isFinal {
                 Text("Done")
+            } else if state.isStale {
+                Text("Latest")
+                    .fixedSize()
             } else {
                 AgentRunElapsedTimerText(startedAt: state.startedAt, alignment: .center)
             }
@@ -496,7 +499,7 @@ private struct AgentRunTimerPill: View {
         .lineLimit(1)
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .frame(width: 62, alignment: .center)
+        .frame(minWidth: 62, maxWidth: state.isFinal || state.isStale ? nil : 62)
         .background(palette.fill, in: Capsule(style: .continuous))
         .overlay(Capsule(style: .continuous).stroke(palette.stroke, lineWidth: 1))
     }

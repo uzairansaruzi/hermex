@@ -118,3 +118,9 @@ the agent twice. `ChatViewModel.isChangingHermesHistory` is set while one is und
 a second one waits for it.
 
 Lives in: `HermesMobile/Features/Chat/ChatViewModel.swift`
+
+## Time a turn by the transcript when the chat never saw it end
+
+`HermesChatTurnCoordinator` records `endSeenAt` when a live `message.complete` arrives, and a finish that only learned of the end from a replayed frame or a reattach snapshot carries no end time (`ChatRunEnding.endedWhileWatching` is false). The "Worked for" label then counts from the transcript's timestamps instead of the moment the phone found out. Stamping that moment turned a 54-second turn read the next morning into "Worked for 8h 11m" (#1723).
+
+Lives in: `HermesMobile/Features/Chat/HermesChatTurnCoordinator.swift`, `HermesMobile/Features/Chat/ChatViewModel.swift`, `HermesMobile/Features/Chat/TranscriptTurnFolding.swift`

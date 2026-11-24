@@ -2124,7 +2124,7 @@ final class SessionListViewModel {
 
     func hermesHostIsIdle() async -> Bool? {
         guard isHermesLive, let wire = hermesWire,
-              let reply = try? await wire.call(.sessionActiveList),
+              let reply = try? await wire.call(.sessionActiveList()),
               let sessions = reply["sessions"].list else { return nil }
         return sessions.allSatisfy { $0["status"].text == "idle" }
     }
@@ -2145,7 +2145,7 @@ final class SessionListViewModel {
         let serial = hermesStatusSerial
         func current() -> Bool { !Task.isCancelled && hermesWire === wire && serial == hermesStatusSerial }
         do {
-            let reply = try await wire.call(.sessionActiveList)
+            let reply = try await wire.call(.sessionActiveList())
             guard current() else { return }
             let listed = Set(sessions.compactMap(\.sessionId))
             let items = reply["sessions"].list ?? []

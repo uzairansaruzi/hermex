@@ -7421,7 +7421,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
             latestRunOutcome = TranscriptTurnRunOutcome(
                 turnKey: TranscriptTurnClassifier.latestTurnKey(in: messages, messageOffset: messagesOffset),
                 startedAt: ending.startedAt,
-                endedAt: ending.endedAt,
+                endedAt: ending.endedWhileWatching ? ending.endedAt : nil,
                 ending: ending.ending
             )
         }

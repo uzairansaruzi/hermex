@@ -123,6 +123,7 @@ struct HermesLostTurn: Equatable {
     @ObservationIgnored private var compactionPending = false
     private(set) var isCompacting = false
     @ObservationIgnored private var pendingEnding: TranscriptTurnRunOutcome.Ending?
+    @ObservationIgnored private var endSeenAt: Date?
     @ObservationIgnored private var completedFailed = false
     @ObservationIgnored private var awaitingStart = false
     @ObservationIgnored private var stopRequested = false
@@ -864,7 +865,7 @@ struct HermesLostTurn: Equatable {
         turnBase = base.map { GitTurnBase(sha: $0.sha, workspace: $0.workspace, turn: turnsStarted) }
         pendingBase = nil
         latestRunEnding = nil; successfulResponseCompletion = nil
-        pendingEnding = nil; awaitingStart = false; stopRequested = false
+        pendingEnding = nil; endSeenAt = nil; awaitingStart = false; stopRequested = false
         savedTurn = nil; completedFailed = false
         hostRunning = true
         turnStartedAt = startedAt
@@ -891,21 +892,26 @@ struct HermesLostTurn: Equatable {
         if activeStreamID == nil { beginTurn(startedAt: hostTurnStartedAt, prompt: nil) }
     }
 
-    private func finish(_ ending: TranscriptTurnRunOutcome.Ending) {
+    private func endTime(live: Bool) -> Date? {
+        endSeenAt ?? (live ? Date() : nil)
+    }
+
+    private func finish(_ ending: TranscriptTurnRunOutcome.Ending, seenAt endedAt: Date? = Date()) {
         endCompaction()
         guard let streamID = activeStreamID else { return }
         endScreenUse()
         let startedAt = turnStartedAt
         endLiveActivity(ending)
         liveActivity = nil
-        latestRunEnding = ChatRunEnding(startedAt: activeRunStartedAt ?? Date(), endedAt: Date(), ending: ending)
+        latestRunEnding = ChatRunEnding(startedAt: activeRunStartedAt ?? Date(), endedAt: endedAt ?? Date(), ending: ending,
+                                        endedWhileWatching: endedAt != nil)
         if ending == .completed {
             ratingPromptState.recordCompletedResponse()
             successfulResponseCompletion = .init(streamID: streamID, needsTranscriptRefresh: false)
             delegate?.streamCoordinatorApplyDone(DoneStreamEvent())
         }
         activeStreamID = nil; activeRunStartedAt = nil
-        turnStartedAt = nil; pendingEnding = nil; awaitingStart = false; stopRequested = false
+        turnStartedAt = nil; pendingEnding = nil; endSeenAt = nil; awaitingStart = false; stopRequested = false
         activity.turnDidEnd()
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil
         if ending == .completed { delegate?.streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: false) }
@@ -948,7 +954,7 @@ struct HermesLostTurn: Equatable {
         case "message.start":
             if activeStreamID != nil {
                 if awaitingStart { awaitingStart = false; return }
-                finish(pendingEnding ?? .completed)
+                finish(pendingEnding ?? .completed, seenAt: endTime(live: live))
             }
             var prompt: HermesQueuedPrompt?
             runningAdmission = frame["admission_id"].text
@@ -997,12 +1003,12 @@ struct HermesLostTurn: Equatable {
         case "session.usage":
             if let usage = Self.contextWindow(payload["usage"]) { delegate?.hermesApplyUsage(usage) }
         case "session.info":
-            applyInfo(payload)
+            applyInfo(payload, live: live)
         case "session.updated":
             settings.controls.receiveDeferredPickUpdate(payload)
         case "message.complete":
             if frame["admission_id"].text != nil, frame["execution_generation"] == .null { return }
-            complete(payload)
+            complete(payload, live: live)
         case "approval.request", "clarify.request":
             if let envelope = HermesCanonicalPrompts.envelope(payload, sessionID: frame["session_id"].text ?? "") {
                 requests.receive(envelope)
@@ -1018,7 +1024,7 @@ struct HermesLostTurn: Equatable {
             if activeStreamID != nil, !awaitingStart {
                 pendingEnding = pendingEnding ?? .failed
             } else {
-                finish(.failed)
+                finish(.failed, seenAt: endTime(live: live))
             }
         case "request.cancel":
             requests.cancel(payload)
@@ -1086,7 +1092,7 @@ struct HermesLostTurn: Equatable {
         if lostTurn == lost { lostTurn = nil }
     }
 
-    private func applyInfo(_ info: BotJSON) {
+    private func applyInfo(_ info: BotJSON, live: Bool) {
         if let model = info["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
         if info["pending"].list != nil { applyPending(info["pending"]) }
         engine.adoptStoredKey(info["stored_session_id"].text)
@@ -1108,11 +1114,11 @@ struct HermesLostTurn: Equatable {
             hostTurnStartedAt = nil
             endCompaction()
             guard pendingEnding != nil || !awaitingStart else { return }
-            finish(pendingEnding ?? (stopRequested ? .cancelled : .completed))
+            finish(pendingEnding ?? (stopRequested ? .cancelled : .completed), seenAt: endTime(live: live))
         }
     }
 
-    private func complete(_ payload: BotJSON) {
+    private func complete(_ payload: BotJSON, live: Bool) {
         endCompaction()
         guard activeStreamID != nil else {
             turnsStarted += 1
@@ -1142,7 +1148,8 @@ struct HermesLostTurn: Equatable {
             requests.withdrawAll()
         }
         pendingEnding = ending
-        if !hostRunning { finish(ending) }
+        if live { endSeenAt = Date() }
+        if !hostRunning { finish(ending, seenAt: endSeenAt) }
     }
 
     private func noteInfo(_ info: BotJSON) {
@@ -1180,7 +1187,8 @@ struct HermesLostTurn: Equatable {
         if activeStreamID != nil, !running || (startedAt != nil && turnStartedAt != nil && startedAt != turnStartedAt) {
             let failed = HermesTurnOutcome(inflight: snapshot["inflight"]) != nil
             completedFailed = false
-            finish(pendingEnding ?? (failed ? .failed : stopRequested ? .cancelled : .completed))
+            finish(pendingEnding ?? (failed ? .failed : stopRequested ? .cancelled : .completed),
+                   seenAt: endTime(live: false))
         }
         let continuing = running && activeStreamID != nil
         if lostFrames, !continuing || followedStart == nil || startedAt == nil { turnBase = nil }

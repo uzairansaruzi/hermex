@@ -539,7 +539,7 @@ import UIKit
             !Task.isCancelled && wire === client && serial == statusSerial && roster == reloadSerial
         }
         do {
-            let reply = try await client.call(.sessionActiveList)
+            let reply = try await client.call(.sessionActiveList())
             guard current() else { return }
             setLiveStatuses(BotLiveStatus.statuses(reply["sessions"].list ?? [], profiles: profiles))
             retriesStatusRead = false
