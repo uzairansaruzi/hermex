@@ -995,6 +995,7 @@ final class ComposerUndoTests: XCTestCase {
 
         XCTAssertTrue(editor.canPerformAction(send, withSender: nil))
         editor.perform(send)
+        editor.insertText("\n")
 
         XCTAssertEqual(editor.text, "")
     }
@@ -1010,8 +1011,25 @@ final class ComposerUndoTests: XCTestCase {
         XCTAssertNil(returnKey(in: editor, modifiers: []))
         XCTAssertFalse(editor.canPerformAction(send, withSender: nil))
         editor.perform(send)
+        editor.insertText("\n")
 
         XCTAssertEqual(performed, [])
+    }
+
+    func testOnScreenReturnSendsAndShowsSendOnlyWhenTurnedOn() {
+        let editor = ComposerChipTextView()
+        var performed: [String] = []
+        editor.keyboardCommands = commands { performed.append($0) }
+
+        editor.insertText("\n")
+        XCTAssertEqual(editor.returnKeyType, .default)
+
+        editor.returnSends = true
+        editor.insertText("\n")
+
+        XCTAssertEqual(editor.returnKeyType, .send)
+        XCTAssertEqual(performed, ["test-send"])
+        XCTAssertEqual(editor.text, "\n")
     }
 
     private func returnKey(in editor: ComposerChipTextView, modifiers: UIKeyModifierFlags) -> UIKeyCommand? {

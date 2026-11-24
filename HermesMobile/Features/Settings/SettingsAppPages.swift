@@ -31,7 +31,7 @@ struct SettingsComposerPage: View {
                     SettingsLabel(
                         title: String(localized: "Send with Return"),
                         systemImage: "return",
-                        note: String(localized: "On a hardware keyboard. Shift-Return adds a new line.")
+                        note: String(localized: "Shift-Return adds a new line on a hardware keyboard.")
                     )
                 }
             }

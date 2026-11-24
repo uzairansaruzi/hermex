@@ -58,7 +58,13 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     var acceptsAttachments = true
     var keyboardCommands = ComposerKeyboardCommands()
-    var returnSends = false
+    var returnSends = false {
+        didSet {
+            guard returnSends != oldValue else { return }
+            returnKeyType = returnSends ? .send : .default
+            if isFirstResponder { reloadInputViews() }
+        }
+    }
     var recallLastSentText: (() -> String?)?
     var onPasteFileProviders: ([NSItemProvider]) -> Void = { _ in }
     var onPasteFileURLs: ([URL]) -> Void = { _ in }
@@ -619,7 +625,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     @objc private func newlineFromKeyboard() {
         guard acceptsKeyboardCommands, returnSends else { return }
-        insertText("\n")
+        super.insertText("\n")
+    }
+
+    override func insertText(_ text: String) {
+        guard text == "\n", returnSends, acceptsKeyboardCommands else { return super.insertText(text) }
+        keyboardCommands.send?.perform()
     }
 
     @objc private func alternateSendFromKeyboard() {
@@ -660,7 +671,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     override func paste(_ sender: Any?) {
         guard acceptsAttachments else {
             guard isEditable, let text = pasteboard.string else { return }
-            insertText(text)
+            super.insertText(text)
             return
         }
         let fileProviders = pasteboardFileProviders
@@ -703,7 +714,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     @objc func pasteAsText() {
         guard canPasteAsText, let text = pasteboard.string else { return }
-        insertText(text)
+        super.insertText(text)
     }
 
     private var hasPasteboardContent: Bool {
