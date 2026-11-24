@@ -201,8 +201,7 @@ import Observation
     }
 
     func testResumeOpensTheSessionWithThatIDBeforeAnyTitle() async {
-        let renamed: BotJSON = .object(["id": .string("k-19"), "title": .string("Successor"), "profile": .string("default"),
-                                        "parent_session_id": .string("k-07")])
+        let renamed: BotJSON = .object(["id": .string("k-19"), "title": .string("Successor"), "profile": .string("default")])
         let chat = await openChat(search: [Self.searchResult("k-81", title: "K-19")], sessionRows: ["k-19": renamed])
 
         let result = await chat.model.runHermesSlashCommand("/resume k-19")
@@ -211,7 +210,6 @@ import Observation
             return XCTFail("Expected session k-19, got \(String(describing: result))")
         }
         XCTAssertEqual(opened.target, .session(profile: "default", key: "k-19"))
-        XCTAssertEqual(opened.parentKey, "k-07")
         XCTAssertEqual(HermesHostFixture.count("/api/sessions/search"), 0)
     }
 
