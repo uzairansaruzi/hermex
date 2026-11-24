@@ -326,7 +326,7 @@ import UserNotifications
         let generation = pluginCheckGeneration
         guard let standing = try? await pluginStanding(dashboard(connection)), !Task.isCancelled,
               pairing != nil, !isUpdatingPlugin, generation == pluginCheckGeneration else { return }
-        offers.record(standing, for: server)
+        publish(standing)
         if case .upToDate = standing { pluginUpdate = nil } else { pluginUpdate = standing }
     }
 
@@ -451,8 +451,12 @@ import UserNotifications
     }
 
     private func accept(_ standing: PluginUpdate) -> PluginUpdate {
-        offers.record(standing, for: server)
+        publish(standing)
         return standing
+    }
+
+    private func publish(_ standing: PluginUpdate) {
+        if registrar?.pairing(for: server) != nil { offers.record(standing, for: server) } else { offers.clear(server) }
     }
 
     private func pluginStanding(_ client: BotDashboardClient) async throws -> PluginUpdate {

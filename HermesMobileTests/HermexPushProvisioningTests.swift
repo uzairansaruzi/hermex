@@ -853,6 +853,25 @@ import XCTest
         XCTAssertNil(offers.offer(for: serverA))
     }
 
+    func testAnUpdateBeforePairingOffersNothingOutsideSettings() async throws {
+        let registrar = FakePushRegistrar()
+        let minimum = HermexPushPlugin.minimumVersion.description
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/pairing": return (200, PushHTTPFixture.pairingBody(version: "0.1.0"))
+            case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: minimum))
+            default: return nil
+            }
+        }
+        let offers = HermexPushUpdateOffers(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)))
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar, offers: offers)
+
+        await provisioner.updatePlugin()
+
+        XCTAssertEqual(provisioner.pluginCard, .status(.restartNeeded(loaded: HermexPushPluginVersion("0.1.0"))))
+        XCTAssertNil(offers.offer(for: serverA), "Only a paired server gets a Sessions card or badge")
+    }
+
     func testAPairedHostWhosePluginIsOnDiskButNotLoadedAsksForARestart() async throws {
         let registrar = try await pairedRegistrar(serverA)
         let newest = newest
