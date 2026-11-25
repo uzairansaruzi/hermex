@@ -1671,6 +1671,9 @@ import SwiftUI
         await chat.model.loadMessages()
         XCTAssertEqual(resumes(), 2, "Try Again asks once more")
         XCTAssertEqual(chat.model.errorMessage, BotFailure.resumeRefused("session not found").localizedDescription)
+        chat.model.suspendStreamForNavigation()
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(resumes(), 3, "coming back to the chat asks again")
         XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.rejected(4001)))
     }
 
