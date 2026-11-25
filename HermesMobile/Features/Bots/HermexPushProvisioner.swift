@@ -324,7 +324,7 @@ import UserNotifications
     func checkPlugin() async {
         guard pairing != nil, let connection, !isUpdatingPlugin else { return }
         let generation = pluginCheckGeneration
-        let revision = offers.revision(for: server)
+        let revision = offers.beginRead(for: server)
         guard let standing = try? await pluginStanding(dashboard(connection)), !Task.isCancelled,
               pairing != nil, !isUpdatingPlugin, generation == pluginCheckGeneration else { return }
         publish(standing, readSince: revision)

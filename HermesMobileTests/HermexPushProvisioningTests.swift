@@ -879,7 +879,7 @@ import XCTest
         PushHTTPFixture.holdResponse = nil
         loaded = HermexPushPlugin.minimumVersion.description
 
-        await settings.checkPluginAgain()
+        await settings.checkPlugin()
         XCTAssertNil(offers.offer(for: serverA))
         try XCTUnwrap(pending).respond(status: 200, value: PushHTTPFixture.pairingBody(version: "0.1.0"))
         await passive.value

@@ -359,6 +359,7 @@ extension BotHostStatus {
         self.relay = relay ?? { PushRegistrar.shared?.pairing(for: $0)?.relayURL }
         self.discard = discard ?? { old in
             await PushRegistrar.shared?.forget(for: server)
+            HermexPushUpdateOffers.shared.clear(server)
             try? await BotHistoryCache.shared.remove(server: server, connectionID: old.id)
             await BotRosterCache.shared.remove(server: server, connectionID: old.id)
             await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: old.id)

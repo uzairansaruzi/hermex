@@ -170,11 +170,14 @@ struct HermexPushUpdateOffer: Equatable {
         dismissals[server] = offer.dismissal
     }
 
-    func revision(for server: URL) -> Int { revisions[server, default: 0] }
+    func beginRead(for server: URL) -> Int {
+        revisions[server, default: 0] += 1
+        return revisions[server, default: 0]
+    }
 
     func record(_ standing: HermexPushProvisioner.PluginUpdate, for server: URL, readSince revision: Int? = nil) {
         if let revision {
-            guard revision == self.revision(for: server) else { return }
+            guard revision == revisions[server, default: 0] else { return }
         } else {
             revisions[server, default: 0] += 1
         }
