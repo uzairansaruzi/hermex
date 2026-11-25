@@ -2825,7 +2825,7 @@ final class ChatViewModel {
 
     private func loadHermesSession(_ hermes: HermesChatTurnCoordinator, unasked: Bool) async {
         isLoading = messages.isEmpty
-        if !unasked { errorMessage = nil }
+        if !unasked || hermes.engine.connectionState == .connected { errorMessage = nil }
         defer { isLoading = false }
         let retriesHistory = hermes.hasHistoryFailure
         if unasked { await hermes.reconnectIfNeeded(modelContext: nil) } else { await hermes.activate() }

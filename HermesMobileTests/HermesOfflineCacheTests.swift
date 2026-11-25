@@ -638,6 +638,17 @@ import XCTest
         XCTAssertFalse(chat.model.isCachedCopyProvisional)
     }
 
+    func testAFirstLoadClearsAHistoryFailureItRecoversFrom() async {
+        let wire = HermesOfflineWire(rows: [])
+        wire.messagesFailure = BotFailure.rejected(500)
+        let chat = makeChat(wire)
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertNotNil(chat.model.errorMessage)
+        wire.messagesFailure = nil
+        await chat.model.loadMessages(usesInitialPrefetch: true)
+        XCTAssertNil(chat.model.errorMessage)
+    }
+
     func testABotChatsCacheStaysWithItsServer() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .canonicalChat(profile: "default"))
