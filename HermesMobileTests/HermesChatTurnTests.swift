@@ -1656,6 +1656,27 @@ import SwiftUI
         XCTAssertEqual(chat.model.messages.last?.content, "Both workers finished.")
     }
 
+    func testARefusedResumeShowsTheHostsReasonAndIsNotRetriedUnasked() async {
+        let chat = await openChat()
+        chat.model.suspendStreamForNavigation()
+        chat.host.always("session.resume", .init(error: 4001, data: .object(["reason": .string("runtime_coordination_required")])))
+        let before = chat.host.requests.count
+        func resumes() -> Int { chat.host.requests.dropFirst(before).filter { $0["method"].text == "session.resume" }.count }
+        await chat.model.reconnectStreamIfNeeded()
+        await chat.model.loadMessages(usesInitialPrefetch: true)
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(resumes(), 1, "appearing, the first load and its follow-up share one attach")
+        XCTAssertEqual(chat.model.errorMessage, BotFailure.resumeRefused("runtime_coordination_required").localizedDescription)
+        chat.host.always("session.resume", .init(error: 4001, message: "session not found"))
+        await chat.model.loadMessages()
+        XCTAssertEqual(resumes(), 2, "Try Again asks once more")
+        XCTAssertEqual(chat.model.errorMessage, BotFailure.resumeRefused("session not found").localizedDescription)
+        chat.model.suspendStreamForNavigation()
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(resumes(), 3, "coming back to the chat asks again")
+        XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.rejected(4001)))
+    }
+
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
     private static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()

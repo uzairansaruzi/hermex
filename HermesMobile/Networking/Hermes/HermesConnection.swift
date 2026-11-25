@@ -701,6 +701,7 @@ enum HermesConnectionLog {
     static func reason(_ error: Error) -> String {
         switch error {
         case BotFailure.profileNotServed: return "profileNotServed"
+        case BotFailure.resumeRefused: return "resumeRefused"
         case let failure as BotFailure: return "\(failure)"
         case let error as URLError: return "URLError \(error.code.rawValue)"
         case is DecodingError: return "DecodingError"

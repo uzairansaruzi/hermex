@@ -403,6 +403,9 @@ import OSLog
             case .screen:
                 entry.continuation.resume(throwing: ScreenCallFailure(
                     code: code, refusal: frame["error"]["data"]["code"].text, message: frame["error"]["message"].text))
+            case .resume:
+                let reason = code == 4001 ? data["reason"].text ?? frame["error"]["message"].text : nil
+                entry.continuation.resume(throwing: reason.map(BotFailure.resumeRefused) ?? .rejected(code))
             case .plain:
                 entry.continuation.resume(throwing: BotFailure.rejected(code))
             }
@@ -459,7 +462,7 @@ import OSLog
 }
 
 private extension HermesCall {
-    enum Rejection { case plain, room, setting, screen }
+    enum Rejection { case plain, room, setting, screen, resume }
 
     var isCancellationSafe: Bool {
         switch self {
@@ -502,6 +505,7 @@ private extension HermesCall {
         if method.hasPrefix("groups.") { return .room }
         if method.hasPrefix("display.") { return .screen }
         switch self {
+        case .sessionResume: return .resume
         case .configSet, .sessionCwdSet, .sessionControl, .modelOptions, .configuredModelOptions, .profileModelOptions,
              .sessionControlRead: return .setting
         case .commandDispatch(let name, _, _) where name == "goal": return .setting

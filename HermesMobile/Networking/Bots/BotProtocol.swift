@@ -45,6 +45,7 @@ enum BotFailure: Error, Equatable, LocalizedError {
     case signInChanged
     case gatewayListener
     case profileNotServed(String, HermesStandaloneReason?)
+    case resumeRefused(String)
     var errorDescription: String? {
         switch self {
         case .stale: return String(localized: "This action is no longer current. Refresh the conversation.")
@@ -59,6 +60,8 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .rejected(-32601): return String(localized: "This Hermes connection does not support Bot chat here.")
         case .rejected(4090): return String(localized: "Another Hermes process owns this conversation. Resolve it on the host, then refresh.")
         case .rejected(4130): return String(localized: "This conversation is too large to open here. Use Desktop.")
+        case .resumeRefused("runtime_coordination_required"): return String(localized: "Hermes needs coordination on the host before it can open this session from here. Open it in Hermes Desktop.")
+        case .resumeRefused(let reason): return String(localized: "Hermes refused to open this session (\(reason)). Check Hermes on the host, then try again.")
         case .invalidAddress: return String(localized: "Enter a Hermes HTTP or HTTPS address without a path, credentials or query.")
         case .blocked: return String(localized: "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address.")
         case .browserSignIn: return String(localized: "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
@@ -84,8 +87,8 @@ enum BotConnectionAdvice {
         switch error as? BotFailure {
         case .unsupported, .wrongIdentity, .differentHost, .invalidAddress, .notDashboard,
              .blocked, .browserSignIn, .signInExpired, .signInChanged, .upgradeRefused, .outdated,
-             .gatewayListener, .profileNotServed: return false
-        case .rejected(-32601), .rejected(4090), .rejected(4130): return false
+             .gatewayListener, .profileNotServed, .resumeRefused: return false
+        case .rejected(-32601), .rejected(4001), .rejected(4090), .rejected(4130): return false
         case .rejected(408), .rejected(429): return true
         case .rejected(let code): return !(400..<500).contains(code)
         default: return true

@@ -620,6 +620,7 @@ nothing reads yet.
 | Any RPC | -32601 | The method is absent: `unavailableMethods`, and its control stays off. |
 | Any RPC with `{"__hermex_probe": true}` | 4000 / -32601 | The method exists / is absent, without running it. Unused so far. |
 | A session-scoped RPC | 4001 | The runtime was reaped: reattach to the stored key. |
+| `session.resume` | 4001 with `data.reason` (or, on a dashboard, only `message`) | The host won't open this session: `BotFailure.resumeRefused` carries the reason to the screen, and nothing retries it unasked. |
 | `groups.capabilities` | a capability missing | Rooms hide, or their writes turn off (`bots.md` § Group rooms). |
 | `GET /api/plugins/<name>/…` | 404 `{"detail": "Plugin not found"}` | The plugin is off or not installed (`HermexPushPlugin.missingRoute`, Kanban). |
 | `GET /api/plugins/<name>/…` | 404 `{"detail": "No such API endpoint: …"}` | The dashboard never mounted the plugin's routes: it is new on disk and the host needs a restart, or the host lacks it (`kanban.md`, Absent plugin). |

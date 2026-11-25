@@ -138,6 +138,7 @@ struct HermesLostTurn: Equatable {
     private let opensNew: Bool
     @ObservationIgnored private var attaching: Task<Void, Never>?
     @ObservationIgnored private var attachGeneration = 0
+    @ObservationIgnored private(set) var resumeWasRefused = false
     private(set) var needsSignIn = false
     @ObservationIgnored private var history = HermesTranscriptHistory()
     @ObservationIgnored private var historyFailure: Error?
@@ -254,6 +255,7 @@ struct HermesLostTurn: Equatable {
     @discardableResult
     private func startAttach() -> Task<Void, Never> {
         guard !needsSignIn else { return Task {} }
+        resumeWasRefused = false
         attachGeneration += 1
         let generation = attachGeneration
         let task = Task { [weak self, engine] in
@@ -1592,6 +1594,7 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
     func prepareForNewResponse() {}
 
     func suspendActiveStreamConnection() {
+        resumeWasRefused = false
         drivenLiveActivity?.markStale()
         requests.willLeave()
         cancelAttach()
@@ -1599,7 +1602,7 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
     }
 
     func reconnectIfNeeded(modelContext: ModelContext?) async {
-        guard !needsSignIn else { return }
+        guard !needsSignIn, !resumeWasRefused else { return }
         await activate()
     }
 
@@ -1732,6 +1735,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         endScreenUse()
         drivenLiveActivity?.markStale()
         if failure == .rejected(401) { needsSignIn = true }
+        if case .resumeRefused = failure { resumeWasRefused = true }
         guard !retrying else { return }
         var unserved: HermesUnservedProfile?
         if case .profileNotServed(let profile, let reason) = failure {

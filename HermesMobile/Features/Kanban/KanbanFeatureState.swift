@@ -2886,7 +2886,7 @@ final class KanbanFeatureState {
             return .serverUnavailable
         case .rejected(401):
             return .authenticationRequired
-        case .rejected, .invalidAddress:
+        case .rejected, .invalidAddress, .resumeRefused:
             return .incompatibleContract
         case .stale, .unsupported, .missingChat, .wrongIdentity, .differentHost, .notDashboard, .blocked,
              .browserSignIn, .signInExpired, .browserSignInFailed, .signInChanged, .upgradeRefused, .outdated,
