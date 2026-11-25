@@ -60,7 +60,7 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .rejected(-32601): return String(localized: "This Hermes connection does not support Bot chat here.")
         case .rejected(4090): return String(localized: "Another Hermes process owns this conversation. Resolve it on the host, then refresh.")
         case .rejected(4130): return String(localized: "This conversation is too large to open here. Use Desktop.")
-        case .resumeRefused("runtime_coordination_required"): return String(localized: "Hermes can’t open this session from here because another Hermes process on the host holds it. Open it in Hermes Desktop, or restart Hermes on the host, then try again.")
+        case .resumeRefused("runtime_coordination_required"): return String(localized: "Hermes needs coordination on the host before it can open this session from here. Open it in Hermes Desktop.")
         case .resumeRefused(let reason): return String(localized: "Hermes refused to open this session (\(reason)). Check Hermes on the host, then try again.")
         case .invalidAddress: return String(localized: "Enter a Hermes HTTP or HTTPS address without a path, credentials or query.")
         case .blocked: return String(localized: "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address.")

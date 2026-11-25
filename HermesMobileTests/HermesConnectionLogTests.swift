@@ -23,5 +23,6 @@ final class HermesConnectionLogTests: XCTestCase {
         let reason = HermesConnectionLog.reason(BotSettingFailure.rejected(4001, "secret-host.example refused the model"))
         XCTAssertFalse(reason.contains("secret-host"), reason)
         XCTAssertFalse(reason.contains("refused"), reason)
+        XCTAssertFalse(HermesConnectionLog.reason(BotFailure.resumeRefused("secret-host.example")).contains("secret-host"))
     }
 }

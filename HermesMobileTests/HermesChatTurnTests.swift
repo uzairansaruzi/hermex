@@ -1659,13 +1659,18 @@ import SwiftUI
     func testARefusedResumeShowsTheHostsReasonAndIsNotRetriedUnasked() async {
         let chat = await openChat()
         chat.model.suspendStreamForNavigation()
-        chat.host.always("session.resume", .init(error: 4001, message: "runtime_coordination_required",
-                                                 data: .object(["reason": .string("runtime_coordination_required")])))
+        chat.host.always("session.resume", .init(error: 4001, data: .object(["reason": .string("runtime_coordination_required")])))
         let before = chat.host.requests.count
-        await chat.model.loadMessages()
+        func resumes() -> Int { chat.host.requests.dropFirst(before).filter { $0["method"].text == "session.resume" }.count }
         await chat.model.reconnectStreamIfNeeded()
-        XCTAssertEqual(chat.host.requests.dropFirst(before).filter { $0["method"].text == "session.resume" }.count, 1)
+        await chat.model.loadMessages(usesInitialPrefetch: true)
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(resumes(), 1, "appearing, the first load and its follow-up share one attach")
         XCTAssertEqual(chat.model.errorMessage, BotFailure.resumeRefused("runtime_coordination_required").localizedDescription)
+        chat.host.always("session.resume", .init(error: 4001, message: "session not found"))
+        await chat.model.loadMessages()
+        XCTAssertEqual(resumes(), 2, "Try Again asks once more")
+        XCTAssertEqual(chat.model.errorMessage, BotFailure.resumeRefused("session not found").localizedDescription)
         XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.rejected(4001)))
     }
 

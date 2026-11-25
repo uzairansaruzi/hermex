@@ -1697,7 +1697,7 @@ final class ChatViewModel {
         if let hermesTurn {
             if let modelContext { hermesCache = modelContext }
             showCachedHermesTranscriptBeforeAttach(hermesTurn)
-            await loadHermesSession(hermesTurn)
+            await loadHermesSession(hermesTurn, unasked: usesInitialPrefetch)
             return
         }
         guard let sessionID else {
@@ -2823,12 +2823,12 @@ final class ChatViewModel {
         hermesTurn.map { String(localized: "\($0.engine.target.profile) on \($0.engine.connection.name)") }
     }
 
-    private func loadHermesSession(_ hermes: HermesChatTurnCoordinator) async {
+    private func loadHermesSession(_ hermes: HermesChatTurnCoordinator, unasked: Bool) async {
         isLoading = messages.isEmpty
-        errorMessage = nil
+        if !unasked { errorMessage = nil }
         defer { isLoading = false }
         let retriesHistory = hermes.hasHistoryFailure
-        await hermes.activate()
+        if unasked { await hermes.reconnectIfNeeded(modelContext: nil) } else { await hermes.activate() }
         if retriesHistory { await hermes.retryHistoryIfFailed() }
     }
 
