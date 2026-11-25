@@ -5,7 +5,7 @@ enum HermexPushPlugin {
     static let name = "hermex-push"
     static let installIdentifier = "https://github.com/uzairansaruzi/hermex-push.git/plugin"
     static let defaultRelayURL = URL(string: "https://hermex-relay.hermex-relay.workers.dev")!
-    static let newestVersion = HermexPushPluginVersion("0.7.2")!
+    static let newestVersion = HermexPushPluginVersion("0.7.3")!
     static let restartVersion = HermexPushPluginVersion("0.4.0")!
 
     static func canRestart(_ loaded: HermexPushPluginVersion?) -> Bool {
