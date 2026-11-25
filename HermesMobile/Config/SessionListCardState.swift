@@ -1,10 +1,12 @@
 import Foundation
 
 enum SessionListCard: CaseIterable {
+    case pluginUpdate
     case usageReports
     case tip, star
 
     static func choose(eligible: Set<SessionListCard>, shownThisLaunch: SessionListCard?) -> SessionListCard? {
+        if eligible.contains(.pluginUpdate) { return .pluginUpdate }
         if let shownThisLaunch { return eligible.contains(shownThisLaunch) ? shownThisLaunch : nil }
         return allCases.first(where: eligible.contains)
     }
@@ -12,7 +14,7 @@ enum SessionListCard: CaseIterable {
     @MainActor
     static func current(completedResponses: Int, tipDismissedRelease: String?, starDismissedRelease: String?,
                         usageReportConsent: UsageReportConsent, forcesUsageReportsCard: Bool = false,
-                        hasSharedImport: Bool) -> SessionListCard? {
+                        offersPluginUpdate: Bool = false, hasSharedImport: Bool) -> SessionListCard? {
         #if DEBUG
         if forcesUsageReportsCard, usageReportConsent.question() != nil { return .usageReports }
         #endif
@@ -24,6 +26,7 @@ enum SessionListCard: CaseIterable {
             )
         }
         var eligible = Set<SessionListCard>()
+        if offersPluginUpdate, !hasSharedImport { eligible.insert(.pluginUpdate) }
         if usageReportsEligible(question: usageReportConsent.question(), completedResponses: completedResponses,
                                 hasSharedImport: hasSharedImport, ratingPolicy: ratingPolicy) {
             eligible.insert(.usageReports)
@@ -34,13 +37,14 @@ enum SessionListCard: CaseIterable {
     }
 
     @MainActor
-    static func current(hasSharedImport: Bool) -> SessionListCard? {
+    static func current(pluginUpdateServer: URL?, hasSharedImport: Bool) -> SessionListCard? {
         let defaults = UserDefaults.standard
         return current(completedResponses: defaults.integer(forKey: TipJar.completedResponseCountKey),
                        tipDismissedRelease: defaults.string(forKey: TipJar.dismissedReleaseKey),
                        starDismissedRelease: defaults.string(forKey: GitHubStar.dismissedReleaseKey),
                        usageReportConsent: UsageReports.shared.consent,
                        forcesUsageReportsCard: defaults.bool(forKey: UsageReports.Keys.debugForcesCard),
+                       offersPluginUpdate: pluginUpdateServer.flatMap { HermexPushUpdateOffers.shared.cardOffer(for: $0) } != nil,
                        hasSharedImport: hasSharedImport)
     }
 
@@ -51,6 +55,7 @@ enum SessionListCard: CaseIterable {
 
     fileprivate var minimumResponses: Int {
         switch self {
+        case .pluginUpdate: return 0
         case .usageReports: return 5
         case .tip: return 25
         case .star: return 15
@@ -59,7 +64,7 @@ enum SessionListCard: CaseIterable {
 
     fileprivate var promptKeys: (dismissedRelease: String, linkOpened: String)? {
         switch self {
-        case .usageReports: return nil
+        case .pluginUpdate, .usageReports: return nil
         case .tip: return (TipJar.dismissedReleaseKey, TipJar.linkOpenedKey)
         case .star: return (GitHubStar.dismissedReleaseKey, GitHubStar.linkOpenedKey)
         }

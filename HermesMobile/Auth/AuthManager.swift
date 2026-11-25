@@ -503,6 +503,7 @@ final class AuthManager {
         ModelFavoritesStore.remove(for: server, in: preferences)
         ModelRecentsStore.remove(for: server, in: preferences)
         ModelPresetStore.remove(for: server, in: preferences)
+        HermexPushUpdateOffers.forget(server, in: preferences)
         HermesProfilePreference.save(nil, for: server, in: preferences)
         HermesProfilePreference.saveShowsAllProfiles(false, for: server, in: preferences)
         HermesProfilePreference.saveLastListed(nil, for: server, in: preferences)

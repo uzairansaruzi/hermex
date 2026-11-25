@@ -74,7 +74,12 @@ struct SettingsView: View {
                     SettingsNotificationsPage(server: server)
                 } label: {
                     LabeledContent {
-                        Text(isPushOn ? String(localized: "Push on") : String(localized: "Push off"))
+                        HStack(spacing: 8) {
+                            Text(isPushOn ? String(localized: "Push on") : String(localized: "Push off"))
+                            if HermexPushUpdateOffers.shared.offer(for: server) != nil {
+                                PendingUpdateBadge()
+                            }
+                        }
                     } label: {
                         SettingsLabel(title: String(localized: "Notifications"), systemImage: "bell.badge")
                     }
@@ -120,6 +125,18 @@ struct SettingsView: View {
         .sheet(isPresented: $isPresentingAddServer) {
             AddServerView(authManager: authManager)
         }
+    }
+}
+
+private struct PendingUpdateBadge: View {
+    @ScaledMetric(relativeTo: .body) private var size = 8
+
+    var body: some View {
+        Circle()
+            .fill(.red)
+            .frame(width: size, height: size)
+            .accessibilityElement()
+            .accessibilityLabel("Plugin update available")
     }
 }
 

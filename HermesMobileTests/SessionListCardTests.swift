@@ -76,6 +76,36 @@ final class SessionListCardTests: XCTestCase {
         XCTAssertEqual(SessionListCard.choose(eligible: [.usageReports, .tip, .star], shownThisLaunch: .star), .star)
     }
 
+    func testAPluginUpdateOutranksEveryCardEvenOneAlreadyShownThisLaunch() {
+        XCTAssertEqual(SessionListCard.choose(eligible: [.pluginUpdate, .usageReports, .tip, .star], shownThisLaunch: nil), .pluginUpdate)
+        XCTAssertEqual(SessionListCard.choose(eligible: [.pluginUpdate, .tip], shownThisLaunch: .tip), .pluginUpdate)
+    }
+
+    @MainActor
+    func testADismissedPluginUpdateStaysHiddenUntilANewerVersionIsOfferedOnThatServer() throws {
+        let defaults = try makeDefaults()
+        let serverA = URL(string: "https://a.example.com")!
+        let serverB = URL(string: "https://b.example.com")!
+        let loaded = try XCTUnwrap(HermexPushPluginVersion("0.7.2"))
+        let offers = HermexPushUpdateOffers(defaults: defaults)
+        offers.record(.newer(loaded: loaded, target: "aaa111"), for: serverA)
+        offers.record(.newer(loaded: loaded, target: "aaa111"), for: serverB)
+
+        offers.dismiss(try XCTUnwrap(offers.cardOffer(for: serverA)), for: serverA)
+
+        XCTAssertNil(offers.cardOffer(for: serverA))
+        XCTAssertNotNil(offers.offer(for: serverA), "Settings still badges a dismissed update")
+        XCTAssertNotNil(offers.cardOffer(for: serverB), "Dismissing on one server leaves another's card")
+
+        let relaunched = HermexPushUpdateOffers(defaults: defaults)
+        relaunched.record(.newer(loaded: loaded, target: "aaa111"), for: serverA)
+        XCTAssertNil(relaunched.cardOffer(for: serverA), "The dismissal outlives the launch")
+        relaunched.record(.available(loaded: loaded), for: serverA)
+        XCTAssertNotNil(relaunched.cardOffer(for: serverA), "Falling below this build's minimum is a new offer")
+        relaunched.record(.newer(loaded: loaded, target: "bbb222"), for: serverA)
+        XCTAssertNotNil(relaunched.cardOffer(for: serverA), "A newer plugin brings the card back")
+    }
+
     @MainActor
     func testUsageReportsCardAsksFromFiveResponsesUntilAnswered() throws {
         let defaults = try makeDefaults()

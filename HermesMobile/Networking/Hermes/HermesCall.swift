@@ -31,7 +31,7 @@ enum HermesCall: Equatable, Sendable {
     case connectedAppsAccounts(profile: String)
     case connectedAppsRemove(profile: String, connectionID: String)
 
-    case pluginsList(profile: String)
+    case pluginsList(profile: String?)
     case pluginsToggle(profile: String, key: String, enable: Bool)
     case pluginsInstall(profile: String, source: HermesPluginSource, replace: Bool, enable: Bool)
     case pluginsRemove(profile: String, key: String)
@@ -403,7 +403,8 @@ enum HermesCall: Equatable, Sendable {
         case .connectedAppsCatalog(let profile), .connectedAppsAccounts(let profile): return ["profile": .string(profile)]
         case .connectedAppsRemove(let profile, let connectionID):
             return ["profile": .string(profile), "connection_id": .string(connectionID)]
-        case .pluginsList(let profile): return ["action": .string("list"), "profile": .string(profile)]
+        case .pluginsList(let profile):
+            return profile.map { ["action": .string("list"), "profile": .string($0)] } ?? ["action": .string("list")]
         case .pluginsToggle(let profile, let key, let enable):
             return ["action": .string("toggle"), "profile": .string(profile), "key": .string(key), "enable": .bool(enable)]
         case .pluginsInstall(let profile, let source, let replace, let enable):
@@ -652,8 +653,8 @@ enum HermesCall: Equatable, Sendable {
         let valid: Bool
         switch self {
         case .profilesDescribe(let name): valid = !name.isEmpty
-        case .pluginsList(let profile), .connectedAppsCatalog(let profile), .connectedAppsList(let profile),
-             .connectedAppsAccounts(let profile):
+        case .pluginsList(let profile): valid = profile?.isEmpty != true
+        case .connectedAppsCatalog(let profile), .connectedAppsList(let profile), .connectedAppsAccounts(let profile):
             valid = !profile.isEmpty
         case .connectedAppsConnect(let profile, let app, let repairing):
             valid = !profile.isEmpty && !app.isEmpty && repairing?.id.isEmpty != true && repairing?.alias?.isEmpty != true

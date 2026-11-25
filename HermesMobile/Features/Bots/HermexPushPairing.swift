@@ -5,7 +5,7 @@ enum HermexPushPlugin {
     static let name = "hermex-push"
     static let installIdentifier = "https://github.com/uzairansaruzi/hermex-push.git/plugin"
     static let defaultRelayURL = URL(string: "https://hermex-relay.hermex-relay.workers.dev")!
-    static let newestVersion = HermexPushPluginVersion("0.7.3")!
+    static let minimumVersion = HermexPushPluginVersion("0.7.3")!
     static let restartVersion = HermexPushPluginVersion("0.4.0")!
 
     static func canRestart(_ loaded: HermexPushPluginVersion?) -> Bool {
@@ -22,6 +22,12 @@ enum HermexPushPlugin {
 
     static func installedVersion(hub body: BotJSON) -> HermexPushPluginVersion? {
         body["plugins"].list?.first { $0["name"].text == name }?["version"].text.flatMap(HermexPushPluginVersion.init)
+    }
+
+    static func hostListing(_ body: BotJSON) -> HermexPushHostListing? {
+        guard let row = body["plugins"].list?.first(where: { ($0["key"].text ?? $0["name"].text) == name }) else { return nil }
+        let target = row["update_available"].flag == true ? row["update_target"].text.flatMap { $0.isEmpty ? nil : $0 } : nil
+        return HermexPushHostListing(installed: row["version"].text.flatMap(HermexPushPluginVersion.init), updateTarget: target)
     }
 
     static func missingRoute(_ body: BotJSON) -> HermexPushRouteMissing? {
@@ -92,6 +98,11 @@ struct HermexCompanionRoutes: Equatable, Sendable {
     func supports(_ route: String) -> Bool { routes.contains(route) }
 }
 
+struct HermexPushHostListing: Equatable, Sendable {
+    let installed: HermexPushPluginVersion?
+    let updateTarget: String?
+}
+
 enum HermexPushRouteMissing: Error, Equatable { case pluginOff, notMounted }
 
 struct HermexPushPluginVersion: Comparable, Sendable, CustomStringConvertible {
@@ -111,5 +122,93 @@ struct HermexPushPluginVersion: Comparable, Sendable, CustomStringConvertible {
 
     private func padded(to other: Self) -> [Int] {
         numbers + Array(repeating: 0, count: max(0, other.numbers.count - numbers.count))
+    }
+}
+
+struct HermexPushUpdateOffer: Equatable {
+    enum Kind: Equatable {
+        case required(loaded: HermexPushPluginVersion?)
+        case newer(loaded: HermexPushPluginVersion)
+        case restart
+    }
+
+    let kind: Kind
+    let dismissal: String
+}
+
+@MainActor @Observable final class HermexPushUpdateOffers {
+    static let shared = HermexPushUpdateOffers()
+    static let recheckInterval: Duration = .seconds(60 * 60)
+    #if DEBUG
+    static let debugForcesCardKey = "hermexPush.debugForcesUpdateCard"
+    static let debugOffer = HermexPushUpdateOffer(kind: .required(loaded: HermexPushPluginVersion("0.6.0")), dismissal: "debug")
+    #endif
+
+    private var offers: [URL: HermexPushUpdateOffer] = [:]
+    private var dismissals: [URL: String] = [:]
+    @ObservationIgnored private var checkedAt: [URL: ContinuousClock.Instant] = [:]
+    @ObservationIgnored private var revisions: [URL: Int] = [:]
+    @ObservationIgnored private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+    static func dismissalKey(for server: URL) -> String { "hermexPush.dismissedUpdate|\(server.absoluteString)" }
+
+    static func forget(_ server: URL, in defaults: UserDefaults) {
+        defaults.removeObject(forKey: dismissalKey(for: server))
+        shared.clear(server)
+    }
+
+    func offer(for server: URL) -> HermexPushUpdateOffer? { offers[server] }
+
+    func cardOffer(for server: URL) -> HermexPushUpdateOffer? {
+        offers[server].flatMap { $0.dismissal == dismissals[server] ? nil : $0 }
+    }
+
+    func dismiss(_ offer: HermexPushUpdateOffer, for server: URL) {
+        defaults.set(offer.dismissal, forKey: Self.dismissalKey(for: server))
+        dismissals[server] = offer.dismissal
+    }
+
+    func beginRead(for server: URL) -> Int {
+        revisions[server, default: 0] += 1
+        return revisions[server, default: 0]
+    }
+
+    func record(_ standing: HermexPushProvisioner.PluginUpdate, for server: URL, readSince revision: Int? = nil) {
+        if let revision {
+            guard revision == revisions[server, default: 0] else { return }
+        } else {
+            revisions[server, default: 0] += 1
+        }
+        switch standing {
+        case .available(let loaded):
+            offers[server] = HermexPushUpdateOffer(kind: .required(loaded: loaded),
+                                                   dismissal: "minimum \(HermexPushPlugin.minimumVersion)")
+        case .newer(let loaded, let target):
+            offers[server] = HermexPushUpdateOffer(kind: .newer(loaded: loaded), dismissal: "update \(target)")
+        case .restartNeeded(let loaded):
+            offers[server] = HermexPushUpdateOffer(kind: .restart, dismissal: "restart \(loaded?.description ?? "")")
+        case .upToDate:
+            offers[server] = nil
+        case .setupNeedsRestart, .restartTimedOut, .checkFailed:
+            return
+        }
+        dismissals[server] = defaults.string(forKey: Self.dismissalKey(for: server))
+    }
+
+    func clear(_ server: URL) {
+        revisions[server, default: 0] += 1
+        offers[server] = nil
+        dismissals[server] = nil
+        checkedAt[server] = nil
+    }
+
+    func checkIfDue(server: URL, connection: BotConnection, now: ContinuousClock.Instant = .now) async {
+        let provisioner = HermexPushProvisioner(server: server, connection: connection, offers: self)
+        guard provisioner.pairing != nil else { return clear(server) }
+        if let last = checkedAt[server], now - last < Self.recheckInterval { return }
+        checkedAt[server] = now
+        await provisioner.checkPlugin()
     }
 }

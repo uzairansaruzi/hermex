@@ -740,7 +740,7 @@ import XCTest
         XCTAssertEqual(sent, 0)
     }
 
-    private let newest = HermexPushPlugin.newestVersion.description
+    private let newest = HermexPushPlugin.minimumVersion.description
 
     func testThePairingRouteAndTheHubReportPluginVersionsTolerantly() throws {
         let version = try XCTUnwrap(HermexPushPluginVersion("0.3.0"))
@@ -762,6 +762,20 @@ import XCTest
 
         XCTAssertLessThan(try XCTUnwrap(HermexPushPluginVersion("0.9.0")), try XCTUnwrap(HermexPushPluginVersion("0.10.0")))
         XCTAssertEqual(HermexPushPluginVersion("0.3"), version)
+
+        let listed = HermexPushPlugin.hostListing(.object(["plugins": .array([
+            .object(["key": .string("other"), "update_available": .bool(true), "update_target": .string("fff")]),
+            .object(["key": .string("hermex-push"), "version": .string("0.3.0"), "update_available": .bool(true),
+                     "update_target": .string("abc123")])
+        ])]))
+        XCTAssertEqual(listed, HermexPushHostListing(installed: version, updateTarget: "abc123"))
+        let unchecked = HermexPushPlugin.hostListing(.object(["plugins": .array([
+            .object(["name": .string("hermex-push"), "version": .string("0.3.0"), "update_available": .null,
+                     "update_target": .string("abc123")])
+        ])]))
+        XCTAssertEqual(unchecked, HermexPushHostListing(installed: version, updateTarget: nil), "Only a reported update counts")
+        XCTAssertNil(HermexPushPlugin.hostListing(.object(["plugins": .array([])])))
+        XCTAssertNil(try HermesCall.pluginsList(profile: nil).params()["profile"], "The dashboard's own Profile")
     }
 
     func testSettingsReadsAPairedHostAndOffersAnUpdateForAnOlderPlugin() async throws {
@@ -773,11 +787,14 @@ import XCTest
             default: return nil
             }
         }
-        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+        let offers = HermexPushUpdateOffers(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)))
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar, offers: offers)
 
         await provisioner.checkPlugin()
 
         XCTAssertEqual(provisioner.pluginCard, .status(.available(loaded: nil)))
+        XCTAssertEqual(offers.offer(for: serverA)?.kind, .required(loaded: nil))
+        XCTAssertNil(offers.offer(for: serverB))
         XCTAssertEqual(PushHTTPFixture.calls, [
             "GET https://a.example.com/api/status",
             "POST https://a.example.com/auth/password-login",
@@ -806,6 +823,87 @@ import XCTest
         PushHTTPFixture.clearCalls()
         await makeProvisioner(server: serverB, registrar: registrar).checkPlugin()
         XCTAssertEqual(PushHTTPFixture.calls, [], "A server without push is not checked")
+    }
+
+    func testAHostReportedUpdateIsOfferedForThatServerUntilTheNewPluginIsLoaded() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        let minimum = HermexPushPlugin.minimumVersion
+        let next = try XCTUnwrap(HermexPushPluginVersion("99.0.0"))
+        var loaded = minimum.description
+        PushHTTPFixture.handler = { request in
+            request.url?.path == "/api/plugins/hermex-push/pairing" ? (200, PushHTTPFixture.pairingBody(version: loaded)) : nil
+        }
+        var listing = HermexPushHostListing(installed: minimum, updateTarget: "abc123")
+        let offers = HermexPushUpdateOffers(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)))
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar, listing: { listing }, offers: offers)
+
+        await provisioner.checkPlugin()
+        XCTAssertEqual(provisioner.pluginCard, .status(.newer(loaded: minimum, target: "abc123")))
+        XCTAssertEqual(offers.offer(for: serverA)?.kind, .newer(loaded: minimum))
+        XCTAssertNil(offers.offer(for: serverB), "One server's plugin never shows under another")
+
+        listing = HermexPushHostListing(installed: next, updateTarget: nil)
+        await provisioner.checkPluginAgain()
+        XCTAssertEqual(provisioner.pluginCard, .status(.restartNeeded(loaded: minimum)), "Updated on disk, not loaded yet")
+        XCTAssertEqual(offers.offer(for: serverA)?.kind, .restart)
+
+        loaded = next.description
+        await provisioner.checkPluginAgain()
+        XCTAssertEqual(provisioner.pluginCard, .status(.upToDate(next)))
+        XCTAssertNil(offers.offer(for: serverA))
+    }
+
+    func testASessionsReadThatLandsAfterSettingsCheckedCannotRestoreItsOffer() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        var loaded = "0.1.0"
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/pairing": return (200, PushHTTPFixture.pairingBody(version: loaded))
+            case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: "0.1.0"))
+            default: return nil
+            }
+        }
+        let offers = HermexPushUpdateOffers(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)))
+        let sessions = makeProvisioner(server: serverA, registrar: registrar, offers: offers)
+        let settings = makeProvisioner(server: serverA, registrar: registrar, offers: offers)
+        let held = expectation(description: "Sessions read held")
+        var pending: PushHTTPFixture?
+        PushHTTPFixture.holdResponse = { fixture in
+            guard fixture.request.url?.path == "/api/plugins/hermex-push/pairing" else { return false }
+            pending = fixture
+            held.fulfill()
+            return true
+        }
+        let passive = Task { await sessions.checkPlugin() }
+        await fulfillment(of: [held], timeout: 5)
+        PushHTTPFixture.holdResponse = nil
+        loaded = HermexPushPlugin.minimumVersion.description
+
+        await settings.checkPlugin()
+        XCTAssertNil(offers.offer(for: serverA))
+        try XCTUnwrap(pending).respond(status: 200, value: PushHTTPFixture.pairingBody(version: "0.1.0"))
+        await passive.value
+
+        XCTAssertNil(offers.offer(for: serverA), "The older read never brings the card back")
+    }
+
+    func testAnUpdateBeforePairingOffersNothingOutsideSettings() async throws {
+        let registrar = FakePushRegistrar()
+        let minimum = HermexPushPlugin.minimumVersion.description
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/pairing": return (200, PushHTTPFixture.pairingBody(version: "0.1.0"))
+            case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: minimum))
+            default: return nil
+            }
+        }
+        let offers = HermexPushUpdateOffers(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)))
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar, offers: offers)
+
+        await provisioner.updatePlugin()
+
+        XCTAssertEqual(provisioner.pluginCard, .status(.restartNeeded(loaded: HermexPushPluginVersion("0.1.0"))))
+        XCTAssertNil(offers.offer(for: serverA), "Only a paired server gets a Sessions card or badge")
     }
 
     func testAPairedHostWhosePluginIsOnDiskButNotLoadedAsksForARestart() async throws {
@@ -899,7 +997,7 @@ import XCTest
         XCTAssertEqual(install["identifier"].text, "https://github.com/uzairansaruzi/hermex-push.git/plugin")
         XCTAssertEqual(install["force"].flag, true, "A reinstall over the loaded copy, cloned again from main")
         XCTAssertEqual(install["enable"].flag, true)
-        XCTAssertEqual(provisioner.pluginCard, .status(.upToDate(HermexPushPlugin.newestVersion)))
+        XCTAssertEqual(provisioner.pluginCard, .status(.upToDate(HermexPushPlugin.minimumVersion)))
         XCTAssertFalse(provisioner.isWorking)
         XCTAssertNotNil(provisioner.pairing)
         XCTAssertEqual(registrar.actions, [], "The keys live in plugin-data, so nothing is paired again")
@@ -937,7 +1035,7 @@ import XCTest
         PushHTTPFixture.clearCalls()
         await reopened.checkPluginAgain()
 
-        XCTAssertEqual(reopened.pluginCard, .status(.upToDate(HermexPushPlugin.newestVersion)))
+        XCTAssertEqual(reopened.pluginCard, .status(.upToDate(HermexPushPlugin.minimumVersion)))
         XCTAssertEqual(PushHTTPFixture.calls, [
             "GET https://a.example.com/api/status",
             "POST https://a.example.com/auth/password-login",
@@ -1052,7 +1150,7 @@ import XCTest
 
         await provisioner.updatePlugin()
 
-        XCTAssertEqual(provisioner.pluginCard, .status(.upToDate(HermexPushPlugin.newestVersion)))
+        XCTAssertEqual(provisioner.pluginCard, .status(.upToDate(HermexPushPlugin.minimumVersion)))
         XCTAssertNil(provisioner.failure)
         XCTAssertFalse(provisioner.showsSteps, "The failed setup's steps give way to the update")
         XCTAssertNil(provisioner.pairing, "Pairing stays behind Turn on notifications")
@@ -1134,7 +1232,7 @@ import XCTest
         PushHTTPFixture.clearCalls()
         await provisioner.checkPluginAgain()
 
-        XCTAssertEqual(provisioner.pluginCard, .status(.upToDate(HermexPushPlugin.newestVersion)))
+        XCTAssertEqual(provisioner.pluginCard, .status(.upToDate(HermexPushPlugin.minimumVersion)))
         XCTAssertEqual(PushHTTPFixture.calls, [
             "GET https://a.example.com/api/status",
             "POST https://a.example.com/auth/password-login",
@@ -1452,7 +1550,9 @@ import XCTest
                                  notifications: FakeNotificationPermission = FakeNotificationPermission(status: .authorized),
                                  testSender: @escaping @MainActor (PushPairing) async -> PushRelayTestOutcome = { _ in .delivered },
                                  stillConnected: @escaping @MainActor () -> Bool = { true },
-                                 newest: HermexPushPluginVersion = HermexPushPlugin.newestVersion,
+                                 newest: HermexPushPluginVersion = HermexPushPlugin.minimumVersion,
+                                 listing: @escaping @MainActor () -> HermexPushHostListing? = { nil },
+                                 offers: HermexPushUpdateOffers? = nil,
                                  onSleep: @escaping @MainActor () -> Void = {}) -> HermexPushProvisioner {
         let connection = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://a.example.com")!,
                                        username: "user", password: "secret", installID: installID)
@@ -1465,7 +1565,9 @@ import XCTest
             testSender: testSender,
             retryDelays: [.zero, .zero, .zero],
             restartDelays: [.zero, .zero, .zero],
-            newestPlugin: newest,
+            minimumPlugin: newest,
+            hostListing: { _ in listing() },
+            offers: offers ?? HermexPushUpdateOffers(defaults: UserDefaults(suiteName: UUID().uuidString)!),
             sleep: { _ in await onSleep() }
         )
     }

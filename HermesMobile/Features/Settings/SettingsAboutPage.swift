@@ -194,6 +194,7 @@ private struct SupportDetailsSheet: View {
 #if DEBUG
 struct SettingsDeveloperPage: View {
     @AppStorage(UsageReports.Keys.debugForcesCard) private var forcesUsageReportsCard = false
+    @AppStorage(HermexPushUpdateOffers.debugForcesCardKey) private var forcesPluginUpdateCard = false
 
     var body: some View {
         AppList {
@@ -207,6 +208,10 @@ struct SettingsDeveloperPage: View {
                     forcesUsageReportsCard = isOn
                 })) {
                     Text(verbatim: "Force usage reports card")
+                }
+
+                Toggle(isOn: $forcesPluginUpdateCard) {
+                    Text(verbatim: "Force plugin update card")
                 }
 
                 NavigationLink {

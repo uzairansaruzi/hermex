@@ -44,6 +44,16 @@ hermex-push's restart route (0.4.0 or newer, #934) re-execs the dashboard proces
 
 Lives in: `HermesMobile/Features/Bots/HermexPushProvisioner.swift`, `HermesMobile/Networking/Bots/BotDashboardClient.swift`, `HermesMobileTests/HermexPushProvisioningTests.swift`
 
+## Offer hermex-push updates outside Settings
+
+Two signals say a paired host's plugin should be updated (#1803). `HermexPushPlugin.minimumVersion` is the oldest plugin this build works properly with, and a loaded plugin below it is recommended the update. At or above it, the host's own update check is the other signal: `plugins.manage` `list`, sent without a Profile so it lists the dashboard's own plugins, reports `update_available` with an `update_target` (a commit or a feed version) for a git install its last scheduled check found behind; the listing makes no network call, so an update shows only after that check has run. The same row's `version` is `plugin.yaml` on disk, so a newer one than the loaded version means an update is waiting for a restart. Features still gate on `/capabilities`, never on a version.
+
+`HermexPushUpdateOffers` keeps each server's last accepted standing in memory, keyed by server URL, so one server's answer never shows under another. The Hermes Sessions list checks once its connection is live, at most hourly per server, through the same `checkPlugin()` Settings runs, which refreshes it too. The check runs outside the view so leaving the list does not drop the answer. Only a paired server publishes an offer, and a passive read that started before Settings accepted a newer result or the push pairing changed is dropped (a per-server revision), since a slow host can answer it after an update finished.
+
+The session list card ranks ahead of every other card, ignores the one-card-per-launch rule and the rating cooldown, because it fixes something. Its button opens Notifications in a sheet and raises the existing update confirmation there, so progress, failures and the restart stay on the one page that renders them and the gateway restart stays behind a confirmation. Dismissing it stores the offer it showed (the minimum, the host's target, or the restart) per server, and a different offer brings it back. Notifications in Settings shows a dot while any offer stands, dismissed or not.
+
+Lives in: `HermesMobile/Features/Bots/HermexPushPairing.swift`, `HermesMobile/Features/Bots/HermexPushProvisioner.swift`, `HermesMobile/Features/SessionList/SessionListCards.swift`, `HermesMobileTests/HermexPushProvisioningTests.swift`, `HermesMobileTests/SessionListCardTests.swift`
+
 ## Let push host runs outlive Settings
 
 Setup, the plugin update, and the restart change the host, so the existing provisioner owns each run to the end even if Settings closes before it returns. Once the host has been asked to change or restart, cancelling with the screen would abandon that transaction halfway.

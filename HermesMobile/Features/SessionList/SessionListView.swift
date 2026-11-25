@@ -208,7 +208,7 @@ struct SessionListView: View {
                     moment: ratingMoment,
                     server: server,
                     isSessionListVisible: {
-                        if let card = SessionListCard.current(hasSharedImport: hasSharedImport), isQuietSessionListVisible {
+                        if let card = SessionListCard.current(pluginUpdateServer: nil, hasSharedImport: hasSharedImport), isQuietSessionListVisible {
                             RatingPromptState.shared.recordCardShown(card)
                         }
                         return isQuietSessionListVisible

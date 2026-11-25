@@ -2,18 +2,41 @@ import SwiftUI
 
 struct SessionListCardSlot: View {
     let hasSharedImport: Bool
+    var pluginUpdateServer: URL?
+    var openNotifications: () -> Void = {}
     @AppStorage(TipJar.completedResponseCountKey) private var completedResponses = 0
     @AppStorage(TipJar.dismissedReleaseKey) private var tipDismissedRelease: String?
     @AppStorage(GitHubStar.dismissedReleaseKey) private var starDismissedRelease: String?
     @AppStorage(UsageReports.Keys.acceptedVersion) private var acceptedUsageVersion: Int?
     @AppStorage(UsageReports.Keys.declinedVersion) private var declinedUsageVersion: Int?
     @AppStorage(UsageReports.Keys.debugForcesCard) private var forcesUsageReportsCard = false
+    #if DEBUG
+    @AppStorage(HermexPushUpdateOffers.debugForcesCardKey) private var forcesPluginUpdateCard = false
+    #endif
+
+    private var pluginOffer: HermexPushUpdateOffer? {
+        guard let pluginUpdateServer else { return nil }
+        #if DEBUG
+        if forcesPluginUpdateCard { return HermexPushUpdateOffers.debugOffer }
+        #endif
+        return HermexPushUpdateOffers.shared.cardOffer(for: pluginUpdateServer)
+    }
 
     var body: some View {
         let consent = UsageReportConsent(acceptedVersion: acceptedUsageVersion, declinedVersion: declinedUsageVersion)
+        let pluginOffer = pluginOffer
         switch SessionListCard.current(completedResponses: completedResponses, tipDismissedRelease: tipDismissedRelease,
                                        starDismissedRelease: starDismissedRelease, usageReportConsent: consent,
-                                       forcesUsageReportsCard: forcesUsageReportsCard, hasSharedImport: hasSharedImport) {
+                                       forcesUsageReportsCard: forcesUsageReportsCard, offersPluginUpdate: pluginOffer != nil,
+                                       hasSharedImport: hasSharedImport) {
+        case .pluginUpdate:
+            if let pluginOffer, let pluginUpdateServer {
+                HermexPushUpdateCard(offer: pluginOffer, open: openNotifications) {
+                    HermexPushUpdateOffers.shared.dismiss(pluginOffer, for: pluginUpdateServer)
+                }
+                .padding(.horizontal, 16)
+                .sessionsScreenListRow()
+            }
         case .usageReports:
             if let question = consent.question() {
                 UsageReportsCard(question: question)
@@ -83,6 +106,38 @@ struct UsageReportsCard: View {
             Text("Send a weekly usage summary to the developer. Never message text, server addresses or file names.")
         case .moreFields(let fields):
             Text("This version adds \(Text(fields.formatted(.list(type: .and))).bold()) to the weekly summary. No thanks keeps sending the summary you already allowed.")
+        }
+    }
+}
+
+struct HermexPushUpdateCard: View {
+    let offer: HermexPushUpdateOffer
+    let open: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        SessionListCardShell(card: .pluginUpdate, title: title, message: message, faceShape: "circle", dismiss: dismiss) {
+            SessionListCardAnswerButton(title: offer.kind == .restart ? "Open Notifications" : "Update plugin…",
+                                        isProminent: true, action: open)
+                .accessibilityHint("Opens Notifications settings.")
+        }
+    }
+
+    private var title: LocalizedStringKey {
+        offer.kind == .restart ? "Restart Hermes to finish" : "Plugin update available"
+    }
+
+    private var message: Text {
+        let minimum = HermexPushPlugin.minimumVersion.description
+        switch offer.kind {
+        case .required(let loaded?):
+            return Text("Your Hermes host has hermex-push \(loaded.description) loaded. This version of Hermex needs \(minimum) or newer.")
+        case .required(nil):
+            return Text("Your Hermes host has an older hermex-push. This version of Hermex needs \(minimum) or newer.")
+        case .newer(let loaded):
+            return Text("Your Hermes host found a newer hermex-push than the \(loaded.description) it runs.")
+        case .restart:
+            return Text("Hermes loads the new plugin when it restarts.")
         }
     }
 }
@@ -191,16 +246,19 @@ private struct SessionListCardShell<Actions: View>: View {
     let faceShape: String
     let eyeLayout: BotAvatarEyeLayout?
     let hasCloseButton: Bool
+    let dismiss: (() -> Void)?
     let actions: Actions
 
     init(card: SessionListCard, title: LocalizedStringKey, message: Text, faceShape: String,
-         eyeLayout: BotAvatarEyeLayout? = nil, hasCloseButton: Bool = true, @ViewBuilder actions: () -> Actions) {
+         eyeLayout: BotAvatarEyeLayout? = nil, hasCloseButton: Bool = true, dismiss: (() -> Void)? = nil,
+         @ViewBuilder actions: () -> Actions) {
         self.card = card
         self.title = title
         self.message = message
         self.faceShape = faceShape
         self.eyeLayout = eyeLayout
         self.hasCloseButton = hasCloseButton
+        self.dismiss = dismiss
         self.actions = actions()
     }
 
@@ -282,7 +340,7 @@ private struct SessionListCardShell<Actions: View>: View {
 
     private var closeButton: some View {
         Button {
-            state.dismissFromCard()
+            if let dismiss { dismiss() } else { state.dismissFromCard() }
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 12, weight: .bold))

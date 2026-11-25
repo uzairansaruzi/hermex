@@ -337,7 +337,7 @@ final class UsageReports {
         switch card {
         case .tip: update(now) { $0.tip[keyPath: event] = true }
         case .star: update(now) { $0.star[keyPath: event] = true }
-        case .usageReports: return
+        case .pluginUpdate, .usageReports: return
         }
     }
 
