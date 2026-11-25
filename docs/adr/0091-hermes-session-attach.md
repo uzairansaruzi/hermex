@@ -49,3 +49,9 @@ Lives in: `HermesMobile/Features/Hermes/HermesConversation.swift`
 `HermesConversation`'s log name for a conversation is only its kind, "Bot Chat" or "Hermes session". It never carries a session id or a Profile name.
 
 Lives in: `HermesMobile/Features/Hermes/HermesConversation.swift`
+
+## Leave a refused attach to the user
+
+A `session.resume` the host answers with 4001 is its decision about this session, not a lost connection: the cause is in `data.reason` (`runtime_coordination_required`, `not_found`, `session_busy` and others share the code), so `HermesGateway` hands it over as `BotFailure.resumeRefused` and the screen shows that reason instead of "Connection lost". `HermesChatTurnCoordinator.reconnectIfNeeded`, which the chat calls on appear, after each load and on returning to the foreground, reattaches only an engine that was suspended; one that is still active and stopped has already shown its failure, and only Try Again, a send or a network change attaches it again. Reattaching there sent every refused open to the host twice (#1808).
+
+Lives in: `HermesMobile/Features/Chat/HermesChatTurnCoordinator.swift`, `HermesMobile/Networking/Hermes/HermesGateway.swift`

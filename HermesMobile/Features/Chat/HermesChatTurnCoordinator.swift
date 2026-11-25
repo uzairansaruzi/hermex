@@ -1599,7 +1599,7 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
     }
 
     func reconnectIfNeeded(modelContext: ModelContext?) async {
-        guard !needsSignIn else { return }
+        guard !needsSignIn, attaching != nil || !engine.isActive else { return }
         await activate()
     }
 
