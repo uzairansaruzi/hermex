@@ -26,6 +26,12 @@ Lives in: `HermesMobile/Features/Chat/ChatComposerView.swift`
 
 Lives in: `HermesMobile/Features/Chat/ChatComposerView.swift`
 
+## Keep the composer surface glass non-interactive
+
+`ChatComposerSurfaceStyle`, shared by the chat and bot composers, draws plain glass, not interactive glass. On an iPad with a trackpad, the pointer stays over the pill after the click that focuses it. In #1650's recording the pill then held its shape, vanished, and the card appeared at once, while the same morph under touch, where the finger lifts, ran smoothly. Plain glass has no hover state to hold. The composer's buttons keep their own interactive glass.
+
+Lives in: `HermesMobile/Features/Chat/ChatComposerPresentation.swift`
+
 ## Keep a solid canvas behind the composer toolbar row
 
 The expanded composer's toolbar row sits on a solid `Color(.appCanvas)` background while the card above stays glass on purpose. Transcript text scrolling under the row made the pills unreadable. The background bleeds up into the gap under the card and down past the keyboard gap and the bottom safe area, so no strip of transcript shows around the row.
