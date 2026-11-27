@@ -1,6 +1,6 @@
 import ImageIO
 import Observation
-import Photos
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -18,22 +18,9 @@ private enum HermexAttachmentPickerMode: Equatable {
 enum HermexAttachmentPickerPolicy {
     static let maximumBotAttachments = 8
     static let maximumSessionImages = 10
-    static let maximumVisiblePhotos = 180
 
     static func availableCapacity(existingCount: Int, maximum: Int = maximumBotAttachments) -> Int {
         max(0, maximum - existingCount)
-    }
-
-    static func toggledSelection(_ selected: [String], id: String, capacity: Int) -> [String] {
-        if selected.contains(id) {
-            return selected.filter { $0 != id }
-        }
-        guard selected.count < max(0, capacity) else { return selected }
-        return selected + [id]
-    }
-
-    static func visibleSelection(_ selected: [String], visibleIDs: Set<String>) -> [String] {
-        selected.filter(visibleIDs.contains)
     }
 
     static func confirmationLabel(count: Int) -> String {
@@ -61,187 +48,52 @@ struct HermexAttachmentLifecycleFence {
     }
 }
 
-private enum HermexPhotoLibraryStatus: Equatable {
-    case idle
-    case loading
-    case denied
-    case empty
-    case ready(limited: Bool)
-}
-
 @MainActor
 @Observable
 private final class HermexAttachmentPickerModel {
-    private(set) var libraryStatus: HermexPhotoLibraryStatus = .idle
-    private(set) var assets: [PHAsset] = []
-    private(set) var selectedAssetIDs: [String] = []
+    var selection: [PhotosPickerItem] = []
     private(set) var isPreparing = false
-    private(set) var hasLimitedAccess = false
     var errorMessage: String?
 
-    var selectionCount: Int { selectedAssetIDs.count }
-
-    func loadLibrary() async {
-        libraryStatus = .loading
-        var authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        if authorization == .notDetermined {
-            authorization = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-        }
-        guard authorization == .authorized || authorization == .limited else {
-            assets = []
-            selectedAssetIDs = []
-            hasLimitedAccess = false
-            libraryStatus = .denied
-            return
-        }
-        hasLimitedAccess = authorization == .limited
-
-        let options = PHFetchOptions()
-        options.fetchLimit = HermexAttachmentPickerPolicy.maximumVisiblePhotos
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        let result = PHAsset.fetchAssets(with: .image, options: options)
-        var loaded: [PHAsset] = []
-        loaded.reserveCapacity(result.count)
-        result.enumerateObjects { asset, _, _ in loaded.append(asset) }
-        selectedAssetIDs = HermexAttachmentPickerPolicy.visibleSelection(
-            selectedAssetIDs,
-            visibleIDs: Set(loaded.map(\.localIdentifier))
-        )
-        assets = loaded
-        libraryStatus = loaded.isEmpty ? .empty : .ready(limited: authorization == .limited)
-    }
-
-    func toggle(_ asset: PHAsset, capacity: Int) {
-        let nextIDs = HermexAttachmentPickerPolicy.toggledSelection(
-            selectedAssetIDs,
-            id: asset.localIdentifier,
-            capacity: capacity
-        )
-        guard nextIDs != selectedAssetIDs else { return }
-        selectedAssetIDs = nextIDs
-    }
-
-    func order(for asset: PHAsset) -> Int? {
-        selectedAssetIDs.firstIndex(of: asset.localIdentifier).map { $0 + 1 }
-    }
+    var selectionCount: Int { selection.count }
 
     func clearSelection() {
-        selectedAssetIDs = []
+        selection = []
     }
 
     func prepareSelection() async throws -> [HermexPickedMedia] {
-        guard !isPreparing else { return [] }
-        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.localIdentifier, $0) })
-        let selectedAssets = selectedAssetIDs.compactMap { assetsByID[$0] }
-        guard selectedAssets.count == selectedAssetIDs.count else {
-            throw HermexAttachmentPickerError.unreadablePhoto
-        }
-        guard !selectedAssets.isEmpty else { return [] }
+        guard !isPreparing, !selection.isEmpty else { return [] }
         isPreparing = true
         errorMessage = nil
         defer { isPreparing = false }
 
-        var prepared: [HermexPickedMedia] = []
-        prepared.reserveCapacity(selectedAssets.count)
-        for asset in selectedAssets {
-            try Task.checkCancellation()
-            let picked = try await HermexPhotoLibraryImageLoader.pickedImage(for: asset)
-            prepared.append(try await HermexAttachmentImageProcessor.prepare(
-                data: picked.data,
-                filename: picked.filename
-            ))
-        }
-        selectedAssetIDs = []
+        let prepared = try await HermexPickedPhotoImporter.prepare(
+            selection.map { item in { try await item.loadTransferable(type: Data.self) } },
+            batchName: "photo_\(Int(Date().timeIntervalSince1970))"
+        )
+        selection = []
         return prepared
     }
 }
 
-enum HermexPhotoLibraryImageLoader {
-    static func pickedImage(for asset: PHAsset) async throws -> HermexPickedMedia {
-        let name = PHAssetResource.assetResources(for: asset).first?.originalFilename ?? "Photo.jpg"
-        let options = PHImageRequestOptions()
-        options.isNetworkAccessAllowed = true
-        options.version = .current
-        let request = HermexPhotoLibraryImageRequest()
-
-        return try await withTaskCancellationHandler {
+enum HermexPickedPhotoImporter {
+    static func prepare(
+        _ loaders: [@Sendable () async throws -> Data?],
+        batchName: String
+    ) async throws -> [HermexPickedMedia] {
+        var prepared: [HermexPickedMedia] = []
+        prepared.reserveCapacity(loaders.count)
+        for (index, load) in loaders.enumerated() {
             try Task.checkCancellation()
-            return try await withCheckedThrowingContinuation { continuation in
-                request.start(asset: asset, name: name, options: options, continuation: continuation)
+            guard let data = try await load(), !data.isEmpty else {
+                throw HermexAttachmentPickerError.unreadablePhoto
             }
-        } onCancel: {
-            request.cancel()
+            prepared.append(try await HermexAttachmentImageProcessor.prepare(
+                data: data,
+                filename: "\(batchName)_\(index + 1).jpg"
+            ))
         }
-    }
-}
-
-private final class HermexPhotoLibraryImageRequest: @unchecked Sendable {
-    private let manager = PHImageManager.default()
-    private let lock = NSLock()
-    private var requestID = PHInvalidImageRequestID
-    private var continuation: CheckedContinuation<HermexPickedMedia, Error>?
-    private var isFinished = false
-
-    func start(
-        asset: PHAsset,
-        name: String,
-        options: PHImageRequestOptions,
-        continuation: CheckedContinuation<HermexPickedMedia, Error>
-    ) {
-        lock.lock()
-        guard !isFinished else {
-            lock.unlock()
-            continuation.resume(throwing: CancellationError())
-            return
-        }
-        self.continuation = continuation
-        lock.unlock()
-
-        let id = manager.requestImageDataAndOrientation(for: asset, options: options) { [weak self] data, _, _, info in
-            let result: Result<HermexPickedMedia, Error>
-            if let error = info?[PHImageErrorKey] as? Error {
-                result = .failure(error)
-            } else if (info?[PHImageCancelledKey] as? Bool) == true {
-                result = .failure(CancellationError())
-            } else if let data, !data.isEmpty {
-                result = .success(.init(data: data, filename: name))
-            } else {
-                result = .failure(HermexAttachmentPickerError.unreadablePhoto)
-            }
-            self?.finish(result)
-        }
-
-        lock.lock()
-        if isFinished {
-            lock.unlock()
-            manager.cancelImageRequest(id)
-        } else {
-            requestID = id
-            lock.unlock()
-        }
-    }
-
-    func cancel() {
-        finish(.failure(CancellationError()), cancellingRequest: true)
-    }
-
-    private func finish(_ result: Result<HermexPickedMedia, Error>, cancellingRequest: Bool = false) {
-        lock.lock()
-        guard !isFinished else {
-            lock.unlock()
-            return
-        }
-        isFinished = true
-        let id = requestID
-        requestID = PHInvalidImageRequestID
-        let continuation = continuation
-        self.continuation = nil
-        lock.unlock()
-
-        if cancellingRequest, id != PHInvalidImageRequestID {
-            manager.cancelImageRequest(id)
-        }
-        continuation?.resume(with: result)
+        return prepared
     }
 }
 
@@ -342,8 +194,6 @@ enum HermexAttachmentPickerLayoutMetrics {
 }
 
 private struct HermexAttachmentPickerLayout {
-    static let photoColumnCount = 3
-    static let photoGridSpacing: CGFloat = 1.5
     static let expandedMaximumWidth: CGFloat = 620
     static let expandedMaximumHeight: CGFloat = 700
 
@@ -373,11 +223,6 @@ private struct HermexAttachmentPickerLayout {
             leadingPadding: leadingPadding,
             bottomPadding: bottomPadding
         )
-    }
-
-    static func photoCellSide(panelWidth: CGFloat) -> CGFloat {
-        let spacing = photoGridSpacing * CGFloat(photoColumnCount - 1)
-        return max(1, floor((panelWidth - spacing) / CGFloat(photoColumnCount)))
     }
 }
 
@@ -558,8 +403,6 @@ struct HermexAttachmentPickerView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 cancelPreparation()
-            } else if mode == .photos, !isBusy {
-                Task { await model.loadLibrary() }
             }
         }
         .onDisappear(perform: cancelLifecycle)
@@ -601,7 +444,6 @@ struct HermexAttachmentPickerView: View {
             }
             menuRow(title: "Photos", systemImage: "photo.on.rectangle.angled", enabled: imageChoicesAreEnabled) {
                 animate { mode = .photos }
-                Task { await model.loadLibrary() }
             }
             if let onRecordVoiceNote {
                 menuRow(title: "Voice note", systemImage: "waveform", enabled: !isBusy) {
@@ -627,14 +469,20 @@ struct HermexAttachmentPickerView: View {
     }
 
     private var photoPanel: some View {
-        ZStack(alignment: .bottom) {
-            photoGrid
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.42)],
-                startPoint: .center,
-                endPoint: .bottom
-            )
-            .allowsHitTesting(false)
+        VStack(spacing: 0) {
+            PhotosPicker(
+                selection: $model.selection,
+                maxSelectionCount: max(1, imageCapacity),
+                selectionBehavior: .continuousAndOrdered,
+                matching: .images,
+                preferredItemEncoding: .current
+            ) {
+                Text("Photos")
+            }
+            .photosPickerStyle(.inline)
+            .photosPickerDisabledCapabilities(.selectionActions)
+            .photosPickerAccessoryVisibility(.hidden, edges: .bottom)
+            .allowsHitTesting(!isBusy)
 
             HStack(spacing: 12) {
                 roundControl(
@@ -663,116 +511,12 @@ struct HermexAttachmentPickerView: View {
                     .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: confirmLabel)
                 }
                 .buttonStyle(.plain)
-                .disabled(model.selectionCount == 0 || model.isPreparing || model.libraryStatus == .loading)
+                .disabled(model.selectionCount == 0 || model.isPreparing)
             }
             .padding(.horizontal, 25)
+            .padding(.top, 12)
             .padding(.bottom, 25)
-
-            if model.hasLimitedAccess {
-                Button("Manage Access", action: openSettings)
-                    .font(AppFont.caption(weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .frame(height: 36)
-                    .background(.black.opacity(0.54), in: Capsule())
-                    .padding(14)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
         }
-    }
-
-    @ViewBuilder
-    private var photoGrid: some View {
-        switch model.libraryStatus {
-        case .ready:
-            GeometryReader { proxy in
-                let spacing = HermexAttachmentPickerLayout.photoGridSpacing
-                let side = HermexAttachmentPickerLayout.photoCellSide(panelWidth: proxy.size.width)
-                ScrollView {
-                    LazyVGrid(
-                        columns: Array(
-                            repeating: GridItem(.fixed(side), spacing: spacing),
-                            count: HermexAttachmentPickerLayout.photoColumnCount
-                        ),
-                        spacing: spacing
-                    ) {
-                        ForEach(model.assets, id: \.localIdentifier) { asset in
-                            photoCell(asset, side: side)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 104)
-                }
-                .scrollIndicators(.hidden)
-                .accessibilityLabel("Recent photos")
-            }
-        case .loading, .idle:
-            GeometryReader { proxy in
-                let spacing = HermexAttachmentPickerLayout.photoGridSpacing
-                let side = HermexAttachmentPickerLayout.photoCellSide(panelWidth: proxy.size.width)
-                LazyVGrid(
-                    columns: Array(
-                        repeating: GridItem(.fixed(side), spacing: spacing),
-                        count: HermexAttachmentPickerLayout.photoColumnCount
-                    ),
-                    spacing: spacing
-                ) {
-                    ForEach(0..<15, id: \.self) { _ in
-                        Color(.appSurface)
-                            .frame(width: side, height: side)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Loading recent photos")
-            }
-        case .empty:
-            placeholder {
-                Image(systemName: "photo.on.rectangle").font(AppFont.title2())
-                Text("No photos are available.")
-            }
-        case .denied:
-            placeholder {
-                Image(systemName: "photo.badge.exclamationmark").font(AppFont.title2())
-                Text("Photo access is off").font(AppFont.headline())
-                Text("Allow access in Settings to browse recent photos here.")
-                    .font(AppFont.caption())
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.appSecondary)
-                Button("Open Settings", action: openSettings)
-                    .buttonStyle(.appProminent)
-            }
-        }
-    }
-
-    private func photoCell(_ asset: PHAsset, side: CGFloat) -> some View {
-        let order = model.order(for: asset)
-        return Button {
-            animate { model.toggle(asset, capacity: imageCapacity) }
-        } label: {
-            HermexPhotoAssetThumbnail(asset: asset, targetDimension: side)
-                .frame(width: side, height: side)
-                .clipped()
-                .overlay(alignment: .bottomTrailing) {
-                    if let order {
-                        Text("\(order)")
-                            .font(AppFont.caption(weight: .bold))
-                            .monospacedDigit()
-                            .foregroundStyle(.white)
-                            .frame(width: 24, height: 24)
-                            .background(Color.accentColor, in: Circle())
-                            .overlay { Circle().stroke(.white, lineWidth: 2) }
-                            .padding(5)
-                            .transition(.scale(scale: 0.45).combined(with: .opacity))
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .frame(width: side, height: side)
-        .accessibilityLabel(photoAccessibilityLabel(for: asset))
-        .accessibilityValue(order.map { "Selected, number \($0)" } ?? "Not selected")
-        .accessibilityAddTraits(order == nil ? [] : .isSelected)
     }
 
     private func roundControl(
@@ -792,13 +536,6 @@ struct HermexAttachmentPickerView: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .accessibilityLabel(label)
-    }
-
-    private func placeholder<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 10, content: content)
-            .foregroundStyle(.appPrimary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(32)
     }
 
     private var confirmLabel: String {
@@ -836,7 +573,7 @@ struct HermexAttachmentPickerView: View {
     }
 
     private func addSelection() {
-        guard case .ready = model.libraryStatus else { return }
+        guard imageCapacity > 0 else { return }
         startPreparation {
             try await model.prepareSelection()
         }
@@ -924,76 +661,8 @@ struct HermexAttachmentPickerView: View {
         animateDismissal()
     }
 
-    private func photoAccessibilityLabel(for asset: PHAsset) -> String {
-        guard let date = asset.creationDate else { return String(localized: "Photo") }
-        return String(localized: "Photo from \(date.formatted(date: .abbreviated, time: .shortened))")
-    }
-
     private func animate(_ changes: () -> Void) {
         withAnimation(reduceMotion ? nil : .snappy(duration: 0.28), changes)
-    }
-
-    private func openSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-        UIApplication.shared.open(url)
-    }
-}
-
-private struct HermexPhotoAssetThumbnail: View {
-    @Environment(\.displayScale) private var displayScale
-    private static let imageManager = PHCachingImageManager()
-
-    let asset: PHAsset
-    let targetDimension: CGFloat
-    @State private var image: UIImage?
-    @State private var requestID: PHImageRequestID = PHInvalidImageRequestID
-    @State private var requestToken: UUID?
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.12)
-            if let image {
-                Image(uiImage: image).resizable().scaledToFill()
-            }
-        }
-        .onAppear(perform: requestImage)
-        .onDisappear(perform: cancelRequest)
-        .onChange(of: asset.localIdentifier) {
-            cancelRequest()
-            image = nil
-            requestImage()
-        }
-    }
-
-    private func requestImage() {
-        guard requestID == PHInvalidImageRequestID else { return }
-        let token = UUID()
-        requestToken = token
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.resizeMode = .exact
-        options.isNetworkAccessAllowed = true
-        let pixelDimension = max(1, ceil(targetDimension * displayScale))
-        requestID = Self.imageManager.requestImage(
-            for: asset,
-            targetSize: CGSize(width: pixelDimension, height: pixelDimension),
-            contentMode: .aspectFill,
-            options: options
-        ) { result, info in
-            let cancelled = (info?[PHImageCancelledKey] as? Bool) == true
-            guard !cancelled, info?[PHImageErrorKey] == nil, let result else { return }
-            Task { @MainActor in
-                guard requestToken == token else { return }
-                image = result
-            }
-        }
-    }
-
-    private func cancelRequest() {
-        guard requestID != PHInvalidImageRequestID else { return }
-        Self.imageManager.cancelImageRequest(requestID)
-        requestID = PHInvalidImageRequestID
-        requestToken = nil
     }
 }
 
