@@ -69,16 +69,17 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertEqual(second?.caret, NSRange(location: 31, length: 0))
     }
 
-    func testAnEditEndsDictationEvenWhenUndoneBackToTheSameText() {
+    func testTheFirstWordsLandWhenTheStartingCaretWasStale() {
         var session = ComposerVoiceDraftUpdateSession()
-        session.begin(state("Keep", caret: 4))
-        XCTAssertNil(session.update(for: "late", current: state("Keep", caret: 4, generation: 2)))
+        session.begin(state("", caret: 12))
+        XCTAssertEqual(session.update(for: "Bună", current: state("", caret: 12))?.text, "Bună")
     }
 
-    func testAWriteFromOutsideTheEditorEndsDictation() {
+    func testAnEditAfterTheFirstWordsEndsDictationEvenWhenUndone() throws {
         var session = ComposerVoiceDraftUpdateSession()
         session.begin(state("Keep", caret: 4))
-        XCTAssertNil(session.update(for: "late", current: state("Replaced", caret: 4)))
+        let first = try XCTUnwrap(session.update(for: "late", current: state("Keep", caret: 4)))
+        XCTAssertNil(session.update(for: "later", current: state(first.text, caret: first.caret.location, generation: 2)))
     }
 
     func testAMovedCaretDoesNotMoveWhereTheWordsLand() {
