@@ -69,6 +69,15 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertEqual(second?.caret, NSRange(location: 31, length: 0))
     }
 
+    func testTheFirstWordsLandAtTheCurrentCaretAfterTheDraftChanged() {
+        var session = ComposerVoiceDraftUpdateSession()
+        session.begin(state("Keep", caret: 0))
+        XCTAssertEqual(
+            session.update(for: "late", current: state("Keep more", caret: 9, generation: 1))?.text,
+            "Keep more late"
+        )
+    }
+
     func testTheFirstWordsLandWhenTheStartingCaretWasStale() {
         var session = ComposerVoiceDraftUpdateSession()
         session.begin(state("", caret: 12))
