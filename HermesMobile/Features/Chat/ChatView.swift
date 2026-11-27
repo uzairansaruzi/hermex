@@ -299,6 +299,7 @@ struct ChatView: View {
     @AppStorage(ChatTranscriptDisplaySettings.thinkingAndToolCardsKey) private var thinkingAndToolCards = ThinkingAndToolCards.collapsed
     @AppStorage(ChatTranscriptDisplaySettings.foldsSettledTurnsKey) private var foldsSettledTurns = true
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
+    @AppStorage(ChatTranscriptDisplaySettings.showsServerLinkBannerKey) private var showsServerLinkBanner = ChatTranscriptDisplaySettings.defaultShowsServerLinkBanner
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
 
@@ -322,6 +323,10 @@ struct ChatView: View {
     let onOpenHermesSessions: ((HermesSessionListEntry) -> Void)?
 
     @State private var draftMessage = ""
+    @State private var serverLinkBanner = DelayedStatusDriver<ChatServerLinkNotice>()
+    private var shownServerLinkNotice: ChatServerLinkNotice? {
+        ChatServerLinkBanner.shownNotice(viewModel.serverLinkNotice, isEnabled: showsServerLinkBanner)
+    }
     @State private var draftQuotes: [ComposerQuote] = []
     @State private var draftRevision = 0
     @State private var isScrolledNearBottom = true
@@ -984,12 +989,26 @@ struct ChatView: View {
                         ChatOfflineCacheBanner()
                     }
 
+                    if showsServerLinkBanner {
+                        DelayedStatusView(driver: serverLinkBanner) { notice in
+                            ChatServerLinkBanner(notice: notice) {
+                                Task { await viewModel.networkPathDidChange() }
+                            }
+                            .transition(.opacity)
+                        }
+                    }
+
                     listenPlaybackBar
 
                     messageContent
                         .environment(\.layoutDirection, chatLayoutDirection)
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.showsListenPlaybackBar)
+                .task(id: shownServerLinkNotice) {
+                    await serverLinkBanner.run(target: shownServerLinkNotice,
+                                               policy: DelayedStatusPolicy(showAfter: .seconds(2)),
+                                               animation: ChatMotion.quickState(reduceMotion: reduceMotion))
+                }
 
                 composerAccessoryStack
 

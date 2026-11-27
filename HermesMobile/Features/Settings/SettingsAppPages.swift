@@ -72,6 +72,7 @@ struct SettingsChatPage: View {
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
+    @AppStorage(ChatTranscriptDisplaySettings.showsServerLinkBannerKey) private var showsServerLinkBanner = ChatTranscriptDisplaySettings.defaultShowsServerLinkBanner
 
     var body: some View {
         AppList {
@@ -115,6 +116,14 @@ struct SettingsChatPage: View {
                         title: String(localized: "Hide Attachment Paths"),
                         systemImage: "eye.slash",
                         note: String(localized: "The server still receives them.")
+                    )
+                }
+
+                Toggle(isOn: $showsServerLinkBanner) {
+                    SettingsLabel(
+                        title: String(localized: "Connection Status Bar"),
+                        systemImage: "bolt.horizontal.circle",
+                        note: String(localized: "Shows a bar in the chat while the link to the server is down.")
                     )
                 }
             }

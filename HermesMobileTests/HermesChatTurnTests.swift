@@ -911,6 +911,51 @@ import SwiftUI
         XCTAssertEqual(chat.turn.engine.connectionState, .disconnected)
     }
 
+    func testAnAttachedIdleChatShowsNoLinkNotice() async {
+        let chat = await openChat()
+        XCTAssertNil(chat.model.activeStreamID)
+        XCTAssertNil(chat.model.serverLinkNotice)
+    }
+
+    func testALinkThatDropsWhileNoReplyRunsIsShownAsDown() async {
+        let chat = await openChat()
+        XCTAssertNil(chat.model.activeStreamID, "nothing is streaming, as in an idle chat")
+        chat.turn.engine.disconnect(BotFailure.transport)
+        XCTAssertNotNil(chat.model.serverLinkNotice, "a dead link must show even with no reply running")
+        XCTAssertEqual(chat.turn.recoveryState, .idle, "the stream chip alone would have shown nothing")
+    }
+
+    func testASignInRefusalLeavesTheLinkNoticeToTheSignInPrompt() async {
+        let chat = await openChat()
+        chat.turn.engine.disconnect(BotFailure.rejected(401))
+        XCTAssertTrue(chat.model.hermesNeedsSignIn)
+        XCTAssertNil(chat.model.serverLinkNotice)
+    }
+
+    func testTheLinkBannerIsOffUnlessTurnedOnInSettings() {
+        XCTAssertFalse(ChatTranscriptDisplaySettings.defaultShowsServerLinkBanner)
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        XCTAssertNil(defaults.object(forKey: ChatTranscriptDisplaySettings.showsServerLinkBannerKey))
+        XCTAssertNil(ChatServerLinkBanner.shownNotice(.lost, isEnabled: false))
+        XCTAssertNil(ChatServerLinkBanner.shownNotice(.connecting, isEnabled: false))
+    }
+
+    func testTheLinkBannerShowsTheNoticeWhenTurnedOn() async {
+        let chat = await openChat()
+        chat.turn.engine.disconnect(BotFailure.transport)
+        let notice = chat.model.serverLinkNotice
+        XCTAssertNotNil(notice)
+        XCTAssertEqual(ChatServerLinkBanner.shownNotice(notice, isEnabled: true), notice)
+        XCTAssertNil(ChatServerLinkBanner.shownNotice(notice, isEnabled: false), "off hides even a dead link")
+        XCTAssertNil(ChatServerLinkBanner.shownNotice(nil, isEnabled: true))
+    }
+
+    func testTheLinkBannerSaysPlainlyThatTheServerIsNotConnected() {
+        XCTAssertEqual(ChatServerLinkBanner.label(for: .lost), "Not connected to the server. Reconnecting…")
+        XCTAssertEqual(ChatServerLinkBanner.label(for: .connecting), "Connecting to the server…")
+    }
+
     func testTheAtPanelCompletesPathsOnTheCurrentRuntimeOfALocalBackend() async {
         let chat = await openChat()
         XCTAssertFalse(chat.model.offersFilePathSearch, "no session.info has named a folder")

@@ -1576,6 +1576,14 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
         case .disconnected: return isNetworkAvailable() ? .reconnecting : .waitingForNetwork
         }
     }
+    var serverLinkNotice: ChatServerLinkNotice? {
+        guard engine.isActive, !needsSignIn else { return nil }
+        switch engine.connectionState {
+        case .connected: return nil
+        case .recovering: return .connecting
+        case .disconnected: return .lost
+        }
+    }
     var liveTokensPerSecond: Double? { nil }
     var hasCompletedCurrentResponse: Bool { false }
     var isConnectionSuspended: Bool { !engine.isActive }
