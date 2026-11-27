@@ -136,9 +136,6 @@ private struct TranscriptMediaThumbnailView: View {
             .buttonStyle(.chatTactile(.thumbnail))
             .accessibilityLabel(imageButtonAccessibilityLabel)
             .loadsOnceVisible(id: imageCacheKey) { admittedImageKey = $0 }
-            // A Hermes host load needs an attached chat; like the inline audio player and HTML reports,
-            // key the load to the chat's attach generation so a row shown before (or between) attaches
-            // loads once the chat attaches instead of keeping "Media unavailable".
             .task(id: TranscriptMediaImageLoadID(key: admittedImageKey, attach: htmlReportLoader?.loadKey)) {
                 guard let loadMediaImage, admittedImageKey == imageCacheKey else { return }
                 if TranscriptMediaImageLoadPolicy.reusesLoadedImage(hasImage: image != nil, loadedKey: loadedImageKey,
@@ -687,18 +684,12 @@ struct TranscriptMediaImageLoadID: Hashable {
     let attach: Int?
 }
 
-/// When a transcript image load reruns, and what a failed load shows meanwhile. Every image's load id carries
-/// the chat's attach generation, so an image with no loaded picture (a failed one included) loads again on
-/// each attach, whatever its source.
 enum TranscriptMediaImageLoadPolicy {
-    /// A picture already loaded for this key is kept; a failed or missing one never blocks the next load.
     static func reusesLoadedImage(hasImage: Bool, loadedKey: TranscriptMediaImageCacheKey?,
                                   key: TranscriptMediaImageCacheKey) -> Bool {
         hasImage && loadedKey == key
     }
 
-    /// Only a Hermes-hosted file needs the attached chat, so only its failure before attach keeps the spinner
-    /// instead of "Media unavailable". An outside URL loads without the chat: its failure shows at once.
     static func waitsForAttach(_ reference: TranscriptMediaReference, hasHermesLoader: Bool, attachKey: Int?) -> Bool {
         guard hasHermesLoader, attachKey == nil, case .localPath = reference.source else { return false }
         return true
