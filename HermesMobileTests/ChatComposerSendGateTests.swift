@@ -1,4 +1,5 @@
 import AVFoundation
+import os
 import SwiftUI
 import UIKit
 import XCTest
@@ -375,15 +376,58 @@ final class ChatComposerSendGateTests: XCTestCase {
 }
 
 final class HermexAttachmentPickerPolicyTests: XCTestCase {
-    func testSelectionPreservesOrderAndHonorsCapacity() {
-        var selection: [String] = []
-        selection = HermexAttachmentPickerPolicy.toggledSelection(selection, id: "a", capacity: 2)
-        selection = HermexAttachmentPickerPolicy.toggledSelection(selection, id: "b", capacity: 2)
-        selection = HermexAttachmentPickerPolicy.toggledSelection(selection, id: "c", capacity: 2)
-        XCTAssertEqual(selection, ["a", "b"])
+    private static func opaquePNG(width: CGFloat) -> Data {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = true
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: width, height: 40), format: format).pngData { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: 40))
+        }
+    }
 
-        selection = HermexAttachmentPickerPolicy.toggledSelection(selection, id: "a", capacity: 2)
-        XCTAssertEqual(selection, ["b"])
+    func testPickedPhotosImportInSelectionOrder() async throws {
+        let first = Self.opaquePNG(width: 30)
+        let second = Self.opaquePNG(width: 90)
+
+        let media = try await HermexPickedPhotoImporter.prepare(
+            [{ first }, { second }],
+            batchName: "photo_1"
+        )
+
+        XCTAssertEqual(media.compactMap { UIImage(data: $0.data)?.size.width }, [30, 90])
+    }
+
+    func testUnreadablePickedPhotoFailsTheWholeImport() async {
+        let image = Self.opaquePNG(width: 30)
+        do {
+            _ = try await HermexPickedPhotoImporter.prepare([{ image }, { nil }], batchName: "photo_1")
+            XCTFail("Expected the import to fail")
+        } catch {
+            XCTAssertFalse(error is CancellationError)
+        }
+    }
+
+    func testCancelledImportStopsBeforeLoadingTheRest() async {
+        let image = Self.opaquePNG(width: 30)
+        let secondLoaded = OSAllocatedUnfairLock(initialState: false)
+        let task = Task {
+            try await HermexPickedPhotoImporter.prepare(
+                [
+                    { withUnsafeCurrentTask { $0?.cancel() }; return image },
+                    { secondLoaded.withLock { $0 = true }; return image }
+                ],
+                batchName: "photo_1"
+            )
+        }
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected cancellation")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertFalse(secondLoaded.withLock { $0 })
     }
 
     func testLifecycleFenceRejectsLateCompletion() {
