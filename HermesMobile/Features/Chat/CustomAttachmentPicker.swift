@@ -480,7 +480,7 @@ struct HermexAttachmentPickerView: View {
                 Text("Photos")
             }
             .photosPickerStyle(.inline)
-            .photosPickerDisabledCapabilities(.selectionActions)
+            .photosPickerDisabledCapabilities([.selectionActions, .search])
             .photosPickerAccessoryVisibility(.hidden, edges: .bottom)
             .allowsHitTesting(!isBusy)
 
@@ -603,6 +603,7 @@ struct HermexAttachmentPickerView: View {
             } catch is CancellationError {
                 return
             } catch {
+                guard preparationFence.consume(operationID) else { return }
                 model.errorMessage = error.localizedDescription
             }
         }

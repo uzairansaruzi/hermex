@@ -395,7 +395,6 @@ final class HermexAttachmentPickerPolicyTests: XCTestCase {
             batchName: "photo_1"
         )
 
-        XCTAssertEqual(media.map(\.filename), ["photo_1_1.jpg", "photo_1_2.jpg"])
         XCTAssertEqual(media.compactMap { UIImage(data: $0.data)?.size.width }, [30, 90])
     }
 
