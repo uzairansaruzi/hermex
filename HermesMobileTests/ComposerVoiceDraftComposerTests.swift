@@ -69,16 +69,26 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertEqual(second?.caret, NSRange(location: 31, length: 0))
     }
 
-    func testAnEditEndsDictationEvenWhenUndoneBackToTheSameText() {
+    func testTheFirstWordsLandAtTheCurrentCaretAfterTheDraftChanged() {
         var session = ComposerVoiceDraftUpdateSession()
-        session.begin(state("Keep", caret: 4))
-        XCTAssertNil(session.update(for: "late", current: state("Keep", caret: 4, generation: 2)))
+        session.begin(state("Keep", caret: 0))
+        XCTAssertEqual(
+            session.update(for: "late", current: state("Keep more", caret: 9, generation: 1))?.text,
+            "Keep more late"
+        )
     }
 
-    func testAWriteFromOutsideTheEditorEndsDictation() {
+    func testTheFirstWordsLandWhenTheStartingCaretWasStale() {
+        var session = ComposerVoiceDraftUpdateSession()
+        session.begin(state("", caret: 12))
+        XCTAssertEqual(session.update(for: "Bună", current: state("", caret: 12))?.text, "Bună")
+    }
+
+    func testAnEditAfterTheFirstWordsEndsDictationEvenWhenUndone() throws {
         var session = ComposerVoiceDraftUpdateSession()
         session.begin(state("Keep", caret: 4))
-        XCTAssertNil(session.update(for: "late", current: state("Replaced", caret: 4)))
+        let first = try XCTUnwrap(session.update(for: "late", current: state("Keep", caret: 4)))
+        XCTAssertNil(session.update(for: "later", current: state(first.text, caret: first.caret.location, generation: 2)))
     }
 
     func testAMovedCaretDoesNotMoveWhereTheWordsLand() {

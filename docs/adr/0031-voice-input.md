@@ -31,3 +31,9 @@ Lives in: `HermesMobile/Features/Chat/InlineAudioPlayerView.swift`
 A server-transcribed voice note (`ChatViewModel.sendVoiceNote`) sends the transcript as the message text with no "[Attached files: …]" marker, so the model sees exactly the transcript and does not try to "inspect" (transcribe) the clip itself instead of answering it (#330). The clip still rides along as a display-only attachment so the inline player renders and persists; the server strips this attachment metadata before the model call, so it never reaches the agent. On reload the server often returns the clip attachment as a bare filename with no path while the optimistic bubble holds the full upload path, and `ChatViewModel.mergingLoadedMessages` must still match them so the optimistic message is not re-inserted as a duplicate user turn.
 
 Lives in: `HermesMobile/Features/Chat/ChatViewModel.swift`, `HermesMobileTests/ChatViewModelSendTests.swift`, `HermesMobileTests/ChatViewModelMergeDedupTests.swift`
+
+## Never drop the first words of a dictation
+
+A dictation write lands only while the draft text and the editor's publish generation (`ComposerSelection.publishGeneration`) still match what the session last saw, so a dictation never overwrites an edit, even one undone back to the same text. Applied to the first write, that check threw away a whole host transcript (#1638): host STT writes once, after the user has waited, and on affected phones the check failed on an empty draft nobody touched. `ComposerVoiceDraftUpdateSession` therefore lets the first write fall back to an insertion at the current caret, clamped to the draft, when the starting span no longer applies. An insertion removes no text, so there is nothing to protect yet; every later write still ends the dictation on any change.
+
+Lives in: `HermesMobile/Features/Chat/ComposerVoiceInputController.swift`, `HermesMobileTests/ComposerVoiceDraftComposerTests.swift`

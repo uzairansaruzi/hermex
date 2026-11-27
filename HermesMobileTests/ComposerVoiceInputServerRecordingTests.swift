@@ -179,18 +179,18 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
     }
 
-    func testServerTranscriptAfterAnEditLeavesTheDraftAndExplains() async {
+    func testServerTranscriptLandsAfterTheEditorReportsAnEditWithNoVisibleChange() async {
         let recorder = DictationTestRecorder()
         let controller = ComposerVoiceInputController(
             speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
             serverRecorder: recorder, mayRecord: { true })
         controller.transcribe = { _, _ in TranscribeResponse(ok: true, transcript: "late words", error: nil) }
-        let draft = DictationTestDraft("Before") { _ in XCTFail("A stale result must not write") }
+        let draft = DictationTestDraft("") { _ in }
         await controller.toggle(draft: draft)
-        draft.type("Before and my edit")
+        draft.type("")
         await finishRecording(controller)
-        XCTAssertEqual(draft.text, "Before and my edit")
-        XCTAssertEqual(controller.errorMessage, "Dictation stopped because the draft changed.")
+        XCTAssertEqual(draft.text, "late words")
+        XCTAssertNil(controller.errorMessage)
     }
 
     func testWithoutATranscriberNothingRecordsForTheServer() async {

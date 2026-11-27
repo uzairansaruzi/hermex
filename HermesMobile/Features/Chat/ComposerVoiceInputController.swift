@@ -1191,17 +1191,25 @@ struct ComposerVoiceDraftUpdateSession {
         let generation: Int
         var expectedText: String
         var range: NSRange
+        var hasWritten = false
+
+        init(_ draft: ComposerVoiceDraftState, range: NSRange) {
+            original = ComposerVoiceDraftUpdate(text: draft.text, caret: draft.selection.range)
+            generation = draft.selection.publishGeneration
+            expectedText = draft.text
+            self.range = range
+        }
+
+        init(insertingAtCaretOf draft: ComposerVoiceDraftState) {
+            let caret = min(max(0, draft.selection.range.location), (draft.text as NSString).length)
+            self.init(draft, range: NSRange(location: caret, length: 0))
+        }
     }
 
     private var ownership: Ownership?
 
     mutating func begin(_ draft: ComposerVoiceDraftState) {
-        ownership = Ownership(
-            original: ComposerVoiceDraftUpdate(text: draft.text, caret: draft.selection.range),
-            generation: draft.selection.publishGeneration,
-            expectedText: draft.text,
-            range: draft.selection.range
-        )
+        ownership = Ownership(draft, range: draft.selection.range)
     }
 
     mutating func stopAcceptingUpdates() {
@@ -1209,12 +1217,19 @@ struct ComposerVoiceDraftUpdateSession {
     }
 
     mutating func update(for transcript: String, current: ComposerVoiceDraftState) -> ComposerVoiceDraftUpdate? {
-        guard var ownership, Self.isUnchanged(current, since: ownership),
-              let update = ComposerVoiceDraftComposer.replacing(ownership.range, in: current.text, with: transcript)
-        else { return nil }
+        guard var ownership else { return nil }
+        var update = Self.isUnchanged(current, since: ownership)
+            ? ComposerVoiceDraftComposer.replacing(ownership.range, in: current.text, with: transcript)
+            : nil
+        if update == nil, !ownership.hasWritten {
+            ownership = Ownership(insertingAtCaretOf: current)
+            update = ComposerVoiceDraftComposer.replacing(ownership.range, in: current.text, with: transcript)
+        }
+        guard let update else { return nil }
 
         ownership.expectedText = update.text
         ownership.range.length = update.caret.location - ownership.range.location
+        ownership.hasWritten = true
         self.ownership = ownership
         return update
     }
