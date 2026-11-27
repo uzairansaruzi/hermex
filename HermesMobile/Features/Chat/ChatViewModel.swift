@@ -245,6 +245,12 @@ enum ActiveStreamRecoveryState: Equatable {
     case waitingForNetwork
 }
 
+enum ChatServerLinkNotice: Equatable {
+    case connecting
+    case lost
+    case stopped
+}
+
 @MainActor
 @Observable
 final class ChatViewModel {
@@ -289,6 +295,7 @@ final class ChatViewModel {
     var activeRunStartedAt: Date? { turn.activeRunStartedAt }
     private(set) var latestRunOutcome: TranscriptTurnRunOutcome?
     var activeStreamRecoveryState: ActiveStreamRecoveryState { turn.recoveryState }
+    var serverLinkNotice: ChatServerLinkNotice? { turn.serverLinkNotice }
     var liveTokensPerSecond: Double? { turn.liveTokensPerSecond }
     private(set) var errorMessage: String? { didSet { errorMayRetry = true; errorUnserved = nil } }
     private(set) var errorMayRetry = true

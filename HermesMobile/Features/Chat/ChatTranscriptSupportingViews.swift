@@ -1201,6 +1201,49 @@ struct ChatOfflineCacheBanner: View {
     }
 }
 
+struct ChatServerLinkBanner: View {
+    let notice: ChatServerLinkNotice
+    var onReconnect: () -> Void = {}
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: notice == .connecting ? "arrow.triangle.2.circlepath" : "bolt.horizontal.circle")
+                .imageScale(.small)
+                .accessibilityHidden(true)
+
+            Text(Self.label(for: notice))
+                .font(AppFont.subheadline())
+                .fontWeight(.semibold)
+                .lineLimit(2)
+
+            Spacer()
+
+            if notice != .connecting {
+                Button("Reconnect", action: onReconnect)
+                    .font(AppFont.subheadline())
+                    .buttonStyle(.borderless)
+            }
+        }
+        .foregroundStyle(.red)
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(Color.red.opacity(0.12))
+        .accessibilityElement(children: .contain)
+    }
+
+    static func shownNotice(_ notice: ChatServerLinkNotice?, isEnabled: Bool) -> ChatServerLinkNotice? {
+        isEnabled ? notice : nil
+    }
+
+    static func label(for notice: ChatServerLinkNotice) -> String {
+        switch notice {
+        case .connecting: String(localized: "Connecting to the server…")
+        case .lost: String(localized: "Not connected to the server. Reconnecting…")
+        case .stopped: String(localized: "Not connected to the server.")
+        }
+    }
+}
+
 struct PinnedLocalNoticeStack: View {
     let notices: [String]
 

@@ -93,7 +93,7 @@ extension HermesConversationOwner {
     private(set) var replayWasReset = false
     private(set) var isActive = false
     private(set) var isReconnecting = false
-    private var shouldRetryConnection = false
+    private(set) var shouldRetryConnection = false
     @ObservationIgnored private var heldFrames: [BotJSON] = []
     @ObservationIgnored private var framesPastHold = 0
     @ObservationIgnored private var resumeRefusedSince: ContinuousClock.Instant?

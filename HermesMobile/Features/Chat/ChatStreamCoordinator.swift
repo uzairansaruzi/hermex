@@ -110,6 +110,7 @@ protocol ChatTurnCoordinating: AnyObject {
     var activeStreamID: String? { get }
     var activeRunStartedAt: Date? { get }
     var recoveryState: ActiveStreamRecoveryState { get }
+    var serverLinkNotice: ChatServerLinkNotice? { get }
     var latestRunEnding: ChatRunEnding? { get }
     var successfulResponseCompletion: ChatStreamCoordinator.SuccessfulResponseCompletion? { get }
     var liveTokensPerSecond: Double? { get }
@@ -127,7 +128,9 @@ protocol ChatTurnCoordinating: AnyObject {
     func clearReplayConnection()
 }
 
-extension ChatStreamCoordinator: ChatTurnCoordinating {}
+extension ChatStreamCoordinator: ChatTurnCoordinating {
+    var serverLinkNotice: ChatServerLinkNotice? { nil }
+}
 
 @MainActor
 @Observable

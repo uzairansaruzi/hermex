@@ -313,6 +313,8 @@ enum ChatTranscriptDisplaySettings {
     static let showsAssistantTurnTimestampsKey = "chatTranscript.showsAssistantTurnTimestamps"
     static let defaultShowsTimestamps = true
     static let showsResponseSpeedKey = "chatTranscript.showsResponseSpeed"
+    static let showsServerLinkBannerKey = "chatTranscript.showsServerLinkBanner"
+    static let defaultShowsServerLinkBanner = false
     static let foldsSettledTurnsKey = "chatTranscript.foldsSettledTurns"
 
     static let rtlChatLayoutEnabledKey = "chatTranscript.rtlChatLayoutEnabled"
