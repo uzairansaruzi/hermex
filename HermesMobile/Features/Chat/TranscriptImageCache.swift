@@ -30,11 +30,12 @@ actor TranscriptImageCache {
         notificationCenter.removeObserver(memoryWarningObserver)
     }
 
-    func image(forKey key: String, load: @escaping () async -> Data?) async -> UIImage? {
+    func image(forKey key: String, generation: Int? = nil, load: @escaping () async -> Data?) async -> UIImage? {
         if let cached = storage.object(forKey: key as NSString) {
             return cached
         }
-        if let task = inFlight[key] {
+        let flightKey = generation.map { "\(key)|generation:\($0)" } ?? key
+        if let task = inFlight[flightKey] {
             return await task.value
         }
 
@@ -42,9 +43,9 @@ actor TranscriptImageCache {
             guard let data = await load() else { return nil }
             return Self.thumbnail(from: data)
         }
-        inFlight[key] = task
+        inFlight[flightKey] = task
         let image = await task.value
-        inFlight[key] = nil
+        inFlight[flightKey] = nil
 
         if let image {
             storage.setObject(image, forKey: key as NSString, cost: Self.decodedByteCount(of: image))

@@ -109,6 +109,7 @@ private struct TranscriptMediaThumbnailView: View {
     @State private var image: UIImage?
     @State private var didAttemptLoad = false
     @State private var admittedImageKey: TranscriptMediaImageCacheKey?
+    @State private var loadedImageKey: TranscriptMediaImageCacheKey?
 
     private let thumbnailWidth: CGFloat = 210
     private let thumbnailHeight: CGFloat = 132
@@ -135,18 +136,26 @@ private struct TranscriptMediaThumbnailView: View {
             .buttonStyle(.chatTactile(.thumbnail))
             .accessibilityLabel(imageButtonAccessibilityLabel)
             .loadsOnceVisible(id: imageCacheKey) { admittedImageKey = $0 }
-            .task(id: admittedImageKey) {
+            .task(id: TranscriptMediaImageLoadID(key: admittedImageKey, attach: htmlReportLoader?.loadKey)) {
                 guard let loadMediaImage, admittedImageKey == imageCacheKey else { return }
+                if TranscriptMediaImageLoadPolicy.reusesLoadedImage(hasImage: image != nil, loadedKey: loadedImageKey,
+                                                                    key: imageCacheKey) { return }
+                let attach = htmlReportLoader?.loadKey
+                let waitsForAttach = TranscriptMediaImageLoadPolicy.waitsForAttach(
+                    reference, hasHermesLoader: htmlReportLoader != nil, attachKey: attach
+                )
                 image = nil
                 didAttemptLoad = false
                 let reference = reference
-                let loadedImage = await TranscriptImageCache.shared.image(forKey: imageCacheKey.cacheKey) {
+                let key = imageCacheKey
+                let loadedImage = await TranscriptImageCache.shared.image(forKey: key.cacheKey, generation: attach) {
                     await loadMediaImage(reference)
                 }
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     image = loadedImage
-                    didAttemptLoad = true
+                    loadedImageKey = loadedImage == nil ? nil : key
+                    didAttemptLoad = loadedImage != nil || !waitsForAttach
                 }
             }
         case .audio where loadMediaData != nil:
@@ -668,6 +677,23 @@ private struct TranscriptMediaUnavailableChip: View {
         case .unsupported:
             "doc"
         }
+    }
+}
+
+struct TranscriptMediaImageLoadID: Hashable {
+    let key: TranscriptMediaImageCacheKey?
+    let attach: Int?
+}
+
+enum TranscriptMediaImageLoadPolicy {
+    static func reusesLoadedImage(hasImage: Bool, loadedKey: TranscriptMediaImageCacheKey?,
+                                  key: TranscriptMediaImageCacheKey) -> Bool {
+        hasImage && loadedKey == key
+    }
+
+    static func waitsForAttach(_ reference: TranscriptMediaReference, hasHermesLoader: Bool, attachKey: Int?) -> Bool {
+        guard hasHermesLoader, attachKey == nil, case .localPath = reference.source else { return false }
+        return true
     }
 }
 

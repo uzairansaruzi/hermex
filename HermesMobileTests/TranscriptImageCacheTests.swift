@@ -82,6 +82,60 @@ final class TranscriptImageCacheTests: XCTestCase {
         }
     }
 
+    func testANewGenerationDoesNotJoinAnEarlierGenerationsLoad() async {
+        let cache = TranscriptImageCache(notificationCenter: NotificationCenter())
+        let recorder = LoadRecorder()
+        let staleLoadStarted = expectation(description: "stale load started")
+        let (gate, openGate) = AsyncStream<Void>.makeStream()
+        let data = Self.pngData(width: 64, height: 64)
+        let staleLoad: () async -> Data? = {
+            _ = await recorder.recordCall()
+            staleLoadStarted.fulfill()
+            for await _ in gate {}
+            return nil
+        }
+        let freshLoad: () async -> Data? = {
+            _ = await recorder.recordCall()
+            return data
+        }
+
+        let stale = Task { await cache.image(forKey: "row", generation: nil, load: staleLoad) }
+        await fulfillment(of: [staleLoadStarted])
+        let fresh = await cache.image(forKey: "row", generation: 1, load: freshLoad)
+        openGate.finish()
+        let staleImage = await stale.value
+
+        let callCount = await recorder.callCount
+        XCTAssertEqual(callCount, 2, "the attached generation makes its own request")
+        XCTAssertEqual(fresh?.cgImage?.width, 64)
+        XCTAssertNil(staleImage)
+    }
+
+    func testOneGenerationStillSharesItsInFlightLoad() async {
+        let cache = TranscriptImageCache(notificationCenter: NotificationCenter())
+        let recorder = LoadRecorder()
+        let firstLoadStarted = expectation(description: "first load started")
+        let (gate, openGate) = AsyncStream<Void>.makeStream()
+        let data = Self.pngData(width: 64, height: 64)
+        let load: () async -> Data? = {
+            if await recorder.recordCall() == 1 {
+                firstLoadStarted.fulfill()
+                for await _ in gate {}
+            }
+            return data
+        }
+
+        let first = Task { await cache.image(forKey: "row", generation: 2, load: load) }
+        await fulfillment(of: [firstLoadStarted])
+        let second = Task { await cache.image(forKey: "row", generation: 2, load: load) }
+        openGate.finish()
+        _ = await first.value
+        _ = await second.value
+
+        let callCount = await recorder.callCount
+        XCTAssertEqual(callCount, 1)
+    }
+
     func testBytesThatAreNotAnImageReturnNilAndAreNotCached() async {
         let cache = TranscriptImageCache(notificationCenter: NotificationCenter())
         let recorder = LoadRecorder()
