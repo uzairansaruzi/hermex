@@ -28,7 +28,7 @@ Lives in: `HermesMobile/Features/Chat/ChatComposerView.swift`
 
 ## Keep the composer surface glass non-interactive
 
-`ChatComposerSurfaceStyle`, shared by the chat and bot composers, draws plain glass, not interactive glass. On an iPad with a trackpad, the pointer stays over the pill after the click that focuses it. In #1650's recording the pill then held its shape, vanished, and the card appeared at once, while the same morph under touch, where the finger lifts, ran smoothly. Plain glass has no hover state to hold. The composer's buttons keep their own interactive glass.
+`ChatComposerSurfaceStyle`, shared by the chat and bot composers, draws plain glass, not interactive glass. On an iPad with a trackpad, the pointer stays over the pill after the click that focuses it. In #1650's recording the pill then held its shape, vanished, and the card appeared at once, while the same morph under touch, where the finger lifts, ran smoothly, including on an iPad simulator with a hardware keyboard. Interactive glass held in its hover state is the likely cause; no pointer was available to confirm it. Plain glass has no hover state to hold. The composer's buttons keep their own interactive glass.
 
 Lives in: `HermesMobile/Features/Chat/ChatComposerPresentation.swift`
 
