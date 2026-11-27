@@ -1231,7 +1231,6 @@ struct ChatServerLinkBanner: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The notice to show, or nil while the user has the bar turned off in Settings › Chat.
     static func shownNotice(_ notice: ChatServerLinkNotice?, isEnabled: Bool) -> ChatServerLinkNotice? {
         isEnabled ? notice : nil
     }

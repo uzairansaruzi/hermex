@@ -245,13 +245,9 @@ enum ActiveStreamRecoveryState: Equatable {
     case waitingForNetwork
 }
 
-/// Shown above the transcript whenever the chat's live link to the server is down,
-/// whether or not a reply is running.
 enum ChatServerLinkNotice: Equatable {
     case connecting
-    /// Down, and the client retries on its own.
     case lost
-    /// Down, and the client has stopped retrying; only Reconnect brings it back.
     case stopped
 }
 
