@@ -954,6 +954,22 @@ import SwiftUI
     func testTheLinkBannerSaysPlainlyThatTheServerIsNotConnected() {
         XCTAssertEqual(ChatServerLinkBanner.label(for: .lost), "Not connected to the server. Reconnecting…")
         XCTAssertEqual(ChatServerLinkBanner.label(for: .connecting), "Connecting to the server…")
+        XCTAssertEqual(ChatServerLinkBanner.label(for: .stopped), "Not connected to the server.")
+    }
+
+    func testALinkTheClientRetriesShowsAsReconnecting() async {
+        let chat = await openChat()
+        chat.turn.engine.disconnect(BotFailure.transport)
+        XCTAssertTrue(chat.turn.engine.shouldRetryConnection)
+        XCTAssertEqual(chat.model.serverLinkNotice, .lost)
+    }
+
+    func testALinkTheClientStoppedRetryingDoesNotClaimToReconnect() async {
+        let chat = await openChat()
+        chat.turn.engine.disconnect(BotFailure.rejected(403))
+        XCTAssertFalse(chat.turn.engine.shouldRetryConnection, "a 403 is never retried")
+        XCTAssertEqual(chat.model.serverLinkNotice, .stopped)
+        XCTAssertFalse(ChatServerLinkBanner.label(for: .stopped).contains("Reconnecting"))
     }
 
     func testTheAtPanelCompletesPathsOnTheCurrentRuntimeOfALocalBackend() async {

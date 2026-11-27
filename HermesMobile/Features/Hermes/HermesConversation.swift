@@ -93,7 +93,8 @@ extension HermesConversationOwner {
     private(set) var replayWasReset = false
     private(set) var isActive = false
     private(set) var isReconnecting = false
-    private var shouldRetryConnection = false
+    /// Whether a dropped link is retried; false after a failure the client never retries (403, profile not served, ...).
+    private(set) var shouldRetryConnection = false
     @ObservationIgnored private var heldFrames: [BotJSON] = []
     @ObservationIgnored private var framesPastHold = 0
     @ObservationIgnored private var resumeRefusedSince: ContinuousClock.Instant?

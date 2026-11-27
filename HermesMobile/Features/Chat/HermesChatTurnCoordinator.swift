@@ -1581,7 +1581,7 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
         switch engine.connectionState {
         case .connected: return nil
         case .recovering: return .connecting
-        case .disconnected: return .lost
+        case .disconnected: return engine.shouldRetryConnection ? .lost : .stopped
         }
     }
     var liveTokensPerSecond: Double? { nil }

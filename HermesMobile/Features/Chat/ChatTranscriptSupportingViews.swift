@@ -1207,7 +1207,7 @@ struct ChatServerLinkBanner: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: notice == .lost ? "bolt.horizontal.circle" : "arrow.triangle.2.circlepath")
+            Image(systemName: notice == .connecting ? "arrow.triangle.2.circlepath" : "bolt.horizontal.circle")
                 .imageScale(.small)
                 .accessibilityHidden(true)
 
@@ -1218,7 +1218,7 @@ struct ChatServerLinkBanner: View {
 
             Spacer()
 
-            if notice == .lost {
+            if notice != .connecting {
                 Button("Reconnect", action: onReconnect)
                     .font(AppFont.subheadline())
                     .buttonStyle(.borderless)
@@ -1240,6 +1240,7 @@ struct ChatServerLinkBanner: View {
         switch notice {
         case .connecting: String(localized: "Connecting to the server…")
         case .lost: String(localized: "Not connected to the server. Reconnecting…")
+        case .stopped: String(localized: "Not connected to the server.")
         }
     }
 }
