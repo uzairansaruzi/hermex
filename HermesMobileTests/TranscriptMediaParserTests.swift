@@ -346,3 +346,28 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertNotEqual(first, second)
     }
 }
+
+final class TranscriptMediaImageLoadPolicyTests: XCTestCase {
+    private let remote = TranscriptMediaReference(rawReference: "https://example.com/cat.png")
+    private let hosted = TranscriptMediaReference(rawReference: "/tmp/hermes/cat.png")
+
+    func testOnlyAHermesHostedImageWaitsForTheChatToAttach() {
+        XCTAssertTrue(TranscriptMediaImageLoadPolicy.waitsForAttach(hosted, hasHermesLoader: true, attachKey: nil))
+        XCTAssertFalse(TranscriptMediaImageLoadPolicy.waitsForAttach(remote, hasHermesLoader: true, attachKey: nil),
+                       "an outside URL needs no attached chat, so its failure shows Media unavailable at once")
+        XCTAssertFalse(TranscriptMediaImageLoadPolicy.waitsForAttach(hosted, hasHermesLoader: true, attachKey: 1))
+        XCTAssertFalse(TranscriptMediaImageLoadPolicy.waitsForAttach(hosted, hasHermesLoader: false, attachKey: nil))
+    }
+
+    func testAFailedRemoteImageLoadsAgainWhenTheChatAttaches() {
+        let key = TranscriptMediaImageCacheKey(namespace: "chat", reference: remote)
+        XCTAssertFalse(TranscriptMediaImageLoadPolicy.reusesLoadedImage(hasImage: false, loadedKey: nil, key: key),
+                       "a failed load never blocks the next one")
+        XCTAssertNotEqual(TranscriptMediaImageLoadID(key: key, attach: nil), TranscriptMediaImageLoadID(key: key, attach: 1),
+                          "attaching changes the load id, so the load task runs again")
+        XCTAssertNotEqual(TranscriptMediaImageLoadID(key: key, attach: 1), TranscriptMediaImageLoadID(key: key, attach: 2),
+                          "and so does every reattach")
+        XCTAssertTrue(TranscriptMediaImageLoadPolicy.reusesLoadedImage(hasImage: true, loadedKey: key, key: key),
+                      "a picture that loaded is not loaded again")
+    }
+}

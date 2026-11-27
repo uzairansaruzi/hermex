@@ -141,8 +141,11 @@ private struct TranscriptMediaThumbnailView: View {
             // loads once the chat attaches instead of keeping "Media unavailable".
             .task(id: TranscriptMediaImageLoadID(key: admittedImageKey, attach: htmlReportLoader?.loadKey)) {
                 guard let loadMediaImage, admittedImageKey == imageCacheKey else { return }
-                if image != nil, loadedImageKey == imageCacheKey { return }
-                let waitsForAttach = htmlReportLoader != nil && htmlReportLoader?.loadKey == nil
+                if TranscriptMediaImageLoadPolicy.reusesLoadedImage(hasImage: image != nil, loadedKey: loadedImageKey,
+                                                                    key: imageCacheKey) { return }
+                let waitsForAttach = TranscriptMediaImageLoadPolicy.waitsForAttach(
+                    reference, hasHermesLoader: htmlReportLoader != nil, attachKey: htmlReportLoader?.loadKey
+                )
                 image = nil
                 didAttemptLoad = false
                 let reference = reference
@@ -679,9 +682,27 @@ private struct TranscriptMediaUnavailableChip: View {
     }
 }
 
-private struct TranscriptMediaImageLoadID: Hashable {
+struct TranscriptMediaImageLoadID: Hashable {
     let key: TranscriptMediaImageCacheKey?
     let attach: Int?
+}
+
+/// When a transcript image load reruns, and what a failed load shows meanwhile. Every image's load id carries
+/// the chat's attach generation, so an image with no loaded picture (a failed one included) loads again on
+/// each attach, whatever its source.
+enum TranscriptMediaImageLoadPolicy {
+    /// A picture already loaded for this key is kept; a failed or missing one never blocks the next load.
+    static func reusesLoadedImage(hasImage: Bool, loadedKey: TranscriptMediaImageCacheKey?,
+                                  key: TranscriptMediaImageCacheKey) -> Bool {
+        hasImage && loadedKey == key
+    }
+
+    /// Only a Hermes-hosted file needs the attached chat, so only its failure before attach keeps the spinner
+    /// instead of "Media unavailable". An outside URL loads without the chat: its failure shows at once.
+    static func waitsForAttach(_ reference: TranscriptMediaReference, hasHermesLoader: Bool, attachKey: Int?) -> Bool {
+        guard hasHermesLoader, attachKey == nil, case .localPath = reference.source else { return false }
+        return true
+    }
 }
 
 struct TranscriptMediaImageCacheKey: Hashable {
