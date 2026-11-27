@@ -140,14 +140,15 @@ private struct TranscriptMediaThumbnailView: View {
                 guard let loadMediaImage, admittedImageKey == imageCacheKey else { return }
                 if TranscriptMediaImageLoadPolicy.reusesLoadedImage(hasImage: image != nil, loadedKey: loadedImageKey,
                                                                     key: imageCacheKey) { return }
+                let attach = htmlReportLoader?.loadKey
                 let waitsForAttach = TranscriptMediaImageLoadPolicy.waitsForAttach(
-                    reference, hasHermesLoader: htmlReportLoader != nil, attachKey: htmlReportLoader?.loadKey
+                    reference, hasHermesLoader: htmlReportLoader != nil, attachKey: attach
                 )
                 image = nil
                 didAttemptLoad = false
                 let reference = reference
                 let key = imageCacheKey
-                let loadedImage = await TranscriptImageCache.shared.image(forKey: key.cacheKey) {
+                let loadedImage = await TranscriptImageCache.shared.image(forKey: key.cacheKey, generation: attach) {
                     await loadMediaImage(reference)
                 }
                 guard !Task.isCancelled else { return }
