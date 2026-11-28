@@ -2,7 +2,7 @@ import XCTest
 
 final class LocalizationCatalogTests: XCTestCase {
 
-    private static let shippedLanguages = ["de", "es", "fr", "it", "pl", "pt-BR", "nl", "tr", "ru", "ja", "zh-Hans", "ko", "ar", "he", "ur", "zh-Hant", "zh-HK", "fa"]
+    private static let shippedLanguages = ["de", "es", "fr", "it", "pl", "pt-BR", "nl", "tr", "ru", "ja", "zh-Hans", "ko", "ar", "he", "ur", "zh-Hant", "zh-HK", "fa", "uk"]
 
     private func resourceURL(_ relativePath: String) -> URL {
         URL(fileURLWithPath: #filePath)

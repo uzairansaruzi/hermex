@@ -93,6 +93,12 @@
             "value": "Yeni ${applicationName} sohbeti"
           }
         },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новий чат ${applicationName}"
+          }
+        },
         "ur": {
           "stringUnit": {
             "state": "translated",
@@ -209,6 +215,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Yeni ${applicationName} sesli sohbeti"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новий голосовий чат ${applicationName}"
           }
         },
         "ur": {
@@ -329,6 +341,12 @@
             "value": "${applicationName} içinde yeni ${profile} sohbeti"
           }
         },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новий чат ${profile} у ${applicationName}"
+          }
+        },
         "ur": {
           "stringUnit": {
             "state": "translated",
@@ -445,6 +463,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "${applicationName} içinde yeni sohbet"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новий чат у ${applicationName}"
           }
         },
         "ur": {
@@ -565,6 +589,12 @@
             "value": "${applicationName} üzerinde ${profile} içinde yeni sohbet"
           }
         },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новий чат у ${profile} в ${applicationName}"
+          }
+        },
         "ur": {
           "stringUnit": {
             "state": "translated",
@@ -681,6 +711,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "${applicationName} içinde içerikle yeni sohbet"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новий чат із вмістом у ${applicationName}"
           }
         },
         "ur": {
@@ -801,6 +837,12 @@
             "value": "${applicationName} içinde yeni sesli sohbet"
           }
         },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новий голосовий чат у ${applicationName}"
+          }
+        },
         "ur": {
           "stringUnit": {
             "state": "translated",
@@ -917,6 +959,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "İçerikle bir ${applicationName} sohbeti başlat"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Почати чат ${applicationName} із вмістом"
           }
         },
         "ur": {
@@ -1037,6 +1085,12 @@
             "value": "${applicationName} içinde yeni ${profile} sohbeti başlat"
           }
         },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Почати новий чат ${profile} у ${applicationName}"
+          }
+        },
         "ur": {
           "stringUnit": {
             "state": "translated",
@@ -1155,6 +1209,12 @@
             "value": "${applicationName} içinde yeni sohbet başlat"
           }
         },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Почати новий чат у ${applicationName}"
+          }
+        },
         "ur": {
           "stringUnit": {
             "state": "translated",
@@ -1271,6 +1331,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "${applicationName} içinde sesli sohbet başlat"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Почати голосовий чат у ${applicationName}"
           }
         },
         "ur": {
