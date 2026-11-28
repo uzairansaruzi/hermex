@@ -8592,7 +8592,7 @@ enum OnDeviceSpeech {
     }
 }
 
-private final class OnDeviceSpeechRender: @unchecked Sendable {
+private final class OnDeviceSpeechRender: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendable {
     private let text: String
     private let synthesizer = AVSpeechSynthesizer()
     private let url = FileManager.default.temporaryDirectory
@@ -8604,6 +8604,8 @@ private final class OnDeviceSpeechRender: @unchecked Sendable {
 
     init(text: String) {
         self.text = text
+        super.init()
+        synthesizer.delegate = self
     }
 
     func start(resuming continuation: CheckedContinuation<Data, Error>) {
@@ -8628,20 +8630,23 @@ private final class OnDeviceSpeechRender: @unchecked Sendable {
     }
 
     private func receive(_ buffer: AVAudioBuffer) {
-        guard let buffer = buffer as? AVAudioPCMBuffer else { return }
+        guard let buffer = buffer as? AVAudioPCMBuffer, buffer.frameLength > 0 else { return }
+        let failure: (CheckedContinuation<Data, Error>, Error)? = lock.withLock {
+            guard continuation != nil else { return nil }
+            do {
+                try write(buffer)
+                return nil
+            } catch {
+                return takeContinuation().map { ($0, error) }
+            }
+        }
+        if let (continuation, error) = failure { finish(continuation, with: .failure(error)) }
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         let ending: (CheckedContinuation<Data, Error>, Result<Void, Error>)? = lock.withLock {
             guard continuation != nil else { return nil }
-            let outcome: Result<Void, Error>
-            if buffer.frameLength == 0 {
-                outcome = file == nil ? .failure(CocoaError(.fileNoSuchFile)) : .success(())
-            } else {
-                do {
-                    try write(buffer)
-                    return nil
-                } catch {
-                    outcome = .failure(error)
-                }
-            }
+            let outcome: Result<Void, Error> = file == nil ? .failure(CocoaError(.fileNoSuchFile)) : .success(())
             return takeContinuation().map { ($0, outcome) }
         }
         if let (continuation, outcome) = ending { finish(continuation, with: outcome) }

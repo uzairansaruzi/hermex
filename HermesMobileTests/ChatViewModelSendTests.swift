@@ -53,6 +53,16 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testOnDeviceSpeechRendersLongMultiSentenceTextToTheEnd() async throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["HERMEX_CI"] != nil,
+                      "Run locally when changing OnDeviceSpeech or ListenAudioPlayer")
+        let sentence = "This is a technical test sentence for the on-device reader. "
+        let audio = try await OnDeviceSpeech.render(String(repeating: sentence, count: 40))
+        let player = try ListenAudioPlayer(data: audio)
+        XCTAssertGreaterThan(player.duration, 60)
+    }
+
+    @MainActor
     func testOnDeviceSpeechRendersAudioTheListenPlayerCanPlay() async throws {
         try XCTSkipIf(ProcessInfo.processInfo.environment["HERMEX_CI"] != nil,
                       "Run locally when changing OnDeviceSpeech or ListenAudioPlayer")

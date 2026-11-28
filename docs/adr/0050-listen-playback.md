@@ -25,3 +25,9 @@ Lives in: `HermesMobile/Features/Chat/ChatViewModel.swift`
 A mid-playback decode error fires `audioPlayerDecodeErrorDidOccur` instead of, or as well as, the finish callback; without handling it the Listen state stays stuck "listening" forever. `ListenAudioPlayer` routes it to `onFinish` too. A double fire is harmless because the completion handler drops callbacks from a player that is no longer active.
 
 Lives in: `HermesMobile/Features/Chat/ChatViewModel.swift`
+
+## End the on-device render on didFinish, not on an empty buffer
+
+`AVSpeechSynthesizer.write` delivers a zero-length buffer at each internal chunk boundary of a long utterance and keeps delivering audio afterwards; only `speechSynthesizer(_:didFinish:)` marks the end. A 4,210-character Spanish reply produced 21 empty buffers and 307.9 s of audio on macOS, and `didFinish` arrived right after the last buffer. Treating the first empty buffer as the end cut a long reply after its first sentence. `OnDeviceSpeechRender` ignores empty buffers and completes on `didFinish`.
+
+Lives in: `HermesMobile/Features/Chat/ChatViewModel.swift`
